@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function postprocess_mtcr {
+function postprocess_terra {
     local calling_folder=$(pwd)
     if [ $# == 0 ]; then # assuming this is called from inside the case folder 
         folder_name="${PWD##*/}"
@@ -14,16 +14,16 @@ function postprocess_mtcr {
     case_name="$folder_name"
     echo "Postprocessing output for: $case_name"
     echo "Folder name is $folder_name"
-    matlab -nodisplay -r "postProcessMTCR('$folder_name','$case_name', true, true); quit;"
+    matlab -nodisplay -r "postProcessTERRA('$folder_name','$case_name', true, true); quit;"
     echo "Finished postprocessing output for: $case_name"
     cd "$calling_folder"
 }
 
 function main {
-    postprocess_mtcr
+    postprocess_terra
 }
 
-# Execute the function postprocess_mtcr if the bash script is called directly.
+# Execute the function postprocess_terra if the bash script is called directly.
 # Otherwise, don't run the function if this script is just being sourced.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"

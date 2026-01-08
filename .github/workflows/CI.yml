@@ -20,12 +20,12 @@ jobs:
       actions: write
       contents: read
     env:
-      MTCR_RELEASE_VERSION: v0.1.0
+      TERRA_BINARY_VERSION: v0.2.0
     strategy:
       fail-fast: false
       matrix:
         include:
-          - version: '1.11'
+          - version: '1.12'
             os: macos-latest
             arch: aarch64
     steps:
@@ -38,15 +38,15 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.arch == 'aarch64'
         env:
           GH_TOKEN: ${{ secrets.BINARIES_PAT }}
-          VER: ${{ env.MTCR_RELEASE_VERSION }}
+          VER: ${{ env.TERRA_BINARY_VERSION }}
         run: |
           set -euo pipefail
           mkdir -p test/lib
           gh release download "$VER" \
-            --repo amta3208/mtcr-binaries \
-            --pattern "mtcr-${VER}-macos-arm64.dylib" \
+            --repo amta3208/terra-binaries \
+            --pattern "terra-${VER}-macos-arm64.dylib" \
             --dir test/lib
-          echo "MTCR_LIB_PATH=$(pwd)/test/lib/mtcr-${VER}-macos-arm64.dylib" >> "$GITHUB_ENV"
+          echo "TERRA_LIB_PATH=$(pwd)/test/lib/terra-${VER}-macos-arm64.dylib" >> "$GITHUB_ENV"
       - name: Install Open MPI runtime
         if: matrix.os == 'macos-latest'
         env:
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.11'
+          version: '1.12'
       - uses: julia-actions/cache@v2
       - name: Configure doc environment
         shell: julia --project=docs --color=yes {0}
@@ -91,6 +91,6 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using MTCR
-          DocMeta.setdocmeta!(MTCR, :DocTestSetup, :(using MTCR); recursive=true)
-          doctest(MTCR)
+          using TERRA
+          DocMeta.setdocmeta!(TERRA, :DocTestSetup, :(using TERRA); recursive=true)
+          doctest(TERRA)

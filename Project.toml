@@ -1,7 +1,7 @@
-name = "MTCR"
+name = "TERRA"
 uuid = "8a405caf-3569-4c97-876d-2cf871ca8799"
 authors = ["Amin Taziny"]
-version = "0.5.0"
+version = "0.6.0"
 
 [deps]
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
@@ -18,7 +18,7 @@ DocStringExtensions = "0.9.5"
 Libdl = "1.11.0"
 Printf = "1.11.0"
 Test = "1"
-julia = "1.11"
+julia = "1.12"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"

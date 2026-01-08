@@ -1,12 +1,12 @@
-function species = readSpeciesMTCR(databasePath)
-% Read species.dat file for MTCR from a database folder
+function species = readSpeciesTERRA(databasePath)
+% Read species.dat file for TERRA from a database folder
 
     % Save current path for later return
     runPath = pwd;
 
     % Initialize comment characters
-    commChars = commCharsMTCR;
-    
+    commChars = commCharsTERRA;
+
     % Enter the database folder
     cd(databasePath)
 
@@ -35,4 +35,3 @@ function species = readSpeciesMTCR(databasePath)
     fclose(fh);
     cd(runPath)
 end
-

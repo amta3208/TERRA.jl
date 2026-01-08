@@ -1,6 +1,6 @@
-function structData = trimStructMTCR(structData,debug)
+function structData = trimStructTERRA(structData,debug)
 % Remove data at the end of every field within a struct to make everything
-% the same length. Careful! 
+% the same length. Careful!
 
   if (nargin == 1)
     debug = true;
@@ -28,7 +28,7 @@ function structData = trimStructMTCR(structData,debug)
     end
   end
 
-  % Stop at two layers deep, most expected within an MTCR struct
+  % Stop at two layers deep, most expected within a TERRA struct
   trimIds = 1:minlen;
   mainFields = fieldnames(structData);
   for f1 = 1:numel(mainFields)
@@ -49,7 +49,7 @@ function structData = trimStructMTCR(structData,debug)
   end
 
   if minlen == 0
-    error('Minlen is zero in trimStructMTCR. Something is probably wrong!')
+    error('Minlen is zero in trimStructTERRA. Something is probably wrong!')
   end
 
   function len = fieldDataLength(structField)
@@ -58,7 +58,7 @@ function structData = trimStructMTCR(structData,debug)
       if (isstruct(structField))
         fNames = fieldnames(structField);
         % Expect all fields to be same depth for result structure
-        structField = structField.(fNames{1}); 
+        structField = structField.(fNames{1});
       else
         hasData = 1;
         len = length(structField(:,1));
@@ -66,4 +66,3 @@ function structData = trimStructMTCR(structData,debug)
     end
   end
 end
-

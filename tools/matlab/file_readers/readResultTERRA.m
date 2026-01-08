@@ -1,5 +1,5 @@
-function [result, units, labels] = readResultMTCR(units,labels,outputPath,species,levels,prob_setup)
-% Read result files from an MTCR run
+function [result, units, labels] = readResultTERRA(units,labels,outputPath,species,levels,prob_setup)
+% Read result files from a TERRA run
 
   % Initialize the result structure
   result = struct();
@@ -11,10 +11,10 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
   ies = species.ies;
   ih = species.ih;
 
-  % Create result type fields 
+  % Create result type fields
   resultNames = {'ener',  'spgm',  'temp', 'flow', 'time'};   % basic types, common to all simulations
   if (prob_setup.ND == 1)
-    resultNames{end+1} = 'dist';                              % distance if 1D 
+    resultNames{end+1} = 'dist';                              % distance if 1D
   end
   for sp = 1:NS
     if (ies(sp) == 1)
@@ -39,29 +39,29 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
 
   for rf = 1:numel(resultNames)
     resultType = resultNames{rf};
-  
-    % Create the result file name 
+
+    % Create the result file name
     resultFile = sprintf('result-%s.dat',resultType);
     resultPath = sprintf('%s/%s',outputPath,resultFile);
 
-    % Check if the file exists! 
-    if ~isfile(resultPath) 
-      return; 
+    % Check if the file exists!
+    if ~isfile(resultPath)
+      return;
     end
 
-    % Read raw data from output file and reformat into nicely named fields 
-    
+    % Read raw data from output file and reformat into nicely named fields
+
     switch resultType(1:4)
       case 'time'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFields('t',fileData('t [\mus]'),'mu-s','t');
         assignStructFields('dt',fileData('dt [\mus]'),'mu-s','dt');
       case 'dist'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFields('x',fileData('x [cm]'),'cm','x');
         assignStructFields('dx',fileData('dx [cm]'),'cm','dx');
       case 'ener'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFields('eeex',fileData('e_{eex} [erg/g]'),'erg/g','e_{eex}');
         assignStructFields('erot',fileData('e_{rot} [erg/g]'),'erg/g','e_{rot}');
         assignStructFields('evib',fileData('e_{vib} [erg/g]'),'erg/g','e_{vib}');
@@ -78,20 +78,20 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
           end
         end
       case 'spgm'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFieldsAllSpecies('spgam',rawData,'mol/g','\\gamma');
       case 'exgm'
         i = str2double(resultType(5:end));
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFieldsPerSpecies('exgam',spnm{i},rawData,'mol/g','\\gamma');
       case 'vxgm'
         usid = find(resultType=='_');
         isp = str2double(resultType(5:usid-1));
         iex = str2double(resultType(usid+1:end));
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFieldsPerSpecies('vibgam',sprintf('%s_%d',spnm{isp},iex),rawData,'mol/g','\\gamma');
       case 'temp'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFields('Tt',fileData('T_{t} [K]'),'K','T_t');
         assignStructFields('Teex',fileData('T_{eex} [K]'),'K','T_{eex}');
         assignStructFields('Trot',fileData('T_{rot} [K]'),'K','T_{rot}');
@@ -109,13 +109,13 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
           end
         end
       case 'flow'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         assignStructFields('p',torr2Pa(fileData('p [torr]')),'Pa','p');
         assignStructFields('u',1000*fileData('u [km/s]'),'m/s','u');
         assignStructFields('rho',fileData('\rho [g/cm^{3}]'),'g/cm^{3}','\\rho');
         assignStructFields('avmw',fileData('M_{avg} [g/mol]'),'g/mol','\bar{M}');
       case 'eion'
-        [rawData, latexVarNames] = readOutputFileMTCR(outputPath,resultFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(outputPath,resultFile);
         for isp = 1:NS
           ispnm_true = strrep(strrep(spnm{isp},'p','+'),'n','-');
           if ~ies(isp) || (ih(isp) == 0)
@@ -132,7 +132,7 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
        ~isfield(result,'smgam'))
       smgam = 1./(result.avmw);
       ids = 1:min(length(result.spgam.(spnm{1})),length(smgam));
-      for i = 1:NS  
+      for i = 1:NS
         spgam = result.spgam.(spnm{i})(ids);
         X = spgam ./ smgam(ids);
         n = spgam .* avnCGS .* result.rho(ids);
@@ -142,15 +142,15 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
       result = rmfield(result,'spgam');
     end
 
-    % Create excited state number density fields 
+    % Create excited state number density fields
     if isfield(result,'exgam') && isfield(result,'rho')
       exspnm = fieldnames(result.exgam);
       for i = 1:numel(exspnm)
-        % Array containing all of the excited state number densities 
+        % Array containing all of the excited state number densities
         ids = 1:min(length(result.exgam.(exspnm{i})),length(result.rho));
         n = result.exgam.(exspnm{i})(ids,:) .* result.rho(ids) .* avnCGS;
         assignStructFieldsPerSpecies('n_ex',exspnm{i},n,'cm^{-3}','n');
-        % Assign subfields for each excited state 
+        % Assign subfields for each excited state
         fname = sprintf('n_ex_%s',exspnm{i});
         isp = find(strcmp(spnm,exspnm{i}));
         for iex = 1:mex(isp)
@@ -162,7 +162,7 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
       result = rmfield(result,'exgam');
     end
   end
-  
+
   % Functions
   function assignStructFields(fieldName,resultValue,resultUnit,resultLabel)
     result.(fieldName) = resultValue;
@@ -183,8 +183,8 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
       else
         labels.result.(fieldName).(spnm{s}) = sprintf('%s_{%s}',resultLabel,spnm{s});
       end
-    end 
-  end 
+    end
+  end
   function data = fileData(latexVar)
     data = rawData(:,strcmp(latexVarNames,latexVar));
     if isempty(data)
@@ -192,4 +192,3 @@ function [result, units, labels] = readResultMTCR(units,labels,outputPath,specie
     end
   end
 end
-

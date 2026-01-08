@@ -1,13 +1,13 @@
 """
-# MTCR Solver Module
+# TERRA Solver Module
 
-This module provides the high-level interface for running MTCR simulations
+This module provides the high-level interface for running TERRA simulations
 from Julia, hiding the complexity of the Fortran interface and providing
 a clean, Julia-native API.
 """
 
 # Debug: RHS call counter
-const _MTCR_ODE_DBG_CALLS = Ref(0)
+const _TERRA_ODE_DBG_CALLS = Ref(0)
 
 const ENERGY_FROM_ENTHALPY_MAX_ITERS = 11
 const ENERGY_FROM_ENTHALPY_RTOL = 1e-10
@@ -16,15 +16,15 @@ const ENERGY_FROM_ENTHALPY_ATOL = 1e-8
 """
 $(SIGNATURES)
 
-Initialize the MTCR system.
+Initialize the TERRA system.
 
-This function must be called before any MTCR calculations can be performed.
+This function must be called before any TERRA calculations can be performed.
 It sets up the Fortran library, initializes internal data structures, and
-prepares the system for simulation. The MTCR shared library is obtained from
-the `MTCR_LIB_PATH` environment variable when it is not already loaded.
+prepares the system for simulation. The TERRA shared library is obtained from
+the `TERRA_LIB_PATH` environment variable when it is not already loaded.
 
 # Arguments
-- `config::MTCRConfig`: Configuration for initialization
+- `config::TERRAConfig`: Configuration for initialization
 - `case_path::String`: Case directory path (optional, defaults to config.case_path)
 
 # Returns
@@ -33,52 +33,52 @@ the `MTCR_LIB_PATH` environment variable when it is not already loaded.
 # Throws
 - `ErrorException` if initialization fails
 """
-function initialize_mtcr(config::MTCRConfig, case_path::String = config.case_path)
+function initialize_terra(config::TERRAConfig, case_path::String = config.case_path)
     try
         # Ensure the shared library is loaded
-        if !is_mtcr_loaded()
-            load_mtcr_library!()
-            @debug "MTCR library loaded successfully via MTCR_LIB_PATH"
+        if !is_terra_loaded()
+            load_terra_library!()
+            @debug "TERRA library loaded successfully via TERRA_LIB_PATH"
         end
 
         # If the Fortran API is already initialized, finalize it so we can
         # reinitialize using the updated configuration and input files.
         try
             if is_api_initialized_wrapper()
-                @debug "Finalizing existing MTCR API before re-initialization"
+                @debug "Finalizing existing TERRA API before re-initialization"
                 finalize_api_wrapper()
             end
         catch e
-            @warn "Unable to query/finalize existing MTCR API state" exception=e
+            @warn "Unable to query/finalize existing TERRA API state" exception=e
         end
 
-        # Generate input files for MTCR based on the provided configuration
+        # Generate input files for TERRA based on the provided configuration
         generate_input_files(config, case_path)
-        @debug "MTCR input files generated" case_path=case_path
+        @debug "TERRA input files generated" case_path=case_path
 
         # Initialize the API - get dimensions from Fortran
         result = initialize_api_wrapper(case_path = case_path)
         num_species = result.num_species
         num_dimensions = result.num_dimensions
 
-        # Hard consistency check: configured species count must match MTCR setup
+        # Hard consistency check: configured species count must match TERRA setup
         if num_species != length(config.species)
-            error("Configured species count ($(length(config.species))) does not match MTCR setup ($num_species). " *
-                  "Ensure configuration and generated input match the MTCR database.")
+            error("Configured species count ($(length(config.species))) does not match TERRA setup ($num_species). " *
+                  "Ensure configuration and generated input match the TERRA database.")
         end
 
-        @debug "MTCR initialized successfully" num_species=num_species num_dimensions=num_dimensions
-        # Fetch and log runtime flags from MTCR for verification
+        @debug "TERRA initialized successfully" num_species=num_species num_dimensions=num_dimensions
+        # Fetch and log runtime flags from TERRA for verification
         try
             flags = get_runtime_flags()
-            @debug "MTCR runtime flags" ev_relax_set=flags.ev_relax_set vib_noneq=flags.vib_noneq eex_noneq=flags.eex_noneq rot_noneq=flags.rot_noneq bfe=flags.consider_elec_bfe bbh=flags.consider_elec_bbh bfh=flags.consider_elec_bfh bbe=flags.consider_elec_bbe
+            @debug "TERRA runtime flags" ev_relax_set=flags.ev_relax_set vib_noneq=flags.vib_noneq eex_noneq=flags.eex_noneq rot_noneq=flags.rot_noneq bfe=flags.consider_elec_bfe bbh=flags.consider_elec_bbh bfh=flags.consider_elec_bfh bbe=flags.consider_elec_bbe
         catch e
-            @warn "Unable to read MTCR runtime flags (rebuild library to enable)" exception=e
+            @warn "Unable to read TERRA runtime flags (rebuild library to enable)" exception=e
         end
         return true
 
     catch e
-        @error "Failed to initialize MTCR" exception=e
+        @error "Failed to initialize TERRA" exception=e
         rethrow(e)
     end
 end
@@ -86,9 +86,9 @@ end
 """
 $(SIGNATURES)
 
-Finalize the MTCR system and clean up resources.
+Finalize the TERRA system and clean up resources.
 
-This function should be called when MTCR is no longer needed to properly
+This function should be called when TERRA is no longer needed to properly
 clean up memory and resources.
 
 # Arguments
@@ -97,17 +97,17 @@ clean up memory and resources.
 # Returns
 - `Nothing`
 """
-function finalize_mtcr()
+function finalize_terra()
     try
         # Call the wrapper finalization
         finalize_api_wrapper()
 
         # Close the library
-        close_mtcr_library()
+        close_terra_library()
 
-        @info "MTCR finalized successfully"
+        @info "TERRA finalized successfully"
     catch e
-        @error "Error during MTCR finalization" exception=e
+        @error "Error during TERRA finalization" exception=e
         rethrow(e)
     end
 end
@@ -115,17 +115,17 @@ end
 """
 $(SIGNATURES)
 
-Check if MTCR is properly initialized.
+Check if TERRA is properly initialized.
 
 # Arguments
 - None
 
 # Returns
-- `true` if MTCR is initialized and ready for use
+- `true` if TERRA is initialized and ready for use
 """
-function is_mtcr_initialized()
+function is_terra_initialized()
     try
-        return is_mtcr_loaded() && is_api_initialized_wrapper()
+        return is_terra_loaded() && is_api_initialized_wrapper()
     catch
         return false
     end
@@ -134,15 +134,15 @@ end
 """
 $(SIGNATURES)
 
-Convert MTCRConfig to initial state vectors for MTCR.
+Convert TERRAConfig to initial state vectors for TERRA.
 
 # Arguments
-- `config::MTCRConfig`: Configuration object
+- `config::TERRAConfig`: Configuration object
 
 # Returns
-- Named tuple with initial state vectors in CGS units (as required by MTCR)
+- Named tuple with initial state vectors in CGS units (as required by TERRA)
 """
-function config_to_initial_state(config::MTCRConfig)
+function config_to_initial_state(config::TERRAConfig)
     # Get molecular weights
     molecular_weights = get_molecular_weights(config.species)
 
@@ -157,7 +157,7 @@ function config_to_initial_state(config::MTCRConfig)
     gas_constants_full = get_species_gas_constants_wrapper()
     gas_constants = gas_constants_full[1:length(molecular_weights)]
 
-    # Calculate electronic state populations using MTCR's Boltzmann distribution
+    # Calculate electronic state populations using TERRA's Boltzmann distribution
     # Use appropriate temperatures for each mode
     initial_electronic_states = set_electronic_boltzmann_wrapper(
         mass_densities_cgs,
@@ -170,19 +170,19 @@ function config_to_initial_state(config::MTCRConfig)
         config_cgs.temperatures.Tv   # Vibrational temperature
     )
 
-    # Calculate electron-electronic energy using MTCR's method.
+    # Calculate electron-electronic energy using TERRA's method.
     # IMPORTANT: Species without electronically resolved states contribute to
     # the electron-electronic mode; their energy must be initialized using the
-    # electron temperature (TE), not TEE. MTCR internally excludes species with
+    # electron temperature (TE), not TEE. TERRA internally excludes species with
     # resolved electronic states from this mode, so passing TE here is correct.
     initial_electron_electronic_energy = calculate_electron_electronic_energy_wrapper(
         config_cgs.temperatures.Te, config_cgs.temperatures.Tv, mass_densities_cgs
     )
 
-    # Initialize vibrational state populations using MTCR's Boltzmann
+    # Initialize vibrational state populations using TERRA's Boltzmann
     # distribution (for potential diagnostics), but do NOT use this to infer
     # STS. The active STS setting comes from the database/setup, which the
-    # wrapper cannot reliably query here. To avoid a mismatch with MTCR,
+    # wrapper cannot reliably query here. To avoid a mismatch with TERRA,
     # always treat vibrational energy in mode form and do not include rho_vx
     # in Etot.
     initial_vibrational_states = set_vibrational_boltzmann_wrapper(
@@ -201,7 +201,7 @@ function config_to_initial_state(config::MTCRConfig)
         tex = fill(config_cgs.temperatures.Te, length(mass_densities_cgs))
     )
 
-    # Total energy: do not include rho_vx to avoid double counting when MTCR
+    # Total energy: do not include rho_vx to avoid double counting when TERRA
     # is not in vibrational STS mode.
     initial_total_energy = calculate_total_energy_wrapper(
         config_cgs.temperatures.Tt, mass_densities_cgs;
@@ -266,19 +266,19 @@ $(SIGNATURES)
 Calculate dimensions for the ODE state vector components.
 
 # Arguments
-- `config::MTCRConfig`: Configuration object
+- `config::TERRAConfig`: Configuration object
 
 # Returns
 - Named tuple with dimensions for each component
 """
-function get_state_dimensions(config::MTCRConfig)
-    if !is_mtcr_loaded()
-        error("MTCR library must be loaded to get state dimensions. Set MTCR_LIB_PATH or call load_mtcr_library!(path) first.")
+function get_state_dimensions(config::TERRAConfig)
+    if !is_terra_loaded()
+        error("TERRA library must be loaded to get state dimensions. Set TERRA_LIB_PATH or call load_terra_library!(path) first.")
     end
 
     n_species = length(config.species)
 
-    # Get actual dimensions from MTCR API
+    # Get actual dimensions from TERRA API
     max_atomic_electronic_states = get_max_number_of_atomic_electronic_states_wrapper()
     max_molecular_electronic_states = get_max_number_of_molecular_electronic_states_wrapper()
     max_vibrational_quantum_number = get_max_vibrational_quantum_number_wrapper()
@@ -320,7 +320,7 @@ end
 """
 $(SIGNATURES)
 
-Compute index ranges for the packed MTCR state vector segments.
+Compute index ranges for the packed TERRA state vector segments.
 
 Splitting the packed vector into logical blocks (species densities, energy
 terms, etc.) allows consistent application of custom norms and tolerances
@@ -384,12 +384,12 @@ end
 """
 $(SIGNATURES)
 
-Create a max-norm style error metric tailored to MTCR state structure.
+Create a max-norm style error metric tailored to TERRA state structure.
 
 DifferentialEquations.jl expects `internalnorm(residual, t)` to provide a
 scalar error estimate. By splitting the residual into physically meaningful
 blocks we can ensure no single population or energy mode dominates the norm
-and that the solver honours the MTCR-style "max |Δy/y|" heuristic.
+and that the solver honours the TERRA-style "max |Δy/y|" heuristic.
 
 # Arguments
 - `dimensions`: Dimensions tuple returned by `get_state_dimensions`
@@ -398,7 +398,7 @@ and that the solver honours the MTCR-style "max |Δy/y|" heuristic.
 # Returns
 - Callable that maps a residual vector (and time) to a scalar norm value
 """
-function create_mtcr_error_norm(dimensions; weights = nothing)
+function create_terra_error_norm(dimensions; weights = nothing)
     ranges = state_component_ranges(dimensions)
     default_weights = (
         species = 1.0,
@@ -431,7 +431,7 @@ end
 """
 $(SIGNATURES)
 
-Apply the native MTCR ramp limiter update to the integrator.
+Apply the native TERRA ramp limiter update to the integrator.
 
 # Arguments
 - `integrator`: DifferentialEquations.jl integrator being stepped
@@ -494,7 +494,7 @@ end
 """
 $(SIGNATURES)
 
-Create the native MTCR step-size ramp callback.
+Create the native TERRA step-size ramp callback.
 
 # Arguments
 - `initial_dt`: Baseline time step used after the ramp is complete
@@ -764,7 +764,7 @@ Compute the mixture pressure using translational and electron temperatures.
 - `te::Real`: Electron temperature applied to electron species
 
 # Returns
-- `Float64`: Mixture pressure consistent with MTCR conventions
+- `Float64`: Mixture pressure consistent with TERRA conventions
 """
 function compute_mixture_pressure(rho_sp::AbstractVector{<:Real},
         gas_constants::AbstractVector{<:Real},
@@ -902,7 +902,7 @@ mode is disabled, it simply returns the existing state components.
 
 # Arguments
 - `state`: Unpacked state tuple produced by `unpack_state_vector`
-- `config::MTCRConfig`: Simulation configuration controlling physics toggles
+- `config::TERRAConfig`: Simulation configuration controlling physics toggles
 - `teex_const::Float64`: Keyword override for the uniform electron temperature
 - `teex_vec::Union{Nothing, AbstractVector{<:Real}}`: Optional per-species electron temperatures
 - `molecular_weights::AbstractVector{<:Real}`: Species molecular weights
@@ -1018,10 +1018,10 @@ end
 """
 $(SIGNATURES)
 
-ODE system function for MTCR integration.
+ODE system function for TERRA integration.
 
 This function defines the ODE system du/dt = f(u, p, t) where:
-- u is the state vector containing all MTCR variables
+- u is the state vector containing all TERRA variables
 - p contains parameters (dimensions, etc.)
 - t is time
 
@@ -1034,7 +1034,7 @@ This function defines the ODE system du/dt = f(u, p, t) where:
 # Returns
 - Nothing (modifies du in-place)
 """
-function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64)
+function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64)
     # Guard against invalid inputs to the Fortran layer
     if any(!isfinite, u)
         fill!(du, 0.0)
@@ -1052,7 +1052,7 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
     # Unpack state vector
     state = unpack_state_vector(u, p.dimensions)
 
-    # Calculate source terms using MTCR
+    # Calculate source terms using TERRA
     try
         config = hasproperty(p, :config) ? p.config : nothing
         teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
@@ -1115,9 +1115,9 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
 
         # Always pass the current total energy to the Fortran RHS so that
         # temperatures and rates are computed from the instantaneous state.
-        # Mirror MTCR handling of total energy:
+        # Mirror TERRA handling of total energy:
         # - If radiation is OFF, hold total energy constant across RHS calls
-        # - If radiation is ON, allow MTCR to evolve total energy
+        # - If radiation is ON, allow TERRA to evolve total energy
         use_const_etot = !is_isothermal && hasproperty(p, :config) &&
                          hasproperty(p.config, :processes) &&
                          getfield(p.config.processes, :consider_rad) == 0
@@ -1143,7 +1143,7 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
         )
 
         # Optional solver-side debug mirror of wrapper outputs
-        if get(ENV, "MTCR_SOLVER_DEBUG", "0") == "1"
+        if get(ENV, "TERRA_SOLVER_DEBUG", "0") == "1"
             @info "SOLVER_DERIV" drho_etot=derivatives.drho_etot drho_erot=derivatives.drho_erot drho_eeex=derivatives.drho_eeex drho_evib=derivatives.drho_evib
         end
 
@@ -1197,7 +1197,7 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
                                           derivatives.drho_sp[electron_idx]
             end
 
-            # Scaling factor that aligns the Julia wrapper output with native MTCR output
+            # Scaling factor that aligns the Julia wrapper output with native TERRA output
             # for isothermal cases. Unsure of what the source of the bug is.
             # TODO: Find source of this scaling factor error in drho_rem/dt and correct it
             scaling_factor = -1.5
@@ -1208,13 +1208,13 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
         end
 
         # Debug: print derivative norms on first few RHS calls (debug-level only)
-        _MTCR_ODE_DBG_CALLS[] += 1
-        if _MTCR_ODE_DBG_CALLS[] <= 5
+        _TERRA_ODE_DBG_CALLS[] += 1
+        if _TERRA_ODE_DBG_CALLS[] <= 5
             drsp_norm = maximum(abs, derivatives.drho_sp)
             dr_etot = derivatives.drho_etot
             dr_eeex = derivatives.drho_eeex === nothing ? 0.0 : derivatives.drho_eeex
             dr_evib = derivatives.drho_evib === nothing ? 0.0 : derivatives.drho_evib
-            @debug "MTCR RHS debug" t=t drho_sp_max=drsp_norm drho_etot=dr_etot drho_eeex=dr_eeex drho_evib=dr_evib
+            @debug "TERRA RHS debug" t=t drho_sp_max=drsp_norm drho_etot=dr_etot drho_eeex=dr_eeex drho_evib=dr_evib
         end
 
         # Pack derivatives into output vector
@@ -1225,7 +1225,7 @@ function mtcr_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64
         end
 
     catch e
-        @error "Error in MTCR ODE system" exception=e time=t
+        @error "Error in TERRA ODE system" exception=e time=t
         # Fill with zeros to prevent integration failure
         fill!(du, 0.0)
     end
@@ -1239,13 +1239,13 @@ $(SIGNATURES)
 Integrate the 0D system over time using DifferentialEquations.jl.
 
 # Arguments
-- `config::MTCRConfig`: Configuration object
+- `config::TERRAConfig`: Configuration object
 - `initial_state`: Initial state vectors in CGS units
 
 # Returns
-- `MTCRResults`: Simulation results (converted back to SI units)
+- `TERRAResults`: Simulation results (converted back to SI units)
 """
-function integrate_0d_system(config::MTCRConfig, initial_state)
+function integrate_0d_system(config::TERRAConfig, initial_state)
     # Time parameters
     dt = config.time_params.dt
     tlim = config.time_params.tlim
@@ -1259,7 +1259,7 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
     dimensions = get_state_dimensions(config)
     n_species = dimensions.n_species
     is_isothermal = config.physics.is_isothermal_teex
-    error_norm = create_mtcr_error_norm(dimensions)
+    error_norm = create_terra_error_norm(dimensions)
 
     # Derive electronic STS metadata from the Boltzmann-seeded initial state
     rho_ex_initial = initial_state.rho_ex
@@ -1322,8 +1322,8 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
         energy_cache = Ref(initial_state.rho_energy),
         pressure_cache = Ref(initial_state.pressure))
 
-    # Create ODE problem and attach step-size ramp mirroring native MTCR behaviour
-    prob = ODEProblem(mtcr_ode_system!, u0, tspan, p)
+    # Create ODE problem and attach step-size ramp mirroring native TERRA behaviour
+    prob = ODEProblem(terra_ode_system!, u0, tspan, p)
     ramp_callback = native_ramp_callback(dt; understep_ratio = inv(128), history_steps = 5)
 
     @info "ODE problem created, starting integration..."
@@ -1349,7 +1349,7 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
 
         @info "ODE integration completed" success=sol.retcode
 
-        # MTCR-style status printing for each solver step
+        # TERRA-style status printing for each solver step
         iter = 0
         first_dt = length(sol.t) >= 2 ? (sol.t[2] - sol.t[1]) : dt
         for (i, t) in enumerate(sol.t)
@@ -1542,7 +1542,7 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
 
         @info "Results processing completed" final_time=time_points[end] success=success
 
-        return MTCRResults(
+        return TERRAResults(
             time_points,
             species_densities_si,
             temperatures,
@@ -1556,7 +1556,7 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
         @error "ODE integration failed" exception=e
 
         # Return minimal results with error information
-        return MTCRResults(
+        return TERRAResults(
             [0.0],
             reshape(initial_state.rho_sp, :, 1),
             (tt = [config.temperatures.Tt], te = [config.temperatures.Te],
@@ -1571,7 +1571,7 @@ function integrate_0d_system(config::MTCRConfig, initial_state)
             try
                 close_api_output_files_wrapper()
             catch close_err
-                @warn "Failed to close native MTCR outputs after integration" exception=close_err
+                @warn "Failed to close native TERRA outputs after integration" exception=close_err
             end
             outputs_opened = false
         end
@@ -1581,28 +1581,28 @@ end
 """
 $(SIGNATURES)
 
-Solve a 0D MTCR simulation.
+Solve a 0D TERRA simulation.
 
-This is the main high-level interface for running MTCR simulations.
+This is the main high-level interface for running TERRA simulations.
 It handles all the complexity of data conversion, Fortran interfacing,
 and result processing.
 
 # Arguments
-- `config::MTCRConfig`: Configuration for the simulation
+- `config::TERRAConfig`: Configuration for the simulation
 
 # Returns
-- `MTCRResults`: Results of the simulation
+- `TERRAResults`: Results of the simulation
 
 # Throws
-- `ErrorException` if MTCR not initialized or simulation fails
+- `ErrorException` if TERRA not initialized or simulation fails
 """
-function solve_mtcr_0d(config::MTCRConfig)
-    if !is_mtcr_initialized()
-        error("MTCR not initialized. Call initialize_mtcr(config) first.")
+function solve_terra_0d(config::TERRAConfig)
+    if !is_terra_initialized()
+        error("TERRA not initialized. Call initialize_terra(config) first.")
     end
 
     try
-        @info "Starting MTCR 0D simulation" species=config.species
+        @info "Starting TERRA 0D simulation" species=config.species
 
         # Convert configuration to initial conditions (SI to CGS)
         initial_state = config_to_initial_state(config)
@@ -1610,12 +1610,12 @@ function solve_mtcr_0d(config::MTCRConfig)
         # Run the time integration
         results = integrate_0d_system(config, initial_state)
 
-        @info "MTCR simulation completed successfully"
+        @info "TERRA simulation completed successfully"
         return results
 
     catch e
-        @error "MTCR simulation failed" exception=e
-        return MTCRResults(
+        @error "TERRA simulation failed" exception=e
+        return TERRAResults(
             Float64[], zeros(0, 0), (;), Float64[], nothing, false,
             "Simulation failed: $(string(e))"
         )
@@ -1628,14 +1628,14 @@ $(SIGNATURES)
 Run the 0D Nitrogen Te=10eV example case.
 
 This function provides a convenient way to run the reference test case
-that matches the MTCR example in `/mtcr/examples/0D_Nitrogen_Te_10eV`.
-Requires the `MTCR_LIB_PATH` environment variable to point to the MTCR shared library.
+that matches the TERRA example in `/terra/examples/0D_Nitrogen_Te_10eV`.
+Requires the `TERRA_LIB_PATH` environment variable to point to the TERRA shared library.
 
 # Arguments
 - `case_path::String`: Case directory path (optional, creates temp directory if not provided)
 
 # Returns
-- `MTCRResults`: Results of the simulation
+- `TERRAResults`: Results of the simulation
 
 # Example
 ```julia
@@ -1648,7 +1648,7 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
     config = nitrogen_10ev_config(; isothermal = isothermal)
 
     # Update config with case path
-    config_with_path = MTCRConfig(
+    config_with_path = TERRAConfig(
         species = config.species,
         mole_fractions = config.mole_fractions,
         total_number_density = config.total_number_density,
@@ -1659,7 +1659,7 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
         database_path = config.database_path,
         case_path = case_path,
         unit_system = config.unit_system,
-        validate_species_against_mtcr = config.validate_species_against_mtcr,
+        validate_species_against_terra = config.validate_species_against_terra,
         print_source_terms = config.print_source_terms,
         write_native_outputs = config.write_native_outputs
     )
@@ -1671,11 +1671,11 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
     @info "Case path" case_path=case_path
 
     try
-        # Initialize MTCR with config
-        initialize_mtcr(config_with_path, case_path)
+        # Initialize TERRA with config
+        initialize_terra(config_with_path, case_path)
 
         # Run simulation
-        results = solve_mtcr_0d(config_with_path)
+        results = solve_terra_0d(config_with_path)
 
         if results.success
             @info "Example simulation completed successfully"
@@ -1696,9 +1696,9 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
         return results
 
     finally
-        # Clean up MTCR resources
+        # Clean up TERRA resources
         try
-            finalize_mtcr()
+            finalize_terra()
         catch e
             @warn "Error during cleanup" exception=e
         end
@@ -1711,12 +1711,12 @@ $(SIGNATURES)
 Validate simulation results for physical consistency.
 
 # Arguments
-- `results::MTCRResults`: Simulation results to validate
+- `results::TERRAResults`: Simulation results to validate
 
 # Returns
 - `true` if results pass validation, `false` otherwise
 """
-function validate_results(results::MTCRResults)
+function validate_results(results::TERRAResults)
     if !results.success
         @warn "Simulation was not successful"
         return false
@@ -1757,16 +1757,16 @@ end
 """
 $(SIGNATURES)
 
-Save MTCR results to file.
+Save TERRA results to file.
 
 # Arguments
-- `results::MTCRResults`: Results to save
+- `results::TERRAResults`: Results to save
 - `filename::String`: Output filename (CSV format)
 
 # Returns
 - `true` if save successful
 """
-function save_results(results::MTCRResults, filename::String)
+function save_results(results::TERRAResults, filename::String)
     try
         # Prepare data for CSV output
         n_times = length(results.time)

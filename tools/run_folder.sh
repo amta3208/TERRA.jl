@@ -1,11 +1,11 @@
 #!/bin/bash
 
 set -e
-source "$MTCR_INSTALL_DIR/tools/postprocess.sh"
+source "$TERRA_INSTALL_DIR/tools/postprocess.sh"
 
 # Initializations
 calling_folder=$(pwd)
-mtcr_driver_script="$MTCR_INSTALL_DIR/tools/run_mtcr.sh"
+terra_driver_script="$TERRA_INSTALL_DIR/tools/run_terra.sh"
 
 # Default variables
 nprocs=1
@@ -19,7 +19,7 @@ do
     esac
 done
 for arg in "$@"; do
-    if [ "$arg" = "-no_overwrite" ]; then 
+    if [ "$arg" = "-no_overwrite" ]; then
         overwrite=$false
     fi
 done
@@ -27,15 +27,15 @@ done
 # Loop through directories and run each case
 for folder in */; do
     case_folder=${folder%/}
-    # run the case  
+    # run the case
     echo "Running case: $case_folder"
     cd "$case_folder"
-    bash "$mtcr_driver_script" -n $nprocs
+    bash "$terra_driver_script" -n $nprocs
     # run postprocessor if: no mat file is found -or- if overwrite is true
-    mat_file_name="$case_folder.mat" 
+    mat_file_name="$case_folder.mat"
     if  ! [ -f "$mat_file_name" ] || [ ! $overwrite ]; then
         rm -f "$mat_file_name"
-        postprocess_mtcr
+        postprocess_terra
     fi
     cd "$calling_folder"
 done
