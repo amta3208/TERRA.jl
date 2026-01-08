@@ -20,7 +20,7 @@ jobs:
       actions: write
       contents: read
     env:
-      TERRA_RELEASE_VERSION: v0.1.0
+      TERRA_BINARY_VERSION: v0.2.0
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +38,7 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.arch == 'aarch64'
         env:
           GH_TOKEN: ${{ secrets.BINARIES_PAT }}
-          VER: ${{ env.TERRA_RELEASE_VERSION }}
+          VER: ${{ env.TERRA_BINARY_VERSION }}
         run: |
           set -euo pipefail
           mkdir -p test/lib
