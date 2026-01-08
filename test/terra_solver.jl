@@ -4,8 +4,8 @@
     @test_nowarn reset_and_init!(test_case_path)
 
     # Use canonical nitrogen config for consistent dimensions
-    config = mtcr.nitrogen_10ev_config()
-    dims = mtcr.get_state_dimensions(config)
+    config = terra.nitrogen_10ev_config()
+    dims = terra.get_state_dimensions(config)
 
     # Basic dimension sanity
     @test dims.n_species == length(config.species)
@@ -18,7 +18,7 @@
     rho_ex = fill(0.1, dims.rho_ex_size)
     rho_vx = fill(0.01, dims.rho_vx_size)
 
-    u = mtcr.pack_state_vector(rho_sp, rho_etot, dims;
+    u = terra.pack_state_vector(rho_sp, rho_etot, dims;
         rho_ex = rho_ex, rho_vx = rho_vx,
         rho_u = 0.0, rho_v = 0.0, rho_w = 0.0,
         rho_erot = 0.0, rho_eeex = 0.0, rho_evib = 0.0)
@@ -26,7 +26,7 @@
     expected_len = dims.n_species + 1 + prod(dims.rho_ex_size) + prod(dims.rho_vx_size) + 6
     @test length(u) == expected_len
 
-    state = mtcr.unpack_state_vector(u, dims)
+    state = terra.unpack_state_vector(u, dims)
     @test state.rho_sp ≈ rho_sp
     @test state.rho_etot ≈ rho_etot
     @test state.rho_ex ≈ rho_ex
@@ -45,7 +45,7 @@
         drho_eeex = nothing,
         drho_evib = nothing
     )
-    @test_nowarn mtcr.pack_derivative_vector!(du, derivs, dims)
+    @test_nowarn terra.pack_derivative_vector!(du, derivs, dims)
     @test du[1:(dims.n_species)] ≈ derivs.drho_sp
     @test du[dims.n_species + 1] ≈ derivs.drho_etot
 
@@ -58,7 +58,7 @@
         drho_eeex = 0.02,
         drho_evib = 0.03
     )
-    @test_nowarn mtcr.pack_derivative_vector!(du, derivs_full, dims)
+    @test_nowarn terra.pack_derivative_vector!(du, derivs_full, dims)
     @test du[end - 2] ≈ 0.05
     @test du[end - 1] ≈ 0.02
     @test du[end] ≈ 0.03
@@ -68,11 +68,11 @@ end
     test_case_path = joinpath(@__DIR__, "test_case")
     @test_nowarn reset_and_init!(test_case_path)
 
-    config = mtcr.nitrogen_10ev_config()
-    state = mtcr.config_to_initial_state(config)
-    dims = mtcr.get_state_dimensions(config)
+    config = terra.nitrogen_10ev_config()
+    state = terra.config_to_initial_state(config)
+    dims = terra.get_state_dimensions(config)
     species = config.species
-    molecular_weights = mtcr.get_molecular_weights(species)
+    molecular_weights = terra.get_molecular_weights(species)
     gas_constants = state.gas_constants
     teex_const_vec = fill(config.temperatures.Te, dims.n_species)
     electron_index = findfirst(==("E-"), species)
@@ -85,7 +85,7 @@ end
         rtol = 1e-12, atol = 0.0)
 
     # Pack current state
-    u = mtcr.pack_state_vector(state.rho_sp, state.rho_etot, dims;
+    u = terra.pack_state_vector(state.rho_sp, state.rho_etot, dims;
         rho_ex = state.rho_ex,
         rho_eeex = state.rho_eeex,
         rho_evib = state.rho_evib)
@@ -105,30 +105,30 @@ end
     )
 
     # Compute RHS; expect finite derivatives
-    @test_nowarn mtcr.mtcr_ode_system!(du, u, p, 0.0)
+    @test_nowarn terra.terra_ode_system!(du, u, p, 0.0)
     @test all(isfinite, du)
     @test length(du) == length(u)
 
     # Temperature calculation at current state (charge-balanced electrons optional)
-    temps = mtcr.calculate_temperatures_wrapper(state.rho_sp, state.rho_etot;
+    temps = terra.calculate_temperatures_wrapper(state.rho_sp, state.rho_etot;
         rho_ex = state.rho_ex, rho_eeex = state.rho_eeex, rho_evib = state.rho_evib)
     @test temps.tt > 0 && temps.teex > 0 && temps.tvib > 0
 end
 
 @testset "Isothermal TeeX Handling" begin
     temp_case_path = mktempdir()
-    config = mtcr.nitrogen_10ev_config(; isothermal = true)
+    config = terra.nitrogen_10ev_config(; isothermal = true)
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    state = mtcr.config_to_initial_state(config)
-    dims = mtcr.get_state_dimensions(config)
+    state = terra.config_to_initial_state(config)
+    dims = terra.get_state_dimensions(config)
     teex_const_vec_local = fill(config.temperatures.Te, dims.n_species)
     species_iso = config.species
-    molecular_weights_iso = mtcr.get_molecular_weights(species_iso)
+    molecular_weights_iso = terra.get_molecular_weights(species_iso)
     gas_constants_iso = state.gas_constants
     electron_index_iso = findfirst(==("E-"), species_iso)
 
-    u = mtcr.pack_state_vector(state.rho_sp, state.rho_rem, dims;
+    u = terra.pack_state_vector(state.rho_sp, state.rho_rem, dims;
         rho_ex = state.rho_ex,
         rho_eeex = state.rho_eeex,
         rho_evib = state.rho_evib)
@@ -147,11 +147,11 @@ end
         pressure_cache = Ref(state.pressure)
     )
 
-    @test_nowarn mtcr.mtcr_ode_system!(du, u, p, 0.0)
+    @test_nowarn terra.terra_ode_system!(du, u, p, 0.0)
     @test all(isfinite, du)
 
-    state_unpacked = mtcr.unpack_state_vector(u, dims)
-    energy = mtcr.reconstruct_energy_components(state_unpacked, config;
+    state_unpacked = terra.unpack_state_vector(u, dims)
+    energy = terra.reconstruct_energy_components(state_unpacked, config;
         teex_const = config.temperatures.Te,
         teex_vec = teex_const_vec_local,
         molecular_weights = molecular_weights_iso,
@@ -163,7 +163,7 @@ end
     @test isapprox(energy.rho_eeex, state.rho_eeex; rtol = 1e-12)
     @test isapprox(energy.rho_etot, state.rho_energy; rtol = 1e-6)
 
-    temps = mtcr.calculate_temperatures_wrapper(state_unpacked.rho_sp, energy.rho_etot;
+    temps = terra.calculate_temperatures_wrapper(state_unpacked.rho_sp, energy.rho_etot;
         rho_ex = state_unpacked.rho_ex,
         rho_eeex = energy.rho_eeex,
         rho_evib = state_unpacked.rho_evib)
@@ -171,53 +171,53 @@ end
 end
 
 @testset "Native Output Generation" begin
-    base_config = mtcr.nitrogen_10ev_config(; isothermal = false)
+    base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir(cleanup = false)
     println(temp_case_path)
-    config = mtcr.MTCRConfig(
+    config = terra.TERRAConfig(
         species = base_config.species,
         mole_fractions = base_config.mole_fractions,
         total_number_density = base_config.total_number_density,
         temperatures = base_config.temperatures,
-        time_params = mtcr.TimeIntegrationConfig(5e-12, 1e-6, 5e-7, 1000, 2),
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 5e-7, 1000, 2),
         physics = base_config.physics,
         processes = base_config.processes,
         database_path = base_config.database_path,
         case_path = temp_case_path,
         unit_system = base_config.unit_system,
-        validate_species_against_mtcr = false,
+        validate_species_against_terra = false,
         print_source_terms = false,
         write_native_outputs = true
     )
 
     # Fresh initialization that preserves the generated case directory
     try
-        mtcr.finalize_api_wrapper()
+        terra.finalize_api_wrapper()
     catch
         # ignore
     end
     try
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
     catch
         # ignore
     end
 
-    mtcr.load_mtcr_library!()
+    terra.load_terra_library!()
     try
-        mtcr.set_api_finalize_mpi_wrapper(false)
+        terra.set_api_finalize_mpi_wrapper(false)
     catch
         # ignore if unavailable
     end
 
-    mtcr.generate_input_files(config, temp_case_path)
-    mtcr.initialize_api_wrapper(case_path = temp_case_path)
+    terra.generate_input_files(config, temp_case_path)
+    terra.initialize_api_wrapper(case_path = temp_case_path)
 
-    case_path_used = mtcr.MTCR_CASE_PATH[]
+    case_path_used = terra.TERRA_CASE_PATH[]
     @test case_path_used == temp_case_path
     @test isdir(case_path_used)
 
-    initial_state = mtcr.config_to_initial_state(config)
-    results = mtcr.integrate_0d_system(config, initial_state)
+    initial_state = terra.config_to_initial_state(config)
+    results = terra.integrate_0d_system(config, initial_state)
     @test results.time[end] >= results.time[1]
 
     output_dir = joinpath(case_path_used, "output")
@@ -237,36 +237,36 @@ end
     enex_files = filter(f -> occursin("enex", f), readdir(states_dir))
     @test !isempty(enex_files)
 
-    mtcr.finalize_mtcr()
+    terra.finalize_terra()
 end
 
 @testset "Integrate 0D (adiabatic)" begin
     # Initialize using the config-driven input to ensure the selected
     # database and options are honored (rather than a stale case file).
 
-    config = mtcr.nitrogen_10ev_config(; isothermal = false)
+    config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     # Shorten integration to keep tests fast
-    config = mtcr.MTCRConfig(
+    config = terra.TERRAConfig(
         species = config.species,
         mole_fractions = config.mole_fractions,
         total_number_density = config.total_number_density,
         temperatures = config.temperatures,
-        time_params = mtcr.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
         physics = config.physics,
         processes = config.processes,
         database_path = config.database_path,
         case_path = temp_case_path,
         unit_system = config.unit_system,
-        validate_species_against_mtcr = false,
+        validate_species_against_terra = false,
         print_source_terms = false
     )
 
     # Initialize the Fortran API using a temporary case generated from this config
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = mtcr.config_to_initial_state(config)
-    results = @time mtcr.integrate_0d_system(config, initial_state)
+    initial_state = terra.config_to_initial_state(config)
+    results = @time terra.integrate_0d_system(config, initial_state)
     @test results.time[end] > results.time[1]
     @test size(results.species_densities, 1) == length(config.species)
     @test all(isfinite, results.temperatures.tt)
@@ -276,7 +276,7 @@ end
 
 @testset "End-to-end Example (0D Adiabatic Nitrogen 10eV)" begin
     # Run the high-level example wrapper and verify structure and success
-    results = @time mtcr.nitrogen_10ev_example()
+    results = @time terra.nitrogen_10ev_example()
 
     @test results.success == true
     @test length(results.time) >= 2
@@ -284,7 +284,7 @@ end
     @test all(isfinite, results.temperatures.tt)
     @test all(isfinite, results.temperatures.te)
     @test all(isfinite, results.temperatures.tv)
-    @test mtcr.validate_results(results)
+    @test terra.validate_results(results)
 
     # Approximate final temperature values (update as needed)
     @test results.temperatures.tt[end]≈750.13 rtol=0.03
@@ -300,27 +300,27 @@ end
 end
 
 @testset "End-to-end Example (0D Isothermal Nitrogen 10eV)" begin
-    config = mtcr.nitrogen_10ev_config(; isothermal = true)
+    config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
-    config = mtcr.MTCRConfig(
+    config = terra.TERRAConfig(
         species = config.species,
         mole_fractions = config.mole_fractions,
         total_number_density = config.total_number_density,
         temperatures = config.temperatures,
-        time_params = mtcr.TimeIntegrationConfig(5e-12, 1e-6, 1e-4, 500000, 2),
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-4, 500000, 2),
         physics = config.physics,
         processes = config.processes,
         database_path = config.database_path,
         case_path = temp_case_path,
         unit_system = config.unit_system,
-        validate_species_against_mtcr = false,
+        validate_species_against_terra = false,
         print_source_terms = false
     )
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = mtcr.config_to_initial_state(config)
-    results = @time mtcr.integrate_0d_system(config, initial_state)
+    initial_state = terra.config_to_initial_state(config)
+    results = @time terra.integrate_0d_system(config, initial_state)
 
     @test results.time[end] > results.time[1]
     @test size(results.species_densities, 1) == length(config.species)

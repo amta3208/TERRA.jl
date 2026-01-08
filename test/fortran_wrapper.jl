@@ -2,48 +2,48 @@
 @testset "Library Management" begin
     @testset "Library Loading and Status" begin
         # Test initial state - no library loaded
-        @test !mtcr.is_mtcr_loaded()
+        @test !terra.is_terra_loaded()
 
         # Test that getting handle fails when no library is loaded
-        @test_throws ErrorException mtcr.get_mtcr_handle()
+        @test_throws ErrorException terra.get_terra_handle()
 
         # Test error message content
         try
-            mtcr.get_mtcr_handle()
+            terra.get_terra_handle()
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
-            @test occursin("load_mtcr_library!", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
+            @test occursin("load_terra_library!", e.msg)
         end
     end
 
     @testset "Library Path Setting" begin
         # Test setting library path with non-existent file
-        fake_path = "/nonexistent/path/libmtcr.so"
-        @test_throws ErrorException mtcr.load_mtcr_library!(fake_path)
+        fake_path = "/nonexistent/path/libterra.so"
+        @test_throws ErrorException terra.load_terra_library!(fake_path)
 
         # Test error message for non-existent file
         try
-            mtcr.load_mtcr_library!(fake_path)
+            terra.load_terra_library!(fake_path)
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library file not found", e.msg)
+            @test occursin("TERRA library file not found", e.msg)
             @test occursin(fake_path, e.msg)
         end
 
         # Test that library is still not loaded after failed attempt
-        @test !mtcr.is_mtcr_loaded()
+        @test !terra.is_terra_loaded()
     end
 
     @testset "Library Cleanup" begin
         # Test closing library when none is loaded (should be safe)
-        @test_nowarn mtcr.close_mtcr_library()
-        @test !mtcr.is_mtcr_loaded()
+        @test_nowarn terra.close_terra_library()
+        @test !terra.is_terra_loaded()
 
         # Test multiple calls to close (should be safe)
-        @test_nowarn mtcr.close_mtcr_library()
-        @test_nowarn mtcr.close_mtcr_library()
-        @test !mtcr.is_mtcr_loaded()
+        @test_nowarn terra.close_terra_library()
+        @test_nowarn terra.close_terra_library()
+        @test !terra.is_terra_loaded()
     end
 end
 
@@ -64,17 +64,17 @@ end
 
         for tvib in tvib_list
             # Build electronic state populations consistent with (tex, trot, tvib)
-            rho_ex = mtcr.set_electronic_boltzmann_wrapper(rho_sp, tex_val, tex_val, tvib)
+            rho_ex = terra.set_electronic_boltzmann_wrapper(rho_sp, tex_val, tex_val, tvib)
 
             # Forward: Tvib -> Evib
-            rho_evib = mtcr.calculate_vibrational_energy_wrapper(
+            rho_evib = terra.calculate_vibrational_energy_wrapper(
                 tvib, rho_sp; rho_ex = rho_ex, tex = teex_vec)
             @test rho_evib isa Float64
             @test isfinite(rho_evib)
             @test rho_evib >= 0.0
 
             # Inverse: Evib -> Tvib
-            tvib_back = mtcr.calculate_vibrational_temperature_wrapper(
+            tvib_back = terra.calculate_vibrational_temperature_wrapper(
                 rho_evib, rho_sp; rho_ex = rho_ex, tex = teex_vec)
             @test tvib_back isa Float64
             @test isfinite(tvib_back)
@@ -86,9 +86,9 @@ end
     end
 
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
-        @test_throws ErrorException mtcr.calculate_vibrational_temperature_wrapper(
+        @test_throws ErrorException terra.calculate_vibrational_temperature_wrapper(
             1.0, rho_sp)
     end
 end
@@ -115,15 +115,15 @@ end
 @testset "Input/Directory Handling" begin
     @testset "Initialization Input Validation" begin
         # Ensure library is loaded and Fortran not initialized
-        mtcr.close_mtcr_library()
-        mtcr.load_mtcr_library!()
+        terra.close_terra_library()
+        terra.load_terra_library!()
 
         # Test with non-existent case path
-        @test_throws ErrorException mtcr.initialize_api_wrapper(case_path = "/nonexistent/path")
+        @test_throws ErrorException terra.initialize_api_wrapper(case_path = "/nonexistent/path")
 
         # Test error message for non-existent case path
         try
-            mtcr.initialize_api_wrapper(case_path = "/nonexistent/path")
+            terra.initialize_api_wrapper(case_path = "/nonexistent/path")
             @test false  # Should not reach here
         catch e
             @test occursin("Case path does not exist", e.msg)
@@ -132,7 +132,7 @@ end
         # Test with case path missing input directory
         temp_dir = mktempdir()
         try
-            @test_throws ErrorException mtcr.initialize_api_wrapper(case_path = temp_dir)
+            @test_throws ErrorException terra.initialize_api_wrapper(case_path = temp_dir)
         finally
             rm(temp_dir; recursive = true)
         end
@@ -140,7 +140,7 @@ end
         # Test error message for missing input file
         temp_dir = mktempdir()
         try
-            mtcr.initialize_api_wrapper(case_path = temp_dir)
+            terra.initialize_api_wrapper(case_path = temp_dir)
             @test false  # Should not reach here
         catch e
             @test occursin("Required input file not found", e.msg)
@@ -151,20 +151,20 @@ end
     end
 
     @testset "Directory Management" begin
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
         # Store original directory
         original_dir = pwd()
         test_case_path = joinpath(@__DIR__, "test_case")
 
         # Test that directory is restored after successful call
-        mtcr.initialize_api_wrapper(case_path = test_case_path)
+        terra.initialize_api_wrapper(case_path = test_case_path)
         @test pwd() == original_dir
 
         # Test that directory is restored even after failed call
         temp_dir = mktempdir()
         try
-            mtcr.initialize_api_wrapper(case_path = temp_dir)
+            terra.initialize_api_wrapper(case_path = temp_dir)
         catch
             # Expected to fail
         end
@@ -174,8 +174,8 @@ end
 
     @testset "Output Directory Creation" begin
         # Fresh state for this test
-        mtcr.close_mtcr_library()
-        mtcr.load_mtcr_library!()
+        terra.close_terra_library()
+        terra.load_terra_library!()
 
         # Create a temporary test case directory with input
         temp_case_dir = mktempdir()
@@ -195,7 +195,7 @@ end
             @test !isdir(states_dir)
 
             # Initialize - should create output directories
-            mtcr.initialize_api_wrapper(case_path = temp_case_dir)
+            terra.initialize_api_wrapper(case_path = temp_case_dir)
 
             # Verify output directories were created
             @test isdir(output_dir)
@@ -203,7 +203,7 @@ end
             @test isdir(states_dir)
 
             # Test that calling again doesn't cause errors (directories already exist)
-            result2 = mtcr.initialize_api_wrapper(case_path = temp_case_dir)
+            result2 = terra.initialize_api_wrapper(case_path = temp_case_dir)
             @test result2 isa NamedTuple
 
             # Verify directories still exist
@@ -218,8 +218,8 @@ end
 
     @testset "Output Directory Creation with Existing Directories" begin
         # Fresh state for this test
-        mtcr.close_mtcr_library()
-        mtcr.load_mtcr_library!()
+        terra.close_terra_library()
+        terra.load_terra_library!()
 
         # Create a temporary test case directory with input and partial output structure
         temp_case_dir = mktempdir()
@@ -246,7 +246,7 @@ end
             @test isfile(test_file)
 
             # Initialize - should create missing subdirectories
-            mtcr.initialize_api_wrapper(case_path = temp_case_dir)
+            terra.initialize_api_wrapper(case_path = temp_case_dir)
 
             # Verify all directories exist and existing content is preserved
             @test isdir(output_dir)
@@ -266,9 +266,9 @@ end
         test_case_path = joinpath(@__DIR__, "test_case")
         reset_and_init!(test_case_path)
 
-        max_species = mtcr.get_max_number_of_species_wrapper()
-        active_species = mtcr.get_number_of_active_species_wrapper()
-        name_len = mtcr.get_species_name_length_wrapper()
+        max_species = terra.get_max_number_of_species_wrapper()
+        active_species = terra.get_number_of_active_species_wrapper()
+        name_len = terra.get_species_name_length_wrapper()
 
         @test max_species isa Int32 && max_species > 0
         @test active_species isa Int32 && 0 < active_species <= max_species
@@ -276,25 +276,25 @@ end
     end
     @testset "Maximum Species Count" begin
         # Ensure library path is set
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
         # Test error when library not loaded
-        mtcr.close_mtcr_library()
-        @test_throws ErrorException mtcr.get_max_number_of_species_wrapper()
+        terra.close_terra_library()
+        @test_throws ErrorException terra.get_max_number_of_species_wrapper()
 
         # Test error message content
         try
-            mtcr.get_max_number_of_species_wrapper()
+            terra.get_max_number_of_species_wrapper()
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
-            @test occursin("load_mtcr_library!", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
+            @test occursin("load_terra_library!", e.msg)
         end
 
         # Reload library for actual test
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
-        max_species = mtcr.get_max_number_of_species_wrapper()
+        max_species = terra.get_max_number_of_species_wrapper()
         println("Max species: ", max_species)
 
         # Check return type
@@ -307,19 +307,19 @@ end
 
     @testset "Species Names" begin
         # Ensure library is loaded
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
         # Test error when library not loaded
-        mtcr.close_mtcr_library()
-        @test_throws ErrorException mtcr.get_species_names_wrapper()
+        terra.close_terra_library()
+        @test_throws ErrorException terra.get_species_names_wrapper()
 
         # Test error message content
         try
-            mtcr.get_species_names_wrapper()
+            terra.get_species_names_wrapper()
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
-            @test occursin("load_mtcr_library!", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
+            @test occursin("load_terra_library!", e.msg)
         end
 
         # Reload library for actual test
@@ -327,8 +327,8 @@ end
         reset_and_init!(test_case_path)
 
         # Check species composition and counts
-        species_names = mtcr.get_species_names_wrapper()
-        active_species = mtcr.get_number_of_active_species_wrapper()
+        species_names = terra.get_species_names_wrapper()
+        active_species = terra.get_number_of_active_species_wrapper()
         allowed_species = ["N", "N2", "N+", "N2+", "E-"]
         for name in species_names
             @test name in allowed_species
@@ -355,27 +355,27 @@ end
 
     @testset "Electronic States Parameters" begin
         # Ensure library is loaded
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
         # Test error when library not loaded
-        mtcr.close_mtcr_library()
-        @test_throws ErrorException mtcr.get_max_number_of_atomic_electronic_states_wrapper()
-        @test_throws ErrorException mtcr.get_max_number_of_molecular_electronic_states_wrapper()
+        terra.close_terra_library()
+        @test_throws ErrorException terra.get_max_number_of_atomic_electronic_states_wrapper()
+        @test_throws ErrorException terra.get_max_number_of_molecular_electronic_states_wrapper()
 
         # Test error message content
         try
-            mtcr.get_max_number_of_atomic_electronic_states_wrapper()
+            terra.get_max_number_of_atomic_electronic_states_wrapper()
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
-            @test occursin("load_mtcr_library!", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
+            @test occursin("load_terra_library!", e.msg)
         end
 
         # Reload library for actual test
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
 
         # Test atomic electronic states
-        max_atomic_states = mtcr.get_max_number_of_atomic_electronic_states_wrapper()
+        max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()
         println("Max atomic electronic states: ", max_atomic_states)
 
         @test max_atomic_states isa Int32
@@ -383,7 +383,7 @@ end
         @test max_atomic_states <= 50  # Reasonable upper bound
 
         # Test molecular electronic states
-        max_molecular_states = mtcr.get_max_number_of_molecular_electronic_states_wrapper()
+        max_molecular_states = terra.get_max_number_of_molecular_electronic_states_wrapper()
         println("Max molecular electronic states: ", max_molecular_states)
 
         @test max_molecular_states isa Int32
@@ -397,37 +397,37 @@ end
 
 @testset "Temperature Calculation" begin
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
 
-        @test_throws ErrorException mtcr.calculate_temperatures_wrapper(rho_sp, rho_etot)
+        @test_throws ErrorException terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
 
         try
-            mtcr.calculate_temperatures_wrapper(rho_sp, rho_etot)
+            terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
             @test false
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
     @testset "Error Handling Without Initialization" begin
         # Ensure Fortran API is not initialized for this block
         try
-            mtcr.finalize_api_wrapper()
+            terra.finalize_api_wrapper()
         catch
         end
-        mtcr.close_mtcr_library()
-        mtcr.load_mtcr_library!()
+        terra.close_terra_library()
+        terra.load_terra_library!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
 
-        @test_throws ArgumentError mtcr.calculate_temperatures_wrapper(rho_sp, rho_etot)
+        @test_throws ArgumentError terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
 
         try
-            mtcr.calculate_temperatures_wrapper(rho_sp, rho_etot)
+            terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
             @test false
         catch e
             @test occursin("rho_ex must be provided when electronic STS is active", e.msg)
@@ -443,18 +443,18 @@ end
         tvib = 1500.0
         telec = 1800.0
 
-        rho_ex = mtcr.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
-        rho_eeex = mtcr.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
-        rho_evib = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp; rho_ex = rho_ex,
+        rho_ex = terra.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
+        rho_eeex = terra.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
+        rho_evib = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp; rho_ex = rho_ex,
             tex = fill(telec, length(rho_sp)))
-        rho_vx = mtcr.has_vibrational_sts_wrapper() ?
-                 mtcr.set_vibrational_boltzmann_wrapper(rho_ex, telec, tt, tvib) : nothing
-        rho_etot = mtcr.calculate_total_energy_wrapper(
+        rho_vx = terra.has_vibrational_sts_wrapper() ?
+                 terra.set_vibrational_boltzmann_wrapper(rho_ex, telec, tt, tvib) : nothing
+        rho_etot = terra.calculate_total_energy_wrapper(
             tt, rho_sp; rho_ex = rho_ex, rho_vx = rho_vx,
             rho_eeex = rho_eeex, rho_evib = rho_evib)
 
         @test_nowarn try
-            result = mtcr.calculate_temperatures_wrapper(rho_sp, rho_etot;
+            result = terra.calculate_temperatures_wrapper(rho_sp, rho_etot;
                 rho_ex = rho_ex, rho_vx = rho_vx, rho_eeex = rho_eeex, rho_evib = rho_evib)
 
             # If successful, check structure
@@ -469,8 +469,8 @@ end
             # Test that tvx uses the correct molecular electronic states dimension
             if result.tvx isa Matrix
                 @test size(result.tvx, 1) ==
-                      mtcr.get_max_number_of_molecular_electronic_states_wrapper()
-                @test size(result.tvx, 2) == mtcr.get_max_number_of_species_wrapper()
+                      terra.get_max_number_of_molecular_electronic_states_wrapper()
+                @test size(result.tvx, 2) == terra.get_max_number_of_species_wrapper()
             end
         catch e
             @test e isa ErrorException
@@ -480,18 +480,18 @@ end
 
 @testset "Vibrational Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         tvib = 1000.0
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
-        @test_throws ErrorException mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp)
+        @test_throws ErrorException terra.calculate_vibrational_energy_wrapper(tvib, rho_sp)
 
         try
-            mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp)
+            terra.calculate_vibrational_energy_wrapper(tvib, rho_sp)
             @test false
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
@@ -504,7 +504,7 @@ end
 
         # Test basic call without optional arguments
         @test_nowarn try
-            result = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp)
+            result = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp)
             # If successful, check return type
             @test result isa Float64
             @test isfinite(result)
@@ -514,15 +514,15 @@ end
         end
 
         # Test with optional arguments
-        max_species = mtcr.get_max_number_of_species_wrapper()
+        max_species = terra.get_max_number_of_species_wrapper()
         # For vibrational energy wrapper, rho_ex must match mnex (atomic) per Fortran API
-        max_atomic_states = mtcr.get_max_number_of_atomic_electronic_states_wrapper()
+        max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()
         rho_ex = zeros(Float64, max_atomic_states, max_species)
         tex = fill(tvib, max_species)
         teex = tvib
 
         @test_nowarn try
-            result = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp;
+            result = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp;
                 rho_ex = rho_ex, tex = tex)
             # If successful, check return type
             @test result isa Float64
@@ -534,7 +534,7 @@ end
 
         # Test with partial optional arguments
         @test_nowarn try
-            result = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp; teex = teex)
+            result = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp; teex = teex)
             @test result isa Float64
             @test isfinite(result)
             @test result >= 0.0
@@ -554,7 +554,7 @@ end
 
         for tvib in test_temperatures
             @test_nowarn try
-                result = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp)
+                result = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp)
                 @test result isa Float64
                 @test isfinite(result)
                 @test result >= 0.0
@@ -566,7 +566,7 @@ end
         # Test with very small densities
         rho_sp_small = [1e-30, 1e-30, 1e-30, 1e-30, 1e-30]
         @test_nowarn try
-            result = mtcr.calculate_vibrational_energy_wrapper(1000.0, rho_sp_small)
+            result = terra.calculate_vibrational_energy_wrapper(1000.0, rho_sp_small)
             @test result isa Float64
             @test isfinite(result)
             @test result >= 0.0
@@ -578,20 +578,20 @@ end
 
 @testset "Electron-Electronic Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         teex = 10000.0
         tvib = 2000.0
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
-        @test_throws ErrorException mtcr.calculate_electron_electronic_energy_wrapper(
+        @test_throws ErrorException terra.calculate_electron_electronic_energy_wrapper(
             teex, tvib, rho_sp)
 
         try
-            mtcr.calculate_electron_electronic_energy_wrapper(teex, tvib, rho_sp)
+            terra.calculate_electron_electronic_energy_wrapper(teex, tvib, rho_sp)
             @test false
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
@@ -603,20 +603,20 @@ end
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
         # Test with negative temperature
-        @test_throws ArgumentError mtcr.calculate_electron_electronic_energy_wrapper(
+        @test_throws ArgumentError terra.calculate_electron_electronic_energy_wrapper(
             -1000.0, tvib, rho_sp)
 
         # Test with zero temperature
-        @test_throws ArgumentError mtcr.calculate_electron_electronic_energy_wrapper(
+        @test_throws ArgumentError terra.calculate_electron_electronic_energy_wrapper(
             0.0, tvib, rho_sp)
 
         # Test with empty species array
-        @test_throws ArgumentError mtcr.calculate_electron_electronic_energy_wrapper(
+        @test_throws ArgumentError terra.calculate_electron_electronic_energy_wrapper(
             1000.0, tvib, Float64[])
 
         # Test error messages
         try
-            mtcr.calculate_electron_electronic_energy_wrapper(-1000.0, tvib, rho_sp)
+            terra.calculate_electron_electronic_energy_wrapper(-1000.0, tvib, rho_sp)
             @test false
         catch e
             @test occursin("Electron-electronic temperature must be positive", e.msg)
@@ -632,7 +632,7 @@ end
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
         @test_nowarn try
-            result = mtcr.calculate_electron_electronic_energy_wrapper(teex, tvib, rho_sp)
+            result = terra.calculate_electron_electronic_energy_wrapper(teex, tvib, rho_sp)
             @test result isa Float64
             @test isfinite(result)
             @test result >= 0.0  # Electron-electronic energy should be non-negative
@@ -644,21 +644,21 @@ end
 
 @testset "Electronic Boltzmann Distribution" begin
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         tex = 10000.0
         trot = 1000.0
         tvib = 2000.0
 
-        @test_throws ErrorException mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ErrorException terra.set_electronic_boltzmann_wrapper(
             rho_sp, tex, trot, tvib)
 
         try
-            mtcr.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
+            terra.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
             @test false
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
@@ -669,28 +669,28 @@ end
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
         # Test with negative temperatures
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, -1000.0, 1000.0, 2000.0)
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, 1000.0, -1000.0, 2000.0)
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, 1000.0, 1000.0, -2000.0)
 
         # Test with zero temperatures
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, 0.0, 1000.0, 2000.0)
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, 1000.0, 0.0, 2000.0)
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             rho_sp, 1000.0, 1000.0, 0.0)
 
         # Test with empty species array
-        @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+        @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
             Float64[], 1000.0, 1000.0, 2000.0)
 
         # Test error messages
         try
-            mtcr.set_electronic_boltzmann_wrapper(rho_sp, -1000.0, 1000.0, 2000.0)
+            terra.set_electronic_boltzmann_wrapper(rho_sp, -1000.0, 1000.0, 2000.0)
             @test false
         catch e
             @test occursin("All temperatures must be positive", e.msg)
@@ -698,9 +698,9 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
         test_case_path = joinpath(@__DIR__, "test_case")
-        mtcr.initialize_api_wrapper(case_path = test_case_path)
+        terra.initialize_api_wrapper(case_path = test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         tex = 10000.0
@@ -708,12 +708,12 @@ end
         tvib = 2000.0
 
         @test_nowarn try
-            result = mtcr.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
+            result = terra.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
             @test result isa Matrix{Float64}
-            @test size(result, 2) == mtcr.get_max_number_of_species_wrapper()  # Second dimension should be max species
+            @test size(result, 2) == terra.get_max_number_of_species_wrapper()  # Second dimension should be max species
             # Now test that it uses the correct atomic electronic states dimension
             @test size(result, 1) ==
-                  mtcr.get_max_number_of_atomic_electronic_states_wrapper()  # First dimension should be max atomic electronic states
+                  terra.get_max_number_of_atomic_electronic_states_wrapper()  # First dimension should be max atomic electronic states
             @test all(isfinite.(result))
             @test all(result .>= 0.0)  # Densities should be non-negative
         catch e
@@ -722,9 +722,9 @@ end
     end
 
     @testset "Temperature Variations" begin
-        mtcr.load_mtcr_library!()
+        terra.load_terra_library!()
         test_case_path = joinpath(@__DIR__, "test_case")
-        mtcr.initialize_api_wrapper(case_path = test_case_path)
+        terra.initialize_api_wrapper(case_path = test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
@@ -738,7 +738,7 @@ end
 
         for (tex, trot, tvib) in test_cases
             @test_nowarn try
-                result = mtcr.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
+                result = terra.set_electronic_boltzmann_wrapper(rho_sp, tex, trot, tvib)
                 @test result isa Matrix{Float64}
                 @test all(isfinite.(result))
                 @test all(result .>= 0.0)
@@ -753,31 +753,31 @@ end
     test_case_path = joinpath(@__DIR__, "test_case")
     reset_and_init!(test_case_path)
 
-    max_species = mtcr.get_max_number_of_species_wrapper()
-    max_atomic_states = mtcr.get_max_number_of_atomic_electronic_states_wrapper()
-    max_molecular_states = mtcr.get_max_number_of_molecular_electronic_states_wrapper()
-    max_vqn = mtcr.get_max_vibrational_quantum_number_wrapper()
+    max_species = terra.get_max_number_of_species_wrapper()
+    max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()
+    max_molecular_states = terra.get_max_number_of_molecular_electronic_states_wrapper()
+    max_vqn = terra.get_max_vibrational_quantum_number_wrapper()
 
     # Oversized rho_sp for set_electronic_boltzmann_wrapper
     rho_sp_oversized = ones(max_species + 1)
-    @test_throws ArgumentError mtcr.set_electronic_boltzmann_wrapper(
+    @test_throws ArgumentError terra.set_electronic_boltzmann_wrapper(
         rho_sp_oversized, 1000.0, 1000.0, 1000.0)
 
     # Oversized rho_ex for calculate_temperatures_wrapper
     rho_sp = ones(max_species)
     rho_ex_bad = zeros(Float64, max_atomic_states + 1, max_species)
-    @test_throws ArgumentError mtcr.calculate_temperatures_wrapper(
+    @test_throws ArgumentError terra.calculate_temperatures_wrapper(
         rho_sp, 1.0e4; rho_ex = rho_ex_bad)
 
     # Oversized rho_vx for calculate_total_energy_wrapper
     rho_vx_bad = zeros(Float64, max_vqn + 2, max_molecular_states + 1, max_species + 1)
-    @test_throws ArgumentError mtcr.calculate_total_energy_wrapper(
+    @test_throws ArgumentError terra.calculate_total_energy_wrapper(
         1000.0, rho_sp; rho_vx = rho_vx_bad)
 
     # Vibrational energy: accept molecular-sized rho_ex (padded internally)
     rho_ex_molecular = zeros(Float64, max_molecular_states, max_species)
     @test_nowarn begin
-        evib = mtcr.calculate_vibrational_energy_wrapper(
+        evib = terra.calculate_vibrational_energy_wrapper(
             1000.0, rho_sp; rho_ex = rho_ex_molecular)
         @test evib isa Float64 && isfinite(evib) && evib >= 0.0
     end
@@ -785,18 +785,18 @@ end
 
 @testset "Total Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         tt = 1000.0
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
-        @test_throws ErrorException mtcr.calculate_total_energy_wrapper(tt, rho_sp)
+        @test_throws ErrorException terra.calculate_total_energy_wrapper(tt, rho_sp)
 
         try
-            mtcr.calculate_total_energy_wrapper(tt, rho_sp)
+            terra.calculate_total_energy_wrapper(tt, rho_sp)
             @test false
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
@@ -809,14 +809,14 @@ end
         telec = 3000.0
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
-        rho_ex = mtcr.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
-        rho_eeex = mtcr.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
-        rho_evib = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp)
+        rho_ex = terra.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
+        rho_eeex = terra.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
+        rho_evib = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp)
 
         # Test with optional arguments
         # (generally optional, but required here due to flags in test case input file)
         @test_nowarn try
-            result = mtcr.calculate_total_energy_wrapper(
+            result = terra.calculate_total_energy_wrapper(
                 tt, rho_sp;
                 rho_ex = rho_ex,
                 rho_eeex = rho_eeex,
@@ -835,20 +835,20 @@ end
 @testset "Source Terms Calculation" begin
     @testset "Error Handling Without Library" begin
         # Ensure library is not loaded
-        mtcr.close_mtcr_library()
+        terra.close_terra_library()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
 
         # Test error when library not loaded
-        @test_throws ErrorException mtcr.calculate_sources_wrapper(rho_sp, rho_etot)
+        @test_throws ErrorException terra.calculate_sources_wrapper(rho_sp, rho_etot)
 
         # Test error message content
         try
-            mtcr.calculate_sources_wrapper(rho_sp, rho_etot)
+            terra.calculate_sources_wrapper(rho_sp, rho_etot)
             @test false  # Should not reach here
         catch e
-            @test occursin("MTCR library not loaded", e.msg)
+            @test occursin("TERRA library not loaded", e.msg)
         end
     end
 
@@ -864,19 +864,19 @@ end
         telec = 3000.0
 
         # Build consistent optional inputs required by flags
-        rho_ex = mtcr.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
-        rho_eeex = mtcr.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
-        rho_evib = mtcr.calculate_vibrational_energy_wrapper(tvib, rho_sp;
+        rho_ex = terra.set_electronic_boltzmann_wrapper(rho_sp, telec, tt, tvib)
+        rho_eeex = terra.calculate_electron_electronic_energy_wrapper(telec, tvib, rho_sp)
+        rho_evib = terra.calculate_vibrational_energy_wrapper(tvib, rho_sp;
             rho_ex = rho_ex, tex = fill(telec, length(rho_sp)))
-        rho_vx = mtcr.has_vibrational_sts_wrapper() ?
-                 mtcr.set_vibrational_boltzmann_wrapper(rho_ex, telec, tt, tvib) : nothing
-        rho_etot = mtcr.calculate_total_energy_wrapper(
+        rho_vx = terra.has_vibrational_sts_wrapper() ?
+                 terra.set_vibrational_boltzmann_wrapper(rho_ex, telec, tt, tvib) : nothing
+        rho_etot = terra.calculate_total_energy_wrapper(
             tt, rho_sp; rho_ex = rho_ex, rho_vx = rho_vx,
             rho_eeex = rho_eeex, rho_evib = rho_evib)
 
         # Call and validate structure according to calculate_sources_wrapper
         @test_nowarn try
-            result = mtcr.calculate_sources_wrapper(
+            result = terra.calculate_sources_wrapper(
                 rho_sp, rho_etot; rho_ex = rho_ex, rho_vx = rho_vx,
                 rho_eeex = rho_eeex, rho_evib = rho_evib)
 
@@ -899,8 +899,8 @@ end
             # Because rho_ex was provided, drho_ex must be a full-sized matrix
             @test result.drho_ex isa Matrix{Float64}
             @test size(result.drho_ex, 1) ==
-                  mtcr.get_max_number_of_atomic_electronic_states_wrapper()
-            @test size(result.drho_ex, 2) == mtcr.get_number_of_active_species_wrapper()
+                  terra.get_max_number_of_atomic_electronic_states_wrapper()
+            @test size(result.drho_ex, 2) == terra.get_number_of_active_species_wrapper()
             @test all(isfinite.(result.drho_ex))
 
             if rho_vx === nothing
@@ -908,10 +908,10 @@ end
             else
                 @test result.drho_vx isa Array{Float64, 3}
                 @test size(result.drho_vx, 1) ==
-                      mtcr.get_max_vibrational_quantum_number_wrapper() + 1
+                      terra.get_max_vibrational_quantum_number_wrapper() + 1
                 @test size(result.drho_vx, 2) ==
-                      mtcr.get_max_number_of_molecular_electronic_states_wrapper()
-                @test size(result.drho_vx, 3) == mtcr.get_number_of_active_species_wrapper()
+                      terra.get_max_number_of_molecular_electronic_states_wrapper()
+                @test size(result.drho_vx, 3) == terra.get_number_of_active_species_wrapper()
                 @test all(isfinite.(result.drho_vx))
             end
         catch e

@@ -1,4 +1,4 @@
-module MTCR
+module TERRA
 
 using DocStringExtensions
 using Libdl
@@ -11,11 +11,11 @@ const TEST_DIR = joinpath(PACKAGE_ROOT, "test")
 
 include("data_conversion.jl")
 include("fortran_wrapper.jl")
-include("mtcr_config.jl")
-include("mtcr_solver.jl")
+include("terra_config.jl")
+include("terra_solver.jl")
 
-export initialize_mtcr, finalize_mtcr
-export MTCRConfig, MTCRResults
-export solve_mtcr_0d, nitrogen_10ev_example
+export initialize_terra, finalize_terra
+export TERRAConfig, TERRAResults
+export solve_terra_0d, nitrogen_10ev_example
 
 end

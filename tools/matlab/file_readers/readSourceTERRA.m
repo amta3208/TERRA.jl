@@ -1,22 +1,22 @@
-function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,species,levels,prob_setup)
-% This function reads source term output files from an MTCR run
-  
+function [source, labels, units] = readSourceTERRA(units,labels,sourcePath,species,levels,prob_setup)
+% This function reads source term output files from a TERRA run
+
   % Check if source terms were printed
   if isfield(prob_setup,'PRINT_SOURCE_TERMS') && (prob_setup.PRINT_SOURCE_TERMS == 0)
     source = struct();
     return
   end
-  
+
   % Extract useful variables
   spnm = species.spnm;
   mex = species.mex;
   NS = length(mex);
   ies = species.ies;
   ih = species.ih;
-  
+
   % Path stuff
   runPath = pwd;
-  
+
   % Recognized source file names
   sourceNames = {'eeex','erot','evib','qrad','time'};
   if prob_setup.ND == 1
@@ -28,8 +28,8 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
   if any(ies)
     sourceNames{end+1} = 'eion';
   end
-  
-  % Get the filenames 
+
+  % Get the filenames
   sourceDir = dir(sourcePath);
   for i = 3:numel(sourceDir)
     sourceName = strrep(sourceDir(i).name,'.dat','');
@@ -37,7 +37,7 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
       sourceNames{end+1} = sourceName;
     end
   end
-  
+
   % Read the source files and assign the data to the sources struct
   source = struct();
   for i = 1:numel(sourceNames)
@@ -50,13 +50,13 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
     rawData = importdata(sourceFilePath);
     switch sourceType
       case 'dist'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructFields('x',fileData('x [cm]'),'cm','x');
       case 'time'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructFields('t',fileData('t [\mus]'),'mu-s','t');
       case 'eeex'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructSubFields('eeex','eT',fileData('eT [erg/g-s]'),'erg/(g-s)','eT');
         assignStructSubFields('eeex','eR',fileData('eR [erg/g-s]'),'erg/(g-s)','eR');
         assignStructSubFields('eeex','eV',fileData('eV [erg/g-s]'),'erg/(g-s)','eV');
@@ -64,19 +64,19 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
         assignStructSubFields('eeex','ECII',fileData('E-CII [erg/g-s]'),'erg/(g-s)','E-CII');
         assignChemSources('eeex',rawData(:,find(strcmp(latexVarNames,'DISSOC [erg/g-s]')):end),'erg/(g-s)','e_{eex}');
       case 'erot'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructSubFields('erot','RT',fileData('RT [erg/g-s]'),'erg/(g-s)','RT');
         assignStructSubFields('erot','RV',fileData('RV [erg/g-s]'),'erg/(g-s)','RV');
         assignStructSubFields('erot','Re',fileData('Re [erg/g-s]'),'erg/(g-s)','Re');
-        assignChemSources('erot',rawData(:,find(strcmp(latexVarNames,'DISSOC [erg/g-s]')):end),'erg/(g-s)','e_{rot}'); 
+        assignChemSources('erot',rawData(:,find(strcmp(latexVarNames,'DISSOC [erg/g-s]')):end),'erg/(g-s)','e_{rot}');
       case 'evib'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructSubFields('evib','VT',fileData('VT [erg/g-s]'),'erg/(g-s)','VT');
         assignStructSubFields('evib','VR',fileData('VR [erg/g-s]'),'erg/(g-s)','VR');
         assignStructSubFields('evib','Ve',fileData('Ve [erg/g-s]'),'erg/(g-s)','Ve');
-        assignChemSources('evib',rawData(:,find(strcmp(latexVarNames,'DISSOC [erg/g-s]')):end),'erg/(g-s)','e_{vib}'); 
+        assignChemSources('evib',rawData(:,find(strcmp(latexVarNames,'DISSOC [erg/g-s]')):end),'erg/(g-s)','e_{vib}');
       case 'diss'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         for isp = 1:NS
           ispnm_true = strrep(strrep(spnm{isp},'p','+'),'n','-');
           if ~ies(isp) || (ih(isp) ~= 2)
@@ -104,7 +104,7 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
           end
         end
       case 'eion'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         for isp = 1:NS
           if ~ies(isp) || (ih(isp) == 0)
             continue
@@ -116,13 +116,13 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
           assignStructSubFields('Z_eii',spnm{isp},fileData(fnm_z_eion),'~',strrep(fnm_z_eion,' [~]',''))
         end
       case 'qrad'
-        [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+        [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
         assignStructSubFields('qrad','radbb',fileData('bound-bound [erg/g-s]'),'erg/(g-s)','bound-bound');
         assignStructSubFields('qrad','radfb',fileData('free-bound [erg/g-s]'),'erg/(g-s)','free-bound');
         assignStructSubFields('qrad','radff',fileData('free-free [erg/g-s]'),'erg/(g-s)','free-free');
       otherwise
         if contains(sourceType,'species')
-          [rawData, latexVarNames] = readOutputFileMTCR(sourcePath,sourceFile);
+          [rawData, latexVarNames] = readOutputFileTERRA(sourcePath,sourceFile);
           if contains(sourceType,'state')
             ids = sscanf(sourceType,'species_%d_state_%d');
             spid = ids(1);
@@ -151,7 +151,7 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
         end
     end
   end
-  
+
   cd(runPath);
 
   % Functions
@@ -184,4 +184,3 @@ function [source, labels, units] = readSourceMTCR(units,labels,sourcePath,specie
     end
   end
 end
-

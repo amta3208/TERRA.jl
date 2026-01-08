@@ -1,14 +1,14 @@
 """
-# MTCR Configuration Module
+# TERRA Configuration Module
 
-This module handles configuration management for MTCR simulations,
+This module handles configuration management for TERRA simulations,
 including parameter validation, default values, and input file generation.
 """
 
 """
 $(SIGNATURES)
 
-Temperature configuration for MTCR simulation.
+Temperature configuration for TERRA simulation.
 
 # Fields
 - `Tt::Float64`: Translational temperature (K)
@@ -36,11 +36,11 @@ TemperatureConfig(; Tt, Tv, Tee, Te) = TemperatureConfig(Tt, Tv, Tee, Te)
 """
 $(SIGNATURES)
 
-Time integration configuration for MTCR simulation.
+Time integration configuration for TERRA simulation.
 
-All time values are in seconds within the MTCR.jl wrapper. When writing
+All time values are in seconds within the TERRA.jl wrapper. When writing
 Fortran input files, these values are converted to microseconds to match
-the MTCR input format requirements.
+the TERRA input format requirements.
 
 # Fields
 - `dt::Float64`: Time step (seconds)
@@ -79,7 +79,7 @@ end
 """
 $(SIGNATURES)
 
-Physics modeling configuration for MTCR simulation.
+Physics modeling configuration for TERRA simulation.
 
 # Fields
 - `bbh_model::Int`: Bound-bound heavy particle model
@@ -129,7 +129,7 @@ end
 """
 $(SIGNATURES)
 
-Process flags configuration for MTCR simulation.
+Process flags configuration for TERRA simulation.
 
 # Fields
 - `consider_elec_bbe::Int`: Consider electron bound-bound excitation
@@ -166,7 +166,7 @@ end
 """
 $(SIGNATURES)
 
-Main configuration struct for MTCR simulations.
+Main configuration struct for TERRA simulations.
 
 # Fields
 - `species::Vector{String}`: Species names
@@ -177,14 +177,14 @@ Main configuration struct for MTCR simulations.
 - `physics::PhysicsConfig`: Physics modeling options
 - `processes::ProcessConfig`: Process flags
 - `database_path::String`: Path to chemistry database
-- `case_path::String`: Working directory for MTCR simulation
+- `case_path::String`: Working directory for TERRA simulation
 - `unit_system::Symbol`: Unit system (:SI or :CGS)
-- `validate_species_against_mtcr::Bool`: Validate species against MTCR database
+- `validate_species_against_terra::Bool`: Validate species against TERRA database
 - `print_source_terms::Bool`: Print source terms flag
-- `write_native_outputs::Bool`: Mirror native MTCR Tecplot outputs when running via the Julia wrapper
+- `write_native_outputs::Bool`: Mirror native TERRA Tecplot outputs when running via the Julia wrapper
 
 """
-struct MTCRConfig
+struct TERRAConfig
     species::Vector{String}
     mole_fractions::Vector{Float64}
     total_number_density::Float64
@@ -195,11 +195,11 @@ struct MTCRConfig
     database_path::String
     case_path::String
     unit_system::Symbol
-    validate_species_against_mtcr::Bool
+    validate_species_against_terra::Bool
     print_source_terms::Bool
     write_native_outputs::Bool
 
-    function MTCRConfig(;
+    function TERRAConfig(;
             species::Vector{String},
             mole_fractions::Vector{Float64},
             total_number_density::Float64,
@@ -210,7 +210,7 @@ struct MTCRConfig
             database_path::String = "../../databases/n2/elec_sts_expanded_electron_fits",
             case_path::String = pwd(),
             unit_system::Symbol = :CGS,
-            validate_species_against_mtcr::Bool = false,
+            validate_species_against_terra::Bool = false,
             print_source_terms::Bool = true,
             write_native_outputs::Bool = false
     )
@@ -222,14 +222,14 @@ struct MTCRConfig
 
         new(species, mole_fractions, total_number_density, temperatures,
             time_params, physics, processes, database_path, case_path, unit_system,
-            validate_species_against_mtcr, print_source_terms, write_native_outputs)
+            validate_species_against_terra, print_source_terms, write_native_outputs)
     end
 end
 
 """
 $(SIGNATURES)
 
-Results container for MTCR simulations.
+Results container for TERRA simulations.
 
 # Fields
 - `time::Vector{Float64}`: Time points
@@ -240,7 +240,7 @@ Results container for MTCR simulations.
 - `success::Bool`: Simulation success flag
 - `message::String`: Status message
 """
-struct MTCRResults
+struct TERRAResults
     time::Vector{Float64}
     species_densities::Matrix{Float64}
     temperatures::NamedTuple
@@ -253,7 +253,7 @@ end
 """
 $(SIGNATURES)
 
-Validate MTCR configuration parameters.
+Validate TERRA configuration parameters.
 
 # Arguments
 - `species::Vector{String}`: Species names
@@ -327,7 +327,7 @@ end
 """
 $(SIGNATURES)
 
-Generate MTCR input files from configuration with proper directory structure.
+Generate TERRA input files from configuration with proper directory structure.
 
 This function creates the directory structure required by the Fortran wrapper:
 - case_path/input/     (input files)
@@ -336,7 +336,7 @@ This function creates the directory structure required by the Fortran wrapper:
 - case_path/output/states/   (state outputs)
 
 # Arguments
-- `config::MTCRConfig`: MTCR configuration
+- `config::TERRAConfig`: TERRA configuration
 - `case_path::String`: Case directory path (default: config.case_path)
 
 # Returns
@@ -345,7 +345,7 @@ This function creates the directory structure required by the Fortran wrapper:
 # Throws
 - `ErrorException` if file generation fails
 """
-function generate_input_files(config::MTCRConfig, case_path::String = config.case_path)
+function generate_input_files(config::TERRAConfig, case_path::String = config.case_path)
     try
         # Create required directory structure as expected by fortran_wrapper
         input_dir = joinpath(case_path, "input")
@@ -369,7 +369,7 @@ function generate_input_files(config::MTCRConfig, case_path::String = config.cas
 
         # Check if database directory exists (warn if not found)
         if !isdir(database_path)
-            @warn "Database path not found: $database_path. This may cause MTCR initialization to fail."
+            @warn "Database path not found: $database_path. This may cause TERRA initialization to fail."
         else
             # Check for chemistry.dat file
             chemistry_file = joinpath(database_path, "chemistry.dat")
@@ -383,12 +383,12 @@ function generate_input_files(config::MTCRConfig, case_path::String = config.cas
         generate_sources_setup_file(config, joinpath(input_dir, "sources_setup.inp"))
         generate_tau_scaling_file(config, joinpath(input_dir, "tau_scaling.inp"))
 
-        @debug "MTCR input files generated successfully" case_path=case_path
+        @debug "TERRA input files generated successfully" case_path=case_path
 
         return true
 
     catch e
-        error("Failed to generate MTCR input files: $(e)")
+        error("Failed to generate TERRA input files: $(e)")
     end
 end
 
@@ -397,7 +397,7 @@ $(SIGNATURES)
 
 Generate prob_setup.inp file from configuration.
 """
-function generate_prob_setup_file(config::MTCRConfig, filepath::String)
+function generate_prob_setup_file(config::TERRAConfig, filepath::String)
     open(filepath, "w") do io
         println(io, "####################################################")
         println(io, "# Location of database and output folders")
@@ -421,7 +421,7 @@ function generate_prob_setup_file(config::MTCRConfig, filepath::String)
         end
         println(io)
         println(io, "--- Total number density (1/cm³)")
-        # Ensure number density is written in CGS units as expected by MTCR
+        # Ensure number density is written in CGS units as expected by TERRA
         tn_cgs = config.unit_system == :CGS ? config.total_number_density :
                  convert_number_density_si_to_cgs(config.total_number_density)
         println(io, "TOTAL_NUMBER_DENSITY=$(tn_cgs)")
@@ -492,7 +492,7 @@ $(SIGNATURES)
 
 Generate sources_setup.inp file from configuration.
 """
-function generate_sources_setup_file(config::MTCRConfig, filepath::String)
+function generate_sources_setup_file(config::TERRAConfig, filepath::String)
     open(filepath, "w") do io
         println(io, "BEGIN SPECIES SOURCES")
         for species in config.species
@@ -527,7 +527,7 @@ $(SIGNATURES)
 
 Generate tau_scaling.inp file from configuration.
 """
-function generate_tau_scaling_file(config::MTCRConfig, filepath::String)
+function generate_tau_scaling_file(config::TERRAConfig, filepath::String)
     # For now, create an empty file
     # This can be expanded later if tau scaling is needed
     open(filepath, "w") do io
@@ -541,10 +541,10 @@ $(SIGNATURES)
 Create a default configuration for the 0D Nitrogen Te=10eV example.
 
 # Returns
-- `MTCRConfig`: Configuration matching the example case
+- `TERRAConfig`: Configuration matching the example case
 
 # Throws
-- `ErrorException` if `$(MTCR_ENV_VAR_NAME)` is unset/invalid or if required database paths do not exist
+- `ErrorException` if `$(TERRA_ENV_VAR_NAME)` is unset/invalid or if required database paths do not exist
 """
 function nitrogen_10ev_config(; isothermal::Bool = false)
     species = ["N", "N2", "N+", "N2+", "E-"]
@@ -555,7 +555,7 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     physics = PhysicsConfig(; is_isothermal_teex = isothermal)
 
     # Time parameters are specified in seconds within the wrapper.
-    # The MTCR input file expects microseconds; conversion is handled
+    # The TERRA input file expects microseconds; conversion is handled
     # in generate_input_files(). These values correspond to:
     #   dt   = 0.5e-5 microseconds  -> 5e-12 seconds
     #   dtm  = 5.0   microseconds   -> 5e-6  seconds
@@ -569,11 +569,11 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
         pkg_root, "database", "n2", "elec_sts_expanded_electron_fits"))
 
     # Validate that required paths exist
-    resolve_mtcr_library_path()
+    resolve_terra_library_path()
 
     if !isdir(database_path)
-        error("MTCR database directory not found: $database_path\n" *
-              "Please ensure the MTCR database exists and the path is correct.")
+        error("TERRA database directory not found: $database_path\n" *
+              "Please ensure the TERRA database exists and the path is correct.")
     end
 
     # Additional check for chemistry.dat file in database
@@ -583,7 +583,7 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
               "Please ensure the database is complete.")
     end
 
-    return MTCRConfig(
+    return TERRAConfig(
         species = species,
         mole_fractions = mole_fractions,
         total_number_density = total_number_density,
@@ -640,13 +640,13 @@ end
 """
 $(SIGNATURES)
 
-Validate species against MTCR database (requires loaded library).
+Validate species against TERRA database (requires loaded library).
 
-This function uses the fortran_wrapper to query the MTCR database
+This function uses the fortran_wrapper to query the TERRA database
 for available species and validates the configuration species against it.
 
 # Arguments
-- `config::MTCRConfig`: Configuration to validate
+- `config::TERRAConfig`: Configuration to validate
 
 # Returns
 - `true` if validation passes
@@ -654,19 +654,19 @@ for available species and validates the configuration species against it.
 # Throws
 - `ErrorException` if species validation fails or library not loaded
 """
-function validate_species_against_mtcr_database(config::MTCRConfig)
-    if config.validate_species_against_mtcr
+function validate_species_against_terra_database(config::TERRAConfig)
+    if config.validate_species_against_terra
         try
-            # Load fortran_wrapper functions - they should be available since mtcr_config.jl is included in MTCR.jl
-            if is_mtcr_loaded()
-                mtcr_species = get_species_names_wrapper()
-                validate_species_data(config.species, mtcr_species, config.mole_fractions)
-                @info "Species validation against MTCR database passed"
+            # Load fortran_wrapper functions - they should be available since terra_config.jl is included in TERRA.jl
+            if is_terra_loaded()
+                terra_species = get_species_names_wrapper()
+                validate_species_data(config.species, terra_species, config.mole_fractions)
+                @info "Species validation against TERRA database passed"
             else
-                @warn "MTCR library not loaded. Cannot validate species against database."
+                @warn "TERRA library not loaded. Cannot validate species against database."
             end
         catch e
-            @warn "Failed to validate species against MTCR database: $(e)"
+            @warn "Failed to validate species against TERRA database: $(e)"
         end
     end
 
@@ -676,13 +676,13 @@ end
 """
 $(SIGNATURES)
 
-Validate configuration parameters against loaded MTCR library capabilities.
+Validate configuration parameters against loaded TERRA library capabilities.
 
 This function checks that the configuration is compatible with the loaded
-MTCR library, including array dimensions and species availability.
+TERRA library, including array dimensions and species availability.
 
 # Arguments
-- `config::MTCRConfig`: Configuration to validate
+- `config::TERRAConfig`: Configuration to validate
 
 # Returns
 - `true` if validation passes
@@ -690,9 +690,9 @@ MTCR library, including array dimensions and species availability.
 # Throws
 - `ErrorException` if validation fails or library not loaded
 """
-function validate_config_against_mtcr(config::MTCRConfig)
-    if !is_mtcr_loaded()
-        @warn "MTCR library not loaded. Cannot validate configuration against library capabilities."
+function validate_config_against_terra(config::TERRAConfig)
+    if !is_terra_loaded()
+        @warn "TERRA library not loaded. Cannot validate configuration against library capabilities."
         return true
     end
 
@@ -701,45 +701,45 @@ function validate_config_against_mtcr(config::MTCRConfig)
         validate_array_dimensions(config)
 
         # Validate species if requested
-        if config.validate_species_against_mtcr
+        if config.validate_species_against_terra
             validate_species_in_database(config)
         end
 
-        @info "Configuration validation against MTCR library passed"
+        @info "Configuration validation against TERRA library passed"
         return true
 
     catch e
-        error("Configuration validation against MTCR library failed: $(e)")
+        error("Configuration validation against TERRA library failed: $(e)")
     end
 end
 
 """
 $(SIGNATURES)
 
-Validate that configuration arrays match MTCR Fortran expectations.
+Validate that configuration arrays match TERRA Fortran expectations.
 
 # Arguments
-- `config::MTCRConfig`: Configuration to validate
+- `config::TERRAConfig`: Configuration to validate
 
 # Returns
 - `true` if validation passes
 
 # Throws
-- `ErrorException` if array dimensions exceed MTCR limits
+- `ErrorException` if array dimensions exceed TERRA limits
 """
-function validate_array_dimensions(config::MTCRConfig)
-    if !is_mtcr_loaded()
-        throw(ErrorException("MTCR library not loaded. Cannot validate array dimensions."))
+function validate_array_dimensions(config::TERRAConfig)
+    if !is_terra_loaded()
+        throw(ErrorException("TERRA library not loaded. Cannot validate array dimensions."))
     end
 
-    # Get MTCR limits
+    # Get TERRA limits
     max_species = get_max_number_of_species_wrapper()
     max_atomic_states = get_max_number_of_atomic_electronic_states_wrapper()
     max_molecular_states = get_max_number_of_molecular_electronic_states_wrapper()
 
     # Check species count
     if length(config.species) > max_species
-        throw(ErrorException("Number of species ($(length(config.species))) exceeds MTCR maximum ($max_species)"))
+        throw(ErrorException("Number of species ($(length(config.species))) exceeds TERRA maximum ($max_species)"))
     end
 
     # Check mole fractions array consistency
@@ -755,10 +755,10 @@ end
 """
 $(SIGNATURES)
 
-Validate that all species in configuration exist in the MTCR database.
+Validate that all species in configuration exist in the TERRA database.
 
 # Arguments
-- `config::MTCRConfig`: Configuration to validate
+- `config::TERRAConfig`: Configuration to validate
 
 # Returns
 - `true` if validation passes
@@ -766,25 +766,25 @@ Validate that all species in configuration exist in the MTCR database.
 # Throws
 - `ErrorException` if any species are not found in database
 """
-function validate_species_in_database(config::MTCRConfig)
-    if !is_mtcr_loaded()
-        throw(ErrorException("MTCR library not loaded. Cannot validate species in database."))
+function validate_species_in_database(config::TERRAConfig)
+    if !is_terra_loaded()
+        throw(ErrorException("TERRA library not loaded. Cannot validate species in database."))
     end
 
-    # Get available species from MTCR
-    mtcr_species = get_species_names_wrapper()
+    # Get available species from TERRA
+    terra_species = get_species_names_wrapper()
 
     # Check each species in configuration
     missing_species = String[]
     for species in config.species
-        if !(species in mtcr_species)
+        if !(species in terra_species)
             push!(missing_species, species)
         end
     end
 
     if !isempty(missing_species)
-        throw(ErrorException("Species not found in MTCR database: $(join(missing_species, ", "))\n" *
-                             "Available species: $(join(mtcr_species, ", "))"))
+        throw(ErrorException("Species not found in TERRA database: $(join(missing_species, ", "))\n" *
+                             "Available species: $(join(terra_species, ", "))"))
     end
 
     @info "Species database validation passed" validated_species=config.species
@@ -798,13 +798,13 @@ $(SIGNATURES)
 Convert configuration units if needed.
 
 # Arguments
-- `config::MTCRConfig`: Configuration to convert
+- `config::TERRAConfig`: Configuration to convert
 - `target_unit_system::Symbol`: Target unit system (:SI or :CGS)
 
 # Returns
-- `MTCRConfig`: Configuration with converted units
+- `TERRAConfig`: Configuration with converted units
 """
-function convert_config_units(config::MTCRConfig, target_unit_system::Symbol)
+function convert_config_units(config::TERRAConfig, target_unit_system::Symbol)
     if config.unit_system == target_unit_system
         return config  # No conversion needed
     end
@@ -814,7 +814,7 @@ function convert_config_units(config::MTCRConfig, target_unit_system::Symbol)
         new_total_number_density = convert_number_density_si_to_cgs(config.total_number_density)
 
         # Create new config with converted units
-        return MTCRConfig(
+        return TERRAConfig(
             species = config.species,
             mole_fractions = config.mole_fractions,
             total_number_density = new_total_number_density,
@@ -825,7 +825,7 @@ function convert_config_units(config::MTCRConfig, target_unit_system::Symbol)
             database_path = config.database_path,
             case_path = config.case_path,
             unit_system = target_unit_system,
-            validate_species_against_mtcr = config.validate_species_against_mtcr,
+            validate_species_against_terra = config.validate_species_against_terra,
             print_source_terms = config.print_source_terms,
             write_native_outputs = config.write_native_outputs
         )
@@ -835,7 +835,7 @@ function convert_config_units(config::MTCRConfig, target_unit_system::Symbol)
         new_total_number_density = convert_number_density_cgs_to_si(config.total_number_density)
 
         # Create new config with converted units
-        return MTCRConfig(
+        return TERRAConfig(
             species = config.species,
             mole_fractions = config.mole_fractions,
             total_number_density = new_total_number_density,
@@ -846,7 +846,7 @@ function convert_config_units(config::MTCRConfig, target_unit_system::Symbol)
             database_path = config.database_path,
             case_path = config.case_path,
             unit_system = target_unit_system,
-            validate_species_against_mtcr = config.validate_species_against_mtcr,
+            validate_species_against_terra = config.validate_species_against_terra,
             print_source_terms = config.print_source_terms,
             write_native_outputs = config.write_native_outputs
         )

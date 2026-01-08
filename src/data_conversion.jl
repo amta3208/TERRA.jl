@@ -99,7 +99,7 @@ end
 """
 $(SIGNATURES)
 
-Convert a complete state vector from SI to CGS units for MTCR input.
+Convert a complete state vector from SI to CGS units for TERRA input.
 
 # Arguments
 - `rho_sp_si::Vector{Float64}`: Species densities in SI units (kg/m³)
@@ -138,7 +138,7 @@ end
 """
 $(SIGNATURES)
 
-Convert a complete state vector from CGS to SI units from MTCR output.
+Convert a complete state vector from CGS to SI units from TERRA output.
 
 # Arguments
 - `rho_sp_cgs::Vector{Float64}`: Species densities in CGS units (g/cm³)
@@ -247,18 +247,18 @@ end
 """
 $(SIGNATURES)
 
-Validate species data consistency between Julia and MTCR.
+Validate species data consistency between Julia and TERRA.
 
 # Arguments
 - `species_names::Vector{String}`: Species names from configuration
-- `mtcr_species::Vector{String}`: Species names from MTCR
+- `terra_species::Vector{String}`: Species names from TERRA
 - `densities::Vector{Float64}`: Species densities
 
 # Returns
 - `true` if validation passes, throws error otherwise
 """
 function validate_species_data(species_names::Vector{String},
-        mtcr_species::Vector{String},
+        terra_species::Vector{String},
         densities::Vector{Float64})
 
     # Check array lengths match
@@ -274,8 +274,8 @@ function validate_species_data(species_names::Vector{String},
 
     # Check species names are valid
     for (i, name) in enumerate(species_names)
-        if !(name in mtcr_species)
-            error("Species '$(name)' not found in MTCR database. Available species: $(mtcr_species)")
+        if !(name in terra_species)
+            error("Species '$(name)' not found in TERRA database. Available species: $(terra_species)")
         end
     end
 
@@ -292,16 +292,16 @@ end
 """
 $(SIGNATURES)
 
-Create species mapping between HallThruster.jl and MTCR conventions.
+Create species mapping between HallThruster.jl and TERRA conventions.
 
 # Arguments
 - `ht_species::Vector{String}`: Species names in HallThruster.jl format
-- `mtcr_species::Vector{String}`: Species names in MTCR format
+- `terra_species::Vector{String}`: Species names in TERRA format
 
 # Returns
-- Dictionary mapping HallThruster.jl species names to MTCR species names
+- Dictionary mapping HallThruster.jl species names to TERRA species names
 """
-function create_species_mapping(ht_species::Vector{String}, mtcr_species::Vector{String})
+function create_species_mapping(ht_species::Vector{String}, terra_species::Vector{String})
     mapping = Dict{String, String}()
 
     # Common mappings (this may need to be expanded based on actual usage)
@@ -322,18 +322,18 @@ function create_species_mapping(ht_species::Vector{String}, mtcr_species::Vector
 
     for ht_name in ht_species
         if haskey(common_mappings, ht_name)
-            mtcr_name = common_mappings[ht_name]
-            if mtcr_name in mtcr_species
-                mapping[ht_name] = mtcr_name
+            terra_name = common_mappings[ht_name]
+            if terra_name in terra_species
+                mapping[ht_name] = terra_name
             else
-                error("MTCR species '$(mtcr_name)' not found in database for HallThruster species '$(ht_name)'")
+                error("TERRA species '$(terra_name)' not found in database for HallThruster species '$(ht_name)'")
             end
         else
             # Try direct mapping
-            if ht_name in mtcr_species
+            if ht_name in terra_species
                 mapping[ht_name] = ht_name
             else
-                error("No mapping found for HallThruster species '$(ht_name)' to MTCR database")
+                error("No mapping found for HallThruster species '$(ht_name)' to TERRA database")
             end
         end
     end

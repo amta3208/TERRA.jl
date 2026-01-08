@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = MTCR
+CurrentModule = TERRA
 ```
 
-# MTCR
+# TERRA
 
-Documentation for [MTCR](https://github.com/amta3208/MTCR.jl).
+Documentation for [TERRA](https://github.com/amta3208/TERRA.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [MTCR]
+Modules = [TERRA]
 ```

@@ -1,4 +1,4 @@
-function [qtot, qe, qv, qr] = partitionFunctionFromMTCR(T, levels, unitSystem)
+function [qtot, qe, qv, qr] = partitionFunctionFromTERRA(T, levels, unitSystem)
   if nargin < 3
     unitSystem = 'SI';
   end
@@ -10,7 +10,7 @@ function [qtot, qe, qv, qr] = partitionFunctionFromMTCR(T, levels, unitSystem)
       eVConversion = eV2erg;
       boltz = boltzCGS;
     otherwise
-      error('Unrecognized unitSystem in partitionFunctionFromMTCR')
+      error('Unrecognized unitSystem in partitionFunctionFromTERRA')
   end
   if iscell(T)
     if numel(T) ~= 3
@@ -22,9 +22,9 @@ function [qtot, qe, qv, qr] = partitionFunctionFromMTCR(T, levels, unitSystem)
     if length(Tr) ~= length(Tv) || length(Tv) ~= length(Tex)
       error('Temperature arrays must have same length.');
     end
-  else 
+  else
     Tr = T;
-    Tv = T; 
+    Tv = T;
     Tex = T;
   end
   factr = levels.factr;

@@ -1,5 +1,5 @@
-function [rawData, latexVarNames] = readOutputFileMTCR(outputPath,fileName)
-% Read an output file from an MTCR simulation and assign it to a single
+function [rawData, latexVarNames] = readOutputFileTERRA(outputPath,fileName)
+% Read an output file from a TERRA simulation and assign it to a single
 % double array containing the raw data
 
   % Save current path for later return
@@ -27,12 +27,12 @@ function [rawData, latexVarNames] = readOutputFileMTCR(outputPath,fileName)
   end
   ensureNextLineBeginsWith('ZONETYPE = ORDERED, DATAPACKING = POINT')
 
-  % Read the data 
+  % Read the data
   rawData = nan(1,nvars);
   id = 0;
   while ~feof(fh)
     if ~feof(fh)
-      try 
+      try
         lineData = readLineData(fh);
       catch
         continue
@@ -42,7 +42,7 @@ function [rawData, latexVarNames] = readOutputFileMTCR(outputPath,fileName)
     lwt = numel(lineData);
     rawData(id,1:lwt) = lineData;
     while lwt < nvars
-      try 
+      try
         lineData = readLineData(fh);
       catch
         lwt = nvars;
@@ -83,9 +83,8 @@ function [rawData, latexVarNames] = readOutputFileMTCR(outputPath,fileName)
     latexStr = tpStr;
   end
 
-% Read data line 
+% Read data line
   function data = readLineData(fh)
     data = str2double(split(strtrim(fgetl(fh))))';
   end
 end
-

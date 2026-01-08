@@ -15,7 +15,7 @@ done
 
 if [[ -d ./input ]]; then
     if [[ -f ./input/prob_setup.inp ]]; then
-        echo "Starting MTCR run: $(date)" 
+        echo "Starting TERRA run: $(date)" 
         if [[ -d ./output ]]; then
             rm -r ./output
         fi
@@ -30,11 +30,11 @@ else
 fi 
 
 if [ $quiet -eq 1 ]; then
-    mpirun -n $nprocs "$MTCR_INSTALL_DIR/mtcr.x" > printout.out
+    mpirun -n $nprocs "$TERRA_INSTALL_DIR/terra.x" > printout.out
 else
     echo ""
-    mpirun -n $nprocs "$MTCR_INSTALL_DIR/mtcr.x" | tee printout.out
+    mpirun -n $nprocs "$TERRA_INSTALL_DIR/terra.x" | tee printout.out
     echo ""
 fi
 
-echo "Finished MTCR run: $(date)"
+echo "Finished TERRA run: $(date)"

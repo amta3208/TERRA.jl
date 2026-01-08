@@ -1,16 +1,16 @@
-function prob_setup = readProbSetupMTCR(inputFolderPath)
-% Read the prob_setup.inp file from MTCR
+function prob_setup = readProbSetupTERRA(inputFolderPath)
+% Read the prob_setup.inp file from TERRA
 
     % Save current path for later return
     runPath = pwd;
 
     % Initialize comment characters
-    commChars = commCharsMTCR;
-    
+    commChars = commCharsTERRA;
+
     % Variables that are string type
     stringVars = {'DATABASE_PATH','CHEM_FILE_NAME','MOLDATA_PATH'};
-    
-    % Open the prob_setup file and load the variables into a structure 
+
+    % Open the prob_setup file and load the variables into a structure
     cd(inputFolderPath)
     fullInputFolderPath = pwd;
     fh = fopen('prob_setup.inp');
@@ -37,9 +37,8 @@ function prob_setup = readProbSetupMTCR(inputFolderPath)
         error('Unable to find database path at: \n%s \n -or- \n%s \n', prob_setup.DATABASE_PATH, testPath)
       end
     end
-    
+
     % Close the file and return to original path
     fclose(fh);
     cd(runPath)
 end
-

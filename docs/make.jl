@@ -1,14 +1,14 @@
-using MTCR
+using TERRA
 using Documenter
 
-DocMeta.setdocmeta!(MTCR, :DocTestSetup, :(using MTCR); recursive=true)
+DocMeta.setdocmeta!(TERRA, :DocTestSetup, :(using TERRA); recursive=true)
 
 makedocs(;
-    modules=[MTCR],
+    modules=[TERRA],
     authors="Amin Taziny",
-    sitename="MTCR.jl",
+    sitename="TERRA.jl",
     format=Documenter.HTML(;
-        canonical="https://amta3208.github.io/MTCR.jl",
+        canonical="https://amta3208.github.io/TERRA.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/amta3208/MTCR.jl",
+    repo="github.com/amta3208/TERRA.jl",
     devbranch="main",
 )

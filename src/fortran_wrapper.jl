@@ -1,40 +1,40 @@
 """
 # Fortran Wrapper Module
 
-This module provides low-level Julia bindings to the MTCR Fortran library using `ccall`.
+This module provides low-level Julia bindings to the TERRA Fortran library using `ccall`.
 It handles direct interfacing with the Fortran API functions defined in `interface.f90`.
 """
 
-# MTCR library state
-const MTCR_HANDLE = Ref{Ptr{Cvoid}}(C_NULL)
-const LOADED_MTCR_LIB_PATH = Ref{String}("")
-const MTCR_INITIALIZED = Ref{Bool}(false)
+# TERRA library state
+const TERRA_HANDLE = Ref{Ptr{Cvoid}}(C_NULL)
+const LOADED_TERRA_LIB_PATH = Ref{String}("")
+const TERRA_INITIALIZED = Ref{Bool}(false)
 const DEBUG_WRAPPER = Ref{Bool}(false)
-const MTCR_CASE_PATH = Ref{String}("")
-const MTCR_OUTPUTS_OPEN = Ref{Bool}(false)
+const TERRA_CASE_PATH = Ref{String}("")
+const TERRA_OUTPUTS_OPEN = Ref{Bool}(false)
 
 # Environment variable used to locate the shared library when not provided explicitly
-const MTCR_ENV_VAR_NAME = "MTCR_LIB_PATH"
+const TERRA_ENV_VAR_NAME = "TERRA_LIB_PATH"
 
 """
 $(SIGNATURES)
 
-Resolve the MTCR shared library path from the `$(MTCR_ENV_VAR_NAME)` environment variable.
+Resolve the TERRA shared library path from the `$(TERRA_ENV_VAR_NAME)` environment variable.
 
 # Returns
-- `String`: Validated absolute path to the MTCR shared library
+- `String`: Validated absolute path to the TERRA shared library
 
 # Throws
 - `ErrorException`: If the environment variable is unset or points to a missing file
 """
-function resolve_mtcr_library_path()
-    path = String(strip(get(ENV, MTCR_ENV_VAR_NAME, "")))
+function resolve_terra_library_path()
+    path = String(strip(get(ENV, TERRA_ENV_VAR_NAME, "")))
     if isempty(path)
-        error("MTCR library path not provided. Set $(MTCR_ENV_VAR_NAME) in the environment before running MTCR.")
+        error("TERRA library path not provided. Set $(TERRA_ENV_VAR_NAME) in the environment before running TERRA.")
     elseif !isfile(path)
-        error("MTCR library file not found: $path
+        error("TERRA library file not found: $path
 " *
-              "Set $(MTCR_ENV_VAR_NAME) to the full path of the MTCR shared library.")
+              "Set $(TERRA_ENV_VAR_NAME) to the full path of the TERRA shared library.")
     end
     return path
 end
@@ -42,52 +42,52 @@ end
 """
 $(SIGNATURES)
 
-Set the path to the MTCR shared library and load it.
+Set the path to the TERRA shared library and load it.
 
 # Arguments
-- `path::String`: Path to the MTCR shared library file
+- `path::String`: Path to the TERRA shared library file
 
 # Throws
 - `ErrorException`: If the library cannot be loaded
 """
-function load_mtcr_library!(path::String)
+function load_terra_library!(path::String)
     # Close existing handle if open
-    if MTCR_HANDLE[] != C_NULL
-        Libdl.dlclose(MTCR_HANDLE[])
-        MTCR_HANDLE[] = C_NULL
+    if TERRA_HANDLE[] != C_NULL
+        Libdl.dlclose(TERRA_HANDLE[])
+        TERRA_HANDLE[] = C_NULL
     end
 
     # Validate path exists
     if !isfile(path)
-        error("MTCR library file not found: $path\n" *
-              "Set environment variable $(MTCR_ENV_VAR_NAME) to the full path of the MTCR shared library.")
+        error("TERRA library file not found: $path\n" *
+              "Set environment variable $(TERRA_ENV_VAR_NAME) to the full path of the TERRA shared library.")
     end
 
     # Open new library
     try
-        MTCR_HANDLE[] = Libdl.dlopen(path)
-        LOADED_MTCR_LIB_PATH[] = path  # Store the path for ccall usage
+        TERRA_HANDLE[] = Libdl.dlopen(path)
+        LOADED_TERRA_LIB_PATH[] = path  # Store the path for ccall usage
         # Reset initialization state for the freshly loaded library
         try
-            MTCR_INITIALIZED[] = is_api_initialized_wrapper()
+            TERRA_INITIALIZED[] = is_api_initialized_wrapper()
         catch
-            MTCR_INITIALIZED[] = false
+            TERRA_INITIALIZED[] = false
         end
     catch e
-        error("Failed to load MTCR library from $path: $(e.msg)")
+        error("Failed to load TERRA library from $path: $(e.msg)")
     end
 end
 
 """
 $(SIGNATURES)
 
-Load the MTCR shared library using the `$(MTCR_ENV_VAR_NAME)` environment variable.
+Load the TERRA shared library using the `$(TERRA_ENV_VAR_NAME)` environment variable.
 
 Throws an error if the environment variable is not set or does not point to an existing file.
 """
-function load_mtcr_library!()
-    path = resolve_mtcr_library_path()
-    return load_mtcr_library!(path)
+function load_terra_library!()
+    path = resolve_terra_library_path()
+    return load_terra_library!(path)
 end
 
 """
@@ -102,21 +102,21 @@ end
 """
 $(SIGNATURES)
 
-Get runtime setup flags from MTCR (for verification).
+Get runtime setup flags from TERRA (for verification).
 """
 function get_runtime_flags()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    ev_relax_set = ccall((:get_ev_relax_set, get_mtcr_lib_path()), Int32, ())
-    vib_noneq = ccall((:get_vib_noneq, get_mtcr_lib_path()), Int32, ())
-    eex_noneq = ccall((:get_eex_noneq, get_mtcr_lib_path()), Int32, ())
-    rot_noneq = ccall((:get_rot_noneq, get_mtcr_lib_path()), Int32, ())
-    has_elec_bfe = ccall((:get_consider_elec_bfe, get_mtcr_lib_path()), Int32, ())
-    has_elec_bbh = ccall((:get_consider_elec_bbh, get_mtcr_lib_path()), Int32, ())
-    has_elec_bfh = ccall((:get_consider_elec_bfh, get_mtcr_lib_path()), Int32, ())
-    has_elec_bbe = ccall((:get_consider_elec_bbe, get_mtcr_lib_path()), Int32, ())
+    ev_relax_set = ccall((:get_ev_relax_set, get_terra_lib_path()), Int32, ())
+    vib_noneq = ccall((:get_vib_noneq, get_terra_lib_path()), Int32, ())
+    eex_noneq = ccall((:get_eex_noneq, get_terra_lib_path()), Int32, ())
+    rot_noneq = ccall((:get_rot_noneq, get_terra_lib_path()), Int32, ())
+    has_elec_bfe = ccall((:get_consider_elec_bfe, get_terra_lib_path()), Int32, ())
+    has_elec_bbh = ccall((:get_consider_elec_bbh, get_terra_lib_path()), Int32, ())
+    has_elec_bfh = ccall((:get_consider_elec_bfh, get_terra_lib_path()), Int32, ())
+    has_elec_bbe = ccall((:get_consider_elec_bbe, get_terra_lib_path()), Int32, ())
 
     return (
         ev_relax_set = Int(ev_relax_set),
@@ -133,7 +133,7 @@ end
 """
 $(SIGNATURES)
 
-Get the handle to the loaded MTCR library.
+Get the handle to the loaded TERRA library.
 
 # Returns
 - `Ptr{Cvoid}`: Handle to the loaded library
@@ -141,17 +141,17 @@ Get the handle to the loaded MTCR library.
 # Throws
 - `ErrorException`: If no library is loaded
 """
-function get_mtcr_handle()
-    if MTCR_HANDLE[] == C_NULL
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+function get_terra_handle()
+    if TERRA_HANDLE[] == C_NULL
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return MTCR_HANDLE[]
+    return TERRA_HANDLE[]
 end
 
 """
 $(SIGNATURES)
 
-Get the path to the loaded MTCR library.
+Get the path to the loaded TERRA library.
 
 # Returns
 - `String`: Path to the loaded library
@@ -159,49 +159,49 @@ Get the path to the loaded MTCR library.
 # Throws
 - `ErrorException`: If no library is loaded
 """
-function get_mtcr_lib_path()
-    if MTCR_HANDLE[] == C_NULL
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+function get_terra_lib_path()
+    if TERRA_HANDLE[] == C_NULL
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return LOADED_MTCR_LIB_PATH[]
+    return LOADED_TERRA_LIB_PATH[]
 end
 
 """
 $(SIGNATURES)
 
-Check if the MTCR library is currently loaded.
+Check if the TERRA library is currently loaded.
 
 # Returns
 - `Bool`: True if library is loaded, false otherwise
 """
-function is_mtcr_loaded()
-    return MTCR_HANDLE[] != C_NULL
+function is_terra_loaded()
+    return TERRA_HANDLE[] != C_NULL
 end
 
 """
 $(SIGNATURES)
 
-Close the MTCR library and free resources.
+Close the TERRA library and free resources.
 """
-function close_mtcr_library()
-    if MTCR_HANDLE[] != C_NULL
-        Libdl.dlclose(MTCR_HANDLE[])
-        MTCR_HANDLE[] = C_NULL
-        LOADED_MTCR_LIB_PATH[] = ""  # Clear the path
-        MTCR_INITIALIZED[] = false
+function close_terra_library()
+    if TERRA_HANDLE[] != C_NULL
+        Libdl.dlclose(TERRA_HANDLE[])
+        TERRA_HANDLE[] = C_NULL
+        LOADED_TERRA_LIB_PATH[] = ""  # Clear the path
+        TERRA_INITIALIZED[] = false
     end
 end
 
 """
 $(SIGNATURES)
 
-Initialize the MTCR API system.
+Initialize the TERRA API system.
 
 # Arguments
 - `case_path::String`: Path to directory containing input/ subdirectory (default: current directory)
 
 # Returns
-- `NamedTuple`: Contains `num_species` and `num_dimensions` as determined by MTCR from input files
+- `NamedTuple`: Contains `num_species` and `num_dimensions` as determined by TERRA from input files
 
 # Throws
 - `ErrorException`: If case_path doesn't exist, input file is missing, or Fortran call fails
@@ -209,10 +209,10 @@ Initialize the MTCR API system.
 function initialize_api_wrapper(; case_path::String = pwd())
     # Reconcile Julia/Fortran state first to avoid mismatches in tests
     try
-        MTCR_INITIALIZED[] = is_api_initialized_wrapper()
+        TERRA_INITIALIZED[] = is_api_initialized_wrapper()
     catch
         # ignore if library not loaded yet
-        MTCR_INITIALIZED[] = false
+        TERRA_INITIALIZED[] = false
     end
 
     # Always validate inputs and prepare filesystem, even if Fortran is already initialized.
@@ -227,8 +227,8 @@ function initialize_api_wrapper(; case_path::String = pwd())
         error("Required input file not found: $input_file")
     end
 
-    MTCR_CASE_PATH[] = case_path
-    MTCR_OUTPUTS_OPEN[] = false
+    TERRA_CASE_PATH[] = case_path
+    TERRA_OUTPUTS_OPEN[] = false
 
     # Ensure output directory structure exists
     output_dir = joinpath(case_path, "output")
@@ -249,7 +249,7 @@ function initialize_api_wrapper(; case_path::String = pwd())
     end
 
     # If Fortran already initialized, skip reinitialization but still return dims
-    if MTCR_INITIALIZED[]
+    if TERRA_INITIALIZED[]
         num_species = get_number_of_active_species_wrapper()
         num_dimensions = get_number_of_dimensions_wrapper()
         return (num_species = num_species, num_dimensions = num_dimensions)
@@ -267,12 +267,12 @@ function initialize_api_wrapper(; case_path::String = pwd())
         num_dimensions_ref = Ref{Int32}(0)
 
         # Call Fortran function with correct parameter order
-        ccall((:initialize_api, get_mtcr_lib_path()), Cvoid,
+        ccall((:initialize_api, get_terra_lib_path()), Cvoid,
             (Ref{Int32}, Ref{Int32}),
             num_species_ref, num_dimensions_ref)
 
         # If we get here, the call succeeded
-        MTCR_INITIALIZED[] = true
+        TERRA_INITIALIZED[] = true
 
         # Return the values determined by Fortran
         return (num_species = num_species_ref[], num_dimensions = num_dimensions_ref[])
@@ -280,7 +280,7 @@ function initialize_api_wrapper(; case_path::String = pwd())
     catch e
         # Re-throw with more context about the failure
         if isa(e, Base.SystemError) || isa(e, ErrorException)
-            error("MTCR initialization failed in directory $case_path: $(e.msg)")
+            error("TERRA initialization failed in directory $case_path: $(e.msg)")
         else
             rethrow(e)
         end
@@ -293,28 +293,28 @@ end
 """
 $(SIGNATURES)
 
-Finalize the MTCR API system and clean up resources.
+Finalize the TERRA API system and clean up resources.
 """
 function finalize_api_wrapper()
     # If library isn't loaded, there's nothing to do
-    if !is_mtcr_loaded()
+    if !is_terra_loaded()
         return nothing
     end
-    if MTCR_OUTPUTS_OPEN[]
+    if TERRA_OUTPUTS_OPEN[]
         try
             close_api_output_files_wrapper()
         catch e
-            @warn "Failed to close MTCR output files during finalize" exception=e
+            @warn "Failed to close TERRA output files during finalize" exception=e
         end
     end
     # Query Fortran-side state and finalize quietly if needed
-    MTCR_INITIALIZED[] = is_api_initialized_wrapper()
-    if MTCR_INITIALIZED[]
-        ccall((:finalize_api, get_mtcr_lib_path()), Cvoid, ())
-        MTCR_INITIALIZED[] = false
+    TERRA_INITIALIZED[] = is_api_initialized_wrapper()
+    if TERRA_INITIALIZED[]
+        ccall((:finalize_api, get_terra_lib_path()), Cvoid, ())
+        TERRA_INITIALIZED[] = false
     end
-    MTCR_CASE_PATH[] = ""
-    MTCR_OUTPUTS_OPEN[] = false
+    TERRA_CASE_PATH[] = ""
+    TERRA_OUTPUTS_OPEN[] = false
     return nothing
 end
 
@@ -325,11 +325,11 @@ Control whether finalize_api() will call MPI_Finalize on the Fortran side.
 Default is true; tests may disable it to allow reinitialization in one process.
 """
 function set_api_finalize_mpi_wrapper(enable::Bool)
-    if !is_mtcr_loaded()
+    if !is_terra_loaded()
         return nothing
     end
     flag = enable ? Int32(1) : Int32(0)
-    ccall((:set_api_finalize_mpi, get_mtcr_lib_path()), Cvoid, (Int32,), flag)
+    ccall((:set_api_finalize_mpi, get_terra_lib_path()), Cvoid, (Int32,), flag)
     return nothing
 end
 
@@ -339,161 +339,161 @@ $(SIGNATURES)
 Control whether the Fortran interface emits additional debug prints.
 """
 function set_api_debug_wrapper(enable::Bool)
-    if !is_mtcr_loaded()
+    if !is_terra_loaded()
         return nothing
     end
     flag = enable ? Int32(1) : Int32(0)
-    ccall((:set_api_debug, get_mtcr_lib_path()), Cvoid, (Int32,), flag)
+    ccall((:set_api_debug, get_terra_lib_path()), Cvoid, (Int32,), flag)
     return nothing
 end
 
 """
 $(SIGNATURES)
 
-Get the maximum number of species supported by MTCR.
+Get the maximum number of species supported by TERRA.
 
 # Returns
 - `Int32`: Maximum number of species
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded
+- `ErrorException`: If TERRA library is not loaded
 """
 function get_max_number_of_species_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    return ccall((:get_max_number_of_species, get_mtcr_lib_path()), Int32, ())
+    return ccall((:get_max_number_of_species, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Get the active number of species (nsp) from MTCR.
+Get the active number of species (nsp) from TERRA.
 
 # Returns
 - `Int32`: Active species count
 """
 function get_number_of_active_species_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return ccall((:get_number_of_species, get_mtcr_lib_path()), Int32, ())
+    return ccall((:get_number_of_species, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Get the maximum number of electronic states per atomic species supported by MTCR.
+Get the maximum number of electronic states per atomic species supported by TERRA.
 
 # Returns
 - `Int32`: Maximum number of atomic electronic states
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded
+- `ErrorException`: If TERRA library is not loaded
 """
 function get_max_number_of_atomic_electronic_states_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
     return ccall(
-        (:get_max_number_of_atomic_electronic_states, get_mtcr_lib_path()), Int32, ())
+        (:get_max_number_of_atomic_electronic_states, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Get the maximum number of electronic states per molecular species supported by MTCR.
+Get the maximum number of electronic states per molecular species supported by TERRA.
 
 # Returns
 - `Int32`: Maximum number of molecular electronic states
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded
+- `ErrorException`: If TERRA library is not loaded
 """
 function get_max_number_of_molecular_electronic_states_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
     return ccall(
-        (:get_max_number_of_molecular_electronic_states, get_mtcr_lib_path()), Int32, ())
+        (:get_max_number_of_molecular_electronic_states, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Get the maximum vibrational quantum number supported by MTCR.
+Get the maximum vibrational quantum number supported by TERRA.
 
 # Returns
 - `Int32`: Maximum vibrational quantum number (mnv from Fortran parameters)
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded
+- `ErrorException`: If TERRA library is not loaded
 """
 function get_max_vibrational_quantum_number_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    return ccall((:get_max_vibrational_quantum_number, get_mtcr_lib_path()), Int32, ())
+    return ccall((:get_max_vibrational_quantum_number, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Return whether the MTCR Fortran API reports itself initialized.
+Return whether the TERRA Fortran API reports itself initialized.
 
 # Returns
 - `Bool`: True if Fortran side is initialized, false otherwise
 """
 function is_api_initialized_wrapper()
     # If library isn't loaded, treat as not initialized instead of erroring
-    if !is_mtcr_loaded()
+    if !is_terra_loaded()
         return false
     end
-    v = ccall((:is_api_initialized, get_mtcr_lib_path()), Int32, ())
+    v = ccall((:is_api_initialized, get_terra_lib_path()), Int32, ())
     return v != 0
 end
 
 """
 $(SIGNATURES)
 
-Get the number of spatial dimensions (`nd`) from MTCR.
+Get the number of spatial dimensions (`nd`) from TERRA.
 
 # Returns
 - `Int32`: Number of spatial dimensions
 """
 function get_number_of_dimensions_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return ccall((:get_number_of_dimensions, get_mtcr_lib_path()), Int32, ())
+    return ccall((:get_number_of_dimensions, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Report whether the current MTCR setup includes vibrational state-to-state data.
+Report whether the current TERRA setup includes vibrational state-to-state data.
 """
 function has_vibrational_sts_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return ccall((:get_has_vibrational_sts, get_mtcr_lib_path()), Int32, ()) != 0
+    return ccall((:get_has_vibrational_sts, get_terra_lib_path()), Int32, ()) != 0
 end
 
 """
 $(SIGNATURES)
 
-Report whether the current MTCR setup includes electronic state-to-state data.
+Report whether the current TERRA setup includes electronic state-to-state data.
 """
 function has_electronic_sts_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return ccall((:get_has_electronic_sts, get_mtcr_lib_path()), Int32, ()) != 0
+    return ccall((:get_has_electronic_sts, get_terra_lib_path()), Int32, ()) != 0
 end
 
 """
@@ -505,26 +505,26 @@ Get the fixed species-name length (`nmlen`) used by the Fortran API.
 - `Int32`: Name buffer length per species
 """
 function get_species_name_length_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return ccall((:get_species_name_length, get_mtcr_lib_path()), Int32, ())
+    return ccall((:get_species_name_length, get_terra_lib_path()), Int32, ())
 end
 
 """
 $(SIGNATURES)
 
-Get species names from MTCR.
+Get species names from TERRA.
 
 # Returns
 - `Vector{String}`: Array of species names
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded
+- `ErrorException`: If TERRA library is not loaded
 """
 function get_species_names_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
     # Query dimensions from Fortran
@@ -536,7 +536,7 @@ function get_species_names_wrapper()
     names_buffer = zeros(UInt8, name_length * max_species)
 
     # Call Fortran subroutine
-    ccall((:get_species_names, get_mtcr_lib_path()), Cvoid, (Ptr{UInt8},), names_buffer)
+    ccall((:get_species_names, get_terra_lib_path()), Cvoid, (Ptr{UInt8},), names_buffer)
 
     # Convert fixed-size, null-terminated blocks to Julia strings
     species_names = Vector{String}(undef, active_species)
@@ -555,20 +555,20 @@ end
 """
 $(SIGNATURES)
 
-Retrieve per-species gas constants from MTCR.
+Retrieve per-species gas constants from TERRA.
 
 Values are returned in CGS units (erg/(g·K)) to maintain consistency with the
 rest of the wrapper.
 """
 function get_species_gas_constants_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
     max_species = get_max_number_of_species_wrapper()
     buffer = zeros(Float64, max_species)
 
-    ccall((:get_species_gas_constants, get_mtcr_lib_path()), Cvoid,
+    ccall((:get_species_gas_constants, get_terra_lib_path()), Cvoid,
         (Ptr{Float64},), buffer)
 
     n_active = get_number_of_active_species_wrapper()
@@ -598,7 +598,7 @@ Calculate nonequilibrium source terms.
 - Tuple of derivative arrays corresponding to input arrays
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_sources_wrapper(rho_sp::Vector{Float64},
         rho_etot::Float64;
@@ -610,12 +610,12 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
         rho_erot::Union{Float64, Nothing} = nothing,
         rho_eeex::Union{Float64, Nothing} = nothing,
         rho_evib::Union{Float64, Nothing} = nothing)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     # Validate required optional energies/velocities based on runtime flags
@@ -739,7 +739,7 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
                                                                                                                                                                                                   nothing) has_evib=(rho_evib !==
                                                                                                                                                                                                                      nothing) flags=flags_dbg
         end
-        ccall((:calculate_nonequilibrium_sources, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_nonequilibrium_sources, get_terra_lib_path()), Cvoid,
             (Ptr{Float64},                                    # rho_sp
                 Ptr{Cvoid},                                      # rho_ex (optional)
                 Ptr{Cvoid},                                      # rho_vx (optional)
@@ -820,7 +820,7 @@ Calculate temperatures from thermodynamic state.
 - Named tuple with temperatures (tt, trot, teex, tvib, tex, tvx)
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
         rho_etot::Float64;
@@ -832,12 +832,12 @@ function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
         rho_erot::Union{Float64, Nothing} = nothing,
         rho_eeex::Union{Float64, Nothing} = nothing,
         rho_evib::Union{Float64, Nothing} = nothing)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     # Input validation
@@ -936,7 +936,7 @@ function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
 
     # Call Fortran subroutine with proper optional argument handling
     try
-        ccall((:calculate_temperatures, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_temperatures, get_terra_lib_path()), Cvoid,
             (Ptr{Float64},                                    # rho_sp
                 Ptr{Cvoid},                                      # rho_ex (optional)
                 Ptr{Cvoid},                                      # rho_vx (optional)
@@ -998,7 +998,7 @@ Calculate total energy from state variables.
 - `Float64`: Total energy density
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_total_energy_wrapper(tt::Float64,
         rho_sp::Vector{Float64};
@@ -1010,12 +1010,12 @@ function calculate_total_energy_wrapper(tt::Float64,
         rho_erot::Union{Float64, Nothing} = nothing,
         rho_eeex::Union{Float64, Nothing} = nothing,
         rho_evib::Union{Float64, Nothing} = nothing)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     rho_etot = Ref{Float64}(0.0)
@@ -1092,7 +1092,7 @@ function calculate_total_energy_wrapper(tt::Float64,
 
     # Call Fortran subroutine with proper optional argument handling
     try
-        ccall((:calculate_total_energy, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_total_energy, get_terra_lib_path()), Cvoid,
             (Ref{Float64},                                    # rho_etot (output)
                 Ref{Float64},                                    # tt
                 Ptr{Float64},                                    # rho_sp
@@ -1138,19 +1138,19 @@ Calculate vibrational energy from state variables.
 - `Float64`: Vibrational energy density
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_vibrational_energy_wrapper(tvib::Float64,
         rho_sp::Vector{Float64};
         rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
         tex::Union{Vector{Float64}, Nothing} = nothing,
         teex::Union{Float64, Nothing} = nothing)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     if tvib <= 0.0
@@ -1186,7 +1186,7 @@ function calculate_vibrational_energy_wrapper(tvib::Float64,
 
     # Call Fortran subroutine with proper optional argument handling
     try
-        ccall((:calculate_vibrational_energy, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_vibrational_energy, get_terra_lib_path()), Cvoid,
             (Ref{Float64},                                    # rho_evib (output)
                 Ref{Float64},                                    # tvib
                 Ptr{Float64},                                    # rho_sp
@@ -1221,19 +1221,19 @@ Calculate vibrational temperature from vibrational energy density and species de
 - `Float64`: Vibrational temperature (K)
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 - `ArgumentError`: If inputs are invalid or dimensions exceed library maxima
 """
 function calculate_vibrational_temperature_wrapper(rho_evib::Float64,
         rho_sp::Vector{Float64};
         rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
         tex::Union{Vector{Float64}, Nothing} = nothing)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     if length(rho_sp) == 0
@@ -1282,7 +1282,7 @@ function calculate_vibrational_temperature_wrapper(rho_evib::Float64,
 
     # Call Fortran subroutine
     try
-        ccall((:calculate_vibrational_temperature, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_vibrational_temperature, get_terra_lib_path()), Cvoid,
             (Ref{Float64},                                    # tvib (output)
                 Ref{Float64},                                    # rho_evib
                 Ptr{Float64},                                    # rho_sp
@@ -1314,17 +1314,17 @@ Calculate electron-electronic energy from state variables.
 - `Float64`: Electron-electronic energy density
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 - `ArgumentError`: If teex ≤ 0, tvib ≤ 0, or arrays are invalid
 """
 function calculate_electron_electronic_energy_wrapper(teex::Float64,
         tvib::Float64, rho_sp::Vector{Float64})
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     if teex <= 0.0
@@ -1349,7 +1349,7 @@ function calculate_electron_electronic_energy_wrapper(teex::Float64,
 
     # Call Fortran subroutine
     try
-        ccall((:calculate_electron_electronic_energy, get_mtcr_lib_path()), Cvoid,
+        ccall((:calculate_electron_electronic_energy, get_terra_lib_path()), Cvoid,
             (Ref{Float64},                                    # rho_eeex (output)
                 Ref{Float64},                                    # teex
                 Ref{Float64},                                    # tvib
@@ -1380,17 +1380,17 @@ Set electronic state densities to Boltzmann distribution.
 - `Matrix{Float64}`: Electronic state densities in Boltzmann distribution
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 - `ArgumentError`: If temperatures ≤ 0 or arrays are invalid
 """
 function set_electronic_boltzmann_wrapper(rho_sp::Vector{Float64},
         tex::Float64, trot::Float64, tvib::Float64)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
 
     if tex <= 0.0 || trot <= 0.0 || tvib <= 0.0
@@ -1419,7 +1419,7 @@ function set_electronic_boltzmann_wrapper(rho_sp::Vector{Float64},
 
     # Call Fortran subroutine
     try
-        ccall((:set_electronic_boltzmann, get_mtcr_lib_path()), Cvoid,
+        ccall((:set_electronic_boltzmann, get_terra_lib_path()), Cvoid,
             (Ptr{Float64},                                    # rho_ex (output)
                 Ptr{Float64},                                    # rho_sp
                 Ref{Float64},                                    # tex
@@ -1452,16 +1452,16 @@ Set vibrational state densities to a Boltzmann distribution given rho_ex.
 - `Array{Float64,3}`: Vibrational state densities (0:mnv, mmnex, mnsp)
 
 # Throws
-- `ErrorException`: If MTCR library is not loaded or not initialized
+- `ErrorException`: If TERRA library is not loaded or not initialized
 - `ArgumentError`: If temperatures ≤ 0 or arrays are invalid
 """
 function set_vibrational_boltzmann_wrapper(rho_ex::Matrix{Float64},
         tex::Float64, trot::Float64, tvib::Float64)
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Set $(MTCR_ENV_VAR_NAME) or call load_mtcr_library!(path) first.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() first.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
     end
     if tex <= 0.0 || trot <= 0.0 || tvib <= 0.0
         throw(ArgumentError("All temperatures must be positive. Got: tex=$tex, trot=$trot, tvib=$tvib"))
@@ -1487,7 +1487,7 @@ function set_vibrational_boltzmann_wrapper(rho_ex::Matrix{Float64},
 
     # Call Fortran subroutine
     try
-        ccall((:set_vibrational_boltzmann, get_mtcr_lib_path()), Cvoid,
+        ccall((:set_vibrational_boltzmann, get_terra_lib_path()), Cvoid,
             (Ptr{Float64},                                    # rho_vx (output)
                 Ptr{Float64},                                    # rho_ex
                 Ref{Float64},                                    # tex
@@ -1508,32 +1508,32 @@ end
 """
 $(SIGNATURES)
 
-Open native MTCR Tecplot-style output files for the current API session.
+Open native TERRA Tecplot-style output files for the current API session.
 
 Requires a successful call to `initialize_api_wrapper` so the case path is tracked.
 """
 function open_api_output_files_wrapper()
-    if !is_mtcr_loaded()
-        error("MTCR library not loaded. Call load_mtcr_library! before opening outputs.")
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Call load_terra_library! before opening outputs.")
     end
-    if !MTCR_INITIALIZED[]
-        error("MTCR not initialized. Call initialize_api_wrapper() before opening outputs.")
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() before opening outputs.")
     end
-    if isempty(MTCR_CASE_PATH[])
+    if isempty(TERRA_CASE_PATH[])
         error("Case path not set. Initialize the API with a valid case_path before opening outputs.")
     end
-    if MTCR_OUTPUTS_OPEN[]
+    if TERRA_OUTPUTS_OPEN[]
         return nothing
     end
 
-    case_path = MTCR_CASE_PATH[]
+    case_path = TERRA_CASE_PATH[]
     try
         cd(case_path) do
-            ccall((:open_api_output_files, get_mtcr_lib_path()), Cvoid, ())
+            ccall((:open_api_output_files, get_terra_lib_path()), Cvoid, ())
         end
-        MTCR_OUTPUTS_OPEN[] = true
+        TERRA_OUTPUTS_OPEN[] = true
     catch e
-        error("Failed to open MTCR output files: $(e)")
+        error("Failed to open TERRA output files: $(e)")
     end
 
     return nothing
@@ -1542,17 +1542,17 @@ end
 """
 $(SIGNATURES)
 
-Write a snapshot of the current API state to the native MTCR output files.
+Write a snapshot of the current API state to the native TERRA output files.
 
-The state vector must match the layout expected by the MTCR API (packed conservative variables).
+The state vector must match the layout expected by the TERRA API (packed conservative variables).
 """
 function write_api_outputs_wrapper(istep::Integer, time::Real, dt::Real,
         state::AbstractVector{<:Real}; dist::Real = 0.0, dx::Real = 0.0)
-    if !MTCR_OUTPUTS_OPEN[]
-        error("MTCR output files are not open. Call open_api_output_files_wrapper() first.")
+    if !TERRA_OUTPUTS_OPEN[]
+        error("TERRA output files are not open. Call open_api_output_files_wrapper() first.")
     end
-    if isempty(MTCR_CASE_PATH[])
-        error("Case path not set. Cannot write MTCR outputs without an initialized case path.")
+    if isempty(TERRA_CASE_PATH[])
+        error("Case path not set. Cannot write TERRA outputs without an initialized case path.")
     end
 
     state_vec = state isa Vector{Float64} ? state : Vector{Float64}(state)
@@ -1562,12 +1562,12 @@ function write_api_outputs_wrapper(istep::Integer, time::Real, dt::Real,
     dt64 = Float64(dt)
     dist64 = Float64(dist)
     dx64 = Float64(dx)
-    case_path = MTCR_CASE_PATH[]
+    case_path = TERRA_CASE_PATH[]
 
     GC.@preserve state_vec begin
         ptr = Base.unsafe_convert(Ptr{Float64}, state_vec)
         cd(case_path) do
-            ccall((:write_api_outputs, get_mtcr_lib_path()), Cvoid,
+            ccall((:write_api_outputs, get_terra_lib_path()), Cvoid,
                 (Int32, Float64, Float64, Float64, Float64, Int32, Ptr{Float64}),
                 istep32, time64, dt64, dist64, dx64, neq32, ptr)
         end
@@ -1579,30 +1579,30 @@ end
 """
 $(SIGNATURES)
 
-Close the native MTCR output files opened through the API wrappers.
+Close the native TERRA output files opened through the API wrappers.
 """
 function close_api_output_files_wrapper()
-    if !MTCR_OUTPUTS_OPEN[]
+    if !TERRA_OUTPUTS_OPEN[]
         return nothing
     end
-    if !is_mtcr_loaded()
-        MTCR_OUTPUTS_OPEN[] = false
+    if !is_terra_loaded()
+        TERRA_OUTPUTS_OPEN[] = false
         return nothing
     end
-    if isempty(MTCR_CASE_PATH[])
-        MTCR_OUTPUTS_OPEN[] = false
+    if isempty(TERRA_CASE_PATH[])
+        TERRA_OUTPUTS_OPEN[] = false
         return nothing
     end
 
-    case_path = MTCR_CASE_PATH[]
+    case_path = TERRA_CASE_PATH[]
     try
         cd(case_path) do
-            ccall((:close_api_output_files, get_mtcr_lib_path()), Cvoid, ())
+            ccall((:close_api_output_files, get_terra_lib_path()), Cvoid, ())
         end
     catch e
-        error("Failed to close MTCR output files: $(e)")
+        error("Failed to close TERRA output files: $(e)")
     finally
-        MTCR_OUTPUTS_OPEN[] = false
+        TERRA_OUTPUTS_OPEN[] = false
     end
 
     return nothing
