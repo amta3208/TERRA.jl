@@ -473,10 +473,10 @@ Form: 6  0
 #   Notes: 
 #     - Modeled using the excitation rates from Park et al. (2008) part II paper, except for N2(A) + N.
 
-# Cruden and Brandis (2017)
-Reaction: N2(3) + N2 = N2(1) + N2
-Form: 6  0
-5.7715e-14      0.5     0.00        1.0     0.0     0.0     1.0     0.0     0.0     200.0      50000.0
+# Cruden and Brandis (2017) --- Removed from this mechanism because it produces super fast N2(B) excitation that is inconsistent with experiments.
+# Reaction: N2(3) + N2 = N2(1) + N2
+# Form: 6  0
+# 5.7715e-14      0.5     0.00        1.0     0.0     0.0     1.0     0.0     0.0     200.0      50000.0
 
 # -----------------
 # ----- N2(C) -----
