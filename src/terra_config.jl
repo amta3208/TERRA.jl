@@ -44,7 +44,7 @@ the TERRA input format requirements.
 
 # Fields
 - `dt::Float64`: Time step (seconds)
-- `dtm::Float64`: Output time step (seconds)
+- `dtm::Float64`: Native-output time step (seconds)
 - `tlim::Float64`: Final time (seconds)
 - `nstep::Int`: Maximum number of time steps
 - `method::Int`: Integration method (0=forward Euler, 1=high order explicit, 2=implicit)
@@ -182,6 +182,7 @@ Main configuration struct for TERRA simulations.
 - `validate_species_against_terra::Bool`: Validate species against TERRA database
 - `print_source_terms::Bool`: Print source terms flag
 - `write_native_outputs::Bool`: Mirror native TERRA Tecplot outputs when running via the Julia wrapper
+- `print_integration_output::Bool`: Print per-save-point integration status output
 
 """
 struct TERRAConfig
@@ -198,6 +199,7 @@ struct TERRAConfig
     validate_species_against_terra::Bool
     print_source_terms::Bool
     write_native_outputs::Bool
+    print_integration_output::Bool
 
     function TERRAConfig(;
             species::Vector{String},
@@ -212,7 +214,8 @@ struct TERRAConfig
             unit_system::Symbol = :CGS,
             validate_species_against_terra::Bool = false,
             print_source_terms::Bool = true,
-            write_native_outputs::Bool = false
+            write_native_outputs::Bool = false,
+            print_integration_output::Bool = true
     )
 
         # Validate inputs
@@ -222,7 +225,8 @@ struct TERRAConfig
 
         new(species, mole_fractions, total_number_density, temperatures,
             time_params, physics, processes, database_path, case_path, unit_system,
-            validate_species_against_terra, print_source_terms, write_native_outputs)
+            validate_species_against_terra, print_source_terms, write_native_outputs,
+            print_integration_output)
     end
 end
 
@@ -827,7 +831,8 @@ function convert_config_units(config::TERRAConfig, target_unit_system::Symbol)
             unit_system = target_unit_system,
             validate_species_against_terra = config.validate_species_against_terra,
             print_source_terms = config.print_source_terms,
-            write_native_outputs = config.write_native_outputs
+            write_native_outputs = config.write_native_outputs,
+            print_integration_output = config.print_integration_output
         )
 
     elseif config.unit_system == :CGS && target_unit_system == :SI
@@ -848,7 +853,8 @@ function convert_config_units(config::TERRAConfig, target_unit_system::Symbol)
             unit_system = target_unit_system,
             validate_species_against_terra = config.validate_species_against_terra,
             print_source_terms = config.print_source_terms,
-            write_native_outputs = config.write_native_outputs
+            write_native_outputs = config.write_native_outputs,
+            print_integration_output = config.print_integration_output
         )
     else
         error("Unsupported unit conversion: $(config.unit_system) to $target_unit_system")
