@@ -14,6 +14,147 @@ const ENERGY_FROM_ENTHALPY_RTOL = 1e-10
 const ENERGY_FROM_ENTHALPY_ATOL = 1e-8
 
 """
+Compact API layout information for the Fortran `rhs_api` / `calculate_rhs_api` state vectors.
+
+This describes the *compact* ordering used internally by TERRA:
+`[rho_vib_states, rho_elec_states, rho_species, rho_u..., rho_etot, rho_eeex?, rho_erot?, rho_evib?]`.
+"""
+struct ApiLayout
+    layout_version::Int
+    mnsp::Int
+    mnex::Int
+    mmnex::Int
+    mnv::Int
+    mneq::Int
+
+    nsp::Int
+    nd::Int
+    neq::Int
+    esp::Int
+
+    get_electron_density_by_charge_balance::Bool
+    eex_noneq::Bool
+    rot_noneq::Bool
+    vib_noneq::Bool
+    is_isothermal::Bool
+    is_isothermal_teex::Bool
+    is_elec_sts::Bool
+    is_vib_sts::Bool
+
+    n_eq_vib::Int
+    n_eq_elec::Int
+    n_eq_sp::Int
+    n_eq_mom::Int
+    n_eq_energy::Int
+
+    ih::Vector{Int}
+    ie::Vector{Int}
+    ies::Vector{Int}
+    mex::Vector{Int}
+    ivs::Matrix{Int}
+    mv::Matrix{Int}
+    spwt::Vector{Float64}
+
+    vib_range::UnitRange{Int}
+    elec_range::UnitRange{Int}
+    sp_range::UnitRange{Int}
+    mom_range::UnitRange{Int}
+    energy_range::UnitRange{Int}
+
+    idx_etot::Int
+    idx_eeex::Int
+    idx_erot::Int
+    idx_evib::Int
+end
+
+function ApiLayout(layout::NamedTuple)
+    ih = Int.(layout.ih)
+    ie = Int.(layout.ie)
+    ies = Int.(layout.ies)
+    mex = Int.(layout.mex)
+    ivs = Int.(layout.ivs)
+    mv = Int.(layout.mv)
+    spwt = Vector{Float64}(layout.spwt)
+
+    n_eq_vib = Int(layout.n_eq_vib)
+    n_eq_elec = Int(layout.n_eq_elec)
+    n_eq_sp = Int(layout.n_eq_sp)
+    n_eq_mom = Int(layout.n_eq_mom)
+    n_eq_energy = Int(layout.n_eq_energy)
+    neq = Int(layout.neq)
+
+    vib_start = 1
+    vib_stop = n_eq_vib
+    elec_start = vib_stop + 1
+    elec_stop = vib_stop + n_eq_elec
+    sp_start = elec_stop + 1
+    sp_stop = elec_stop + n_eq_sp
+    mom_start = sp_stop + 1
+    mom_stop = sp_stop + n_eq_mom
+    energy_start = mom_stop + 1
+    energy_stop = neq
+
+    idx_etot = energy_start
+    idx_eeex = (layout.eex_noneq == 1) ? (idx_etot + 1) : 0
+    idx_erot = (layout.rot_noneq == 1) ? (idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0)) :
+               0
+    idx_evib = (layout.vib_noneq == 1) ?
+               (idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0) +
+                (layout.rot_noneq == 1 ? 1 : 0)) : 0
+
+    return ApiLayout(
+        Int(layout.layout_version),
+        Int(layout.mnsp),
+        Int(layout.mnex),
+        Int(layout.mmnex),
+        Int(layout.mnv),
+        Int(layout.mneq),
+        Int(layout.nsp),
+        Int(layout.nd),
+        neq,
+        Int(layout.esp),
+        layout.get_electron_density_by_charge_balance == 1,
+        layout.eex_noneq == 1,
+        layout.rot_noneq == 1,
+        layout.vib_noneq == 1,
+        layout.is_isothermal == 1,
+        layout.is_isothermal_teex == 1,
+        layout.is_elec_sts == 1,
+        layout.is_vib_sts == 1,
+        n_eq_vib,
+        n_eq_elec,
+        n_eq_sp,
+        n_eq_mom,
+        n_eq_energy,
+        ih,
+        ie,
+        ies,
+        mex,
+        ivs,
+        mv,
+        spwt,
+        vib_start:vib_stop,
+        elec_start:elec_stop,
+        sp_start:sp_stop,
+        mom_start:mom_stop,
+        energy_start:energy_stop,
+        idx_etot,
+        idx_eeex,
+        idx_erot,
+        idx_evib
+    )
+end
+
+"""
+$(SIGNATURES)
+
+Query the Fortran API for the current `y`/`dy` layout.
+"""
+function get_api_layout()
+    return ApiLayout(get_api_layout_wrapper())
+end
+
+"""
 $(SIGNATURES)
 
 Initialize the TERRA system.
@@ -263,163 +404,314 @@ end
 """
 $(SIGNATURES)
 
-Calculate dimensions for the ODE state vector components.
-
-# Arguments
-- `config::TERRAConfig`: Configuration object
-
-# Returns
-- Named tuple with dimensions for each component
+Pack state components into the `y` vector ordering used by Fortran `rhs_api`.
 """
-function get_state_dimensions(config::TERRAConfig)
-    if !is_terra_loaded()
-        error("TERRA library must be loaded to get state dimensions. Set TERRA_LIB_PATH or call load_terra_library!(path) first.")
+function pack_state_vector(layout::ApiLayout,
+        rho_sp::AbstractVector{<:Real},
+        rho_etot::Real;
+        rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
+        rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
+        rho_u::Union{Real, Nothing} = nothing,
+        rho_v::Union{Real, Nothing} = nothing,
+        rho_w::Union{Real, Nothing} = nothing,
+        rho_erot::Union{Real, Nothing} = nothing,
+        rho_eeex::Union{Real, Nothing} = nothing,
+        rho_evib::Union{Real, Nothing} = nothing)
+    y = Vector{Float64}(undef, layout.neq)
+    pack_state_vector!(y, layout, rho_sp, rho_etot;
+        rho_ex = rho_ex,
+        rho_vx = rho_vx,
+        rho_u = rho_u,
+        rho_v = rho_v,
+        rho_w = rho_w,
+        rho_erot = rho_erot,
+        rho_eeex = rho_eeex,
+        rho_evib = rho_evib)
+    return y
+end
+
+"""
+$(SIGNATURES)
+
+In-place variant of `pack_state_vector`.
+"""
+function pack_state_vector!(y::Vector{Float64},
+        layout::ApiLayout,
+        rho_sp::AbstractVector{<:Real},
+        rho_etot::Real;
+        rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
+        rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
+        rho_u::Union{Real, Nothing} = nothing,
+        rho_v::Union{Real, Nothing} = nothing,
+        rho_w::Union{Real, Nothing} = nothing,
+        rho_erot::Union{Real, Nothing} = nothing,
+        rho_eeex::Union{Real, Nothing} = nothing,
+        rho_evib::Union{Real, Nothing} = nothing)
+    if length(y) != layout.neq
+        throw(DimensionMismatch("y length ($(length(y))) does not match layout.neq ($(layout.neq))"))
+    end
+    if length(rho_sp) != layout.nsp
+        throw(DimensionMismatch("rho_sp length ($(length(rho_sp))) must match layout.nsp ($(layout.nsp))"))
+    end
+    if layout.is_elec_sts && rho_ex === nothing
+        throw(ArgumentError("rho_ex must be provided when electronic STS is active (layout.is_elec_sts=true)."))
+    end
+    if layout.is_vib_sts && rho_vx === nothing
+        throw(ArgumentError("rho_vx must be provided when vibrational STS is active (layout.is_vib_sts=true)."))
+    end
+    if layout.rot_noneq && rho_erot === nothing
+        throw(ArgumentError("rho_erot must be provided when rot_noneq=true."))
+    end
+    if layout.eex_noneq && rho_eeex === nothing
+        throw(ArgumentError("rho_eeex must be provided when eex_noneq=true."))
+    end
+    if layout.vib_noneq && rho_evib === nothing
+        throw(ArgumentError("rho_evib must be provided when vib_noneq=true."))
+    end
+    if layout.nd >= 1 && rho_u === nothing
+        throw(ArgumentError("rho_u must be provided when nd>=1."))
+    end
+    if layout.nd >= 2 && rho_v === nothing
+        throw(ArgumentError("rho_v must be provided when nd>=2."))
+    end
+    if layout.nd >= 3 && rho_w === nothing
+        throw(ArgumentError("rho_w must be provided when nd>=3."))
     end
 
-    n_species = length(config.species)
-
-    # Get actual dimensions from TERRA API
-    max_atomic_electronic_states = get_max_number_of_atomic_electronic_states_wrapper()
-    max_molecular_electronic_states = get_max_number_of_molecular_electronic_states_wrapper()
-    max_vibrational_quantum_number = get_max_vibrational_quantum_number_wrapper()
-    has_vibrational_sts = has_vibrational_sts_wrapper()
-    has_electronic_sts = has_electronic_sts_wrapper()
-
-    return (
-        n_species = n_species,
-        n_atomic_electronic_states = max_atomic_electronic_states,
-        n_molecular_electronic_states = max_molecular_electronic_states,
-        n_vibrational_levels = max_vibrational_quantum_number,
-        rho_ex_size = (max_atomic_electronic_states, n_species),
-        rho_vx_size = (
-            max_vibrational_quantum_number + 1, max_molecular_electronic_states, n_species),  # +1 for 0:mnv indexing
-        has_vibrational_sts = has_vibrational_sts,
-        has_electronic_sts = has_electronic_sts
-    )
-end
-
-"""
-$(SIGNATURES)
-
-Compute the expected state vector length for a given dimensions tuple.
-
-# Arguments
-- `dimensions`: Dimensions structure from `get_state_dimensions()`
-
-# Returns
-- `Int`: Expected length of packed state/derivative vectors
-"""
-function expected_state_length(dimensions)
-    n_species = dimensions.n_species
-    nexc = prod(dimensions.rho_ex_size)
-    nvib = prod(dimensions.rho_vx_size)
-    # Layout: species + etot + ex(flat) + vx(flat) + (rho_u,rho_v,rho_w) + (rho_erot,rho_eeex,rho_evib)
-    return n_species + 1 + nexc + nvib + 3 + 3
-end
-
-"""
-$(SIGNATURES)
-
-Compute index ranges for the packed TERRA state vector segments.
-
-Splitting the packed vector into logical blocks (species densities, energy
-terms, etc.) allows consistent application of custom norms and tolerances
-without having to repeatedly recompute offsets.
-
-# Arguments
-- `dimensions`: Dimensions tuple returned by `get_state_dimensions`
-
-# Returns
-- Named tuple of index ranges for each logical block of the packed state vector
-"""
-function state_component_ranges(dimensions)
+    fill!(y, 0.0)
     idx = 1
 
-    # Species block
-    n_species = dimensions.n_species
-    species_range = n_species > 0 ? (idx:(idx + n_species - 1)) : (idx:(idx - 1))
-    idx += n_species
+    # Vibrational states
+    if layout.n_eq_vib > 0
+        @assert rho_vx !== nothing
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                mv_isp_iex = layout.mv[isp, iex]
+                for ivx in 0:mv_isp_iex
+                    y[idx] = Float64((rho_vx::AbstractArray{<:Real, 3})[ivx + 1, iex, isp])
+                    idx += 1
+                end
+            end
+        end
+    end
 
-    # Total energy scalar
-    energy_total_range = idx:idx
+    # Electronic states
+    if layout.is_elec_sts
+        @assert rho_ex !== nothing
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                y[idx] = Float64((rho_ex::AbstractMatrix{<:Real})[iex, isp])
+                idx += 1
+            end
+        end
+    end
+
+    # Species densities for non-electronic-specific species
+    @inbounds for isp in 1:(layout.nsp)
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        y[idx] = Float64(rho_sp[isp])
+        idx += 1
+    end
+
+    # Momentum (if any)
+    if layout.nd >= 1
+        y[idx] = Float64(rho_u::Real)
+        idx += 1
+    end
+    if layout.nd >= 2
+        y[idx] = Float64(rho_v::Real)
+        idx += 1
+    end
+    if layout.nd >= 3
+        y[idx] = Float64(rho_w::Real)
+        idx += 1
+    end
+
+    # Energies
+    y[idx] = Float64(rho_etot)
     idx += 1
+    if layout.eex_noneq
+        y[idx] = Float64(rho_eeex::Real)
+        idx += 1
+    end
+    if layout.rot_noneq
+        y[idx] = Float64(rho_erot::Real)
+        idx += 1
+    end
+    if layout.vib_noneq
+        y[idx] = Float64(rho_evib::Real)
+        idx += 1
+    end
 
-    # Electronic state populations (flattened)
-    nex = prod(dimensions.rho_ex_size)
-    electronic_range = nex > 0 ? (idx:(idx + nex - 1)) : (idx:(idx - 1))
-    idx += nex
-
-    # Vibrational populations (flattened)
-    nvx = prod(dimensions.rho_vx_size)
-    vibrational_range = nvx > 0 ? (idx:(idx + nvx - 1)) : (idx:(idx - 1))
-    idx += nvx
-
-    # Momentum-like terms (ρu, ρv, ρw)
-    momentum_range = idx:(idx + 2)
-    idx += 3
-
-    # Energy mode reservoirs (ρerot, ρeeex, ρevib)
-    energy_modes_range = idx:(idx + 2)
-
-    return (
-        species = species_range,
-        energy_total = energy_total_range,
-        electronic = electronic_range,
-        vibrational = vibrational_range,
-        momentum = momentum_range,
-        energy_modes = energy_modes_range
-    )
-end
-
-@inline function _component_max(residual::AbstractVector, range::UnitRange{Int})
-    isempty(range) && return 0.0
-    return maximum(abs, @view residual[range])
-end
-
-@inline function _component_max(residual, range::UnitRange{Int})
-    isempty(range) && return 0.0
-    return abs(residual)
+    @assert idx==layout.neq + 1 "Internal error: state packing length mismatch"
+    return nothing
 end
 
 """
 $(SIGNATURES)
 
-Create a max-norm style error metric tailored to TERRA state structure.
+Unpack a compact `y` vector into component arrays.
 
-DifferentialEquations.jl expects `internalnorm(residual, t)` to provide a
-scalar error estimate. By splitting the residual into physically meaningful
-blocks we can ensure no single population or energy mode dominates the norm
-and that the solver honours the TERRA-style "max |Δy/y|" heuristic.
-
-# Arguments
-- `dimensions`: Dimensions tuple returned by `get_state_dimensions`
-- `weights`: Optional named-tuple overrides for component weighting
-
-# Returns
-- Callable that maps a residual vector (and time) to a scalar norm value
+This returns `rho_sp` for all active species (including charge-balanced electrons
+when enabled), plus `rho_ex`/`rho_vx` when the corresponding STS modes are active.
 """
-function create_terra_error_norm(dimensions; weights = nothing)
-    ranges = state_component_ranges(dimensions)
-    default_weights = (
-        species = 1.0,
-        energy_total = 1.0,
-        electronic = 1.0,
-        vibrational = 1.0,
-        momentum = 1.0,
-        energy_modes = 1.0
-    )
-    w = weights === nothing ? default_weights : merge(default_weights, weights)
-
-    return function (residual, t)
-        species_err = w.species * _component_max(residual, ranges.species)
-        energy_err = w.energy_total * _component_max(residual, ranges.energy_total)
-        ex_err = w.electronic * _component_max(residual, ranges.electronic)
-        vib_err = w.vibrational * _component_max(residual, ranges.vibrational)
-        mom_err = w.momentum * _component_max(residual, ranges.momentum)
-        mode_err = w.energy_modes * _component_max(residual, ranges.energy_modes)
-
-        return maximum((species_err, energy_err, ex_err, vib_err, mom_err, mode_err))
+function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
+    if length(y) != layout.neq
+        throw(DimensionMismatch("y length ($(length(y))) does not match layout.neq ($(layout.neq))"))
     end
+
+    rho_sp = zeros(Float64, layout.nsp)
+    rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
+    rho_vx = layout.n_eq_vib > 0 ?
+             zeros(Float64, layout.mnv + 1, layout.mmnex, layout.nsp) : nothing
+
+    idx = 1
+    rho_total = 0.0
+
+    # Vibrational states first
+    if layout.n_eq_vib > 0
+        @assert rho_vx !== nothing
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                mv_isp_iex = layout.mv[isp, iex]
+                for ivx in 0:mv_isp_iex
+                    val = Float64(y[idx])
+                    (rho_vx::Array{Float64, 3})[ivx + 1, iex, isp] = val
+                    rho_sp[isp] += val
+                    rho_total += val
+                    idx += 1
+                end
+            end
+        end
+    end
+
+    # Electronic states next
+    if layout.is_elec_sts
+        @assert rho_ex !== nothing
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                val = Float64(y[idx])
+                (rho_ex::Matrix{Float64})[iex, isp] = val
+                rho_sp[isp] += val
+                rho_total += val
+                idx += 1
+            end
+        end
+    end
+
+    # Species densities
+    @inbounds for isp in 1:(layout.nsp)
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        val = Float64(y[idx])
+        rho_sp[isp] = val
+        rho_total += val
+        idx += 1
+    end
+
+    # Momentum
+    rho_u = 0.0
+    rho_v = 0.0
+    rho_w = 0.0
+    if layout.nd >= 1
+        rho_u = Float64(y[idx])
+        idx += 1
+    end
+    if layout.nd >= 2
+        rho_v = Float64(y[idx])
+        idx += 1
+    end
+    if layout.nd >= 3
+        rho_w = Float64(y[idx])
+        idx += 1
+    end
+
+    # Energies
+    rho_etot = Float64(y[idx])
+    idx += 1
+    rho_eeex = 0.0
+    rho_erot = 0.0
+    rho_evib = 0.0
+    if layout.eex_noneq
+        rho_eeex = Float64(y[idx])
+        idx += 1
+    end
+    if layout.rot_noneq
+        rho_erot = Float64(y[idx])
+        idx += 1
+    end
+    if layout.vib_noneq
+        rho_evib = Float64(y[idx])
+        idx += 1
+    end
+
+    @assert idx==layout.neq + 1 "Internal error: state unpacking length mismatch"
+
+    # Reconstruct electron density from charge balance if requested (matches Fortran convention).
+    if layout.get_electron_density_by_charge_balance && layout.esp >= 1 &&
+       layout.esp <= layout.nsp && rho_total > 0
+        spgam = zeros(Float64, layout.nsp)
+        @inbounds for isp in 1:(layout.nsp)
+            if rho_sp[isp] == 0.0
+                continue
+            end
+            spgam[isp] = rho_sp[isp] / rho_total / (AVOGADRO * layout.spwt[isp])
+        end
+        spgam_e = 0.0
+        @inbounds for isp in 1:(layout.nsp)
+            if isp == layout.esp
+                continue
+            end
+            spgam_e += layout.ie[isp] * spgam[isp]
+        end
+        rho_sp[layout.esp] = spgam_e * rho_total * AVOGADRO * layout.spwt[layout.esp]
+    end
+
+    return (
+        rho_sp = rho_sp,
+        rho_etot = rho_etot,
+        rho_ex = rho_ex,
+        rho_vx = rho_vx,
+        rho_u = rho_u,
+        rho_v = rho_v,
+        rho_w = rho_w,
+        rho_erot = rho_erot,
+        rho_eeex = rho_eeex,
+        rho_evib = rho_evib
+    )
 end
 
 mutable struct NativeRampLimiter{T <: Real}
@@ -511,235 +803,6 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
     DiscreteCallback(native_ramp_condition, affect!;
         initialize = native_ramp_initialize,
         save_positions = (false, false))
-end
-
-"""
-$(SIGNATURES)
-
-Pack state components into a single ODE state vector.
-
-# Arguments
-- `rho_sp::Vector{Float64}`: Species densities
-- `rho_etot::Float64`: Total enthalpy density
-- `dimensions`: Dimensions structure from get_state_dimensions()
-- Optional components (all default to zero if not provided)
-
-# Returns
-- `Vector{Float64}`: Packed state vector
-"""
-function pack_state_vector(rho_sp::Vector{Float64}, rho_etot::Float64, dimensions;
-        rho_ex = nothing, rho_vx = nothing, rho_u = nothing, rho_v = nothing,
-        rho_w = nothing, rho_erot = nothing, rho_eeex = nothing, rho_evib = nothing)
-    n_species = dimensions.n_species
-
-    # Validate input array size
-    if length(rho_sp) != n_species
-        throw(ArgumentError("Species density array length ($(length(rho_sp))) must match number of species ($(n_species))"))
-    end
-
-    # Preallocate output for determinism and speed
-    u = Vector{Float64}(undef, expected_state_length(dimensions))
-    idx = 1
-
-    # Species densities
-    @inbounds begin
-        u[idx:(idx + n_species - 1)] .= rho_sp
-    end
-    idx += n_species
-
-    # Total enthalpy density
-    u[idx] = rho_etot
-    idx += 1
-
-    # Electronic state densities (flattened)
-    ex_target = dimensions.rho_ex_size
-    if rho_ex !== nothing
-        if size(rho_ex) != ex_target
-            ex_fixed = zeros(Float64, ex_target)
-            m1 = min(size(rho_ex, 1), ex_target[1])
-            m2 = min(size(rho_ex, 2), ex_target[2])
-            @inbounds ex_fixed[1:m1, 1:m2] .= rho_ex[1:m1, 1:m2]
-            @inbounds u[idx:(idx + prod(ex_target) - 1)] .= vec(ex_fixed)
-        else
-            @inbounds u[idx:(idx + prod(ex_target) - 1)] .= vec(rho_ex)
-        end
-    else
-        @inbounds fill!(view(u, idx:(idx + prod(ex_target) - 1)), 0.0)
-    end
-    idx += prod(ex_target)
-
-    # Vibrational state densities (flattened)
-    vx_target = dimensions.rho_vx_size
-    if rho_vx !== nothing
-        if size(rho_vx) != vx_target
-            vx_fixed = zeros(Float64, vx_target)
-            m1 = min(size(rho_vx, 1), vx_target[1])
-            m2 = min(size(rho_vx, 2), vx_target[2])
-            m3 = min(size(rho_vx, 3), vx_target[3])
-            @inbounds vx_fixed[1:m1, 1:m2, 1:m3] .= rho_vx[1:m1, 1:m2, 1:m3]
-            @inbounds u[idx:(idx + prod(vx_target) - 1)] .= vec(vx_fixed)
-        else
-            @inbounds u[idx:(idx + prod(vx_target) - 1)] .= vec(rho_vx)
-        end
-    else
-        @inbounds fill!(view(u, idx:(idx + prod(vx_target) - 1)), 0.0)
-    end
-    idx += prod(vx_target)
-
-    # Velocity components
-    u[idx] = (rho_u === nothing ? 0.0 : rho_u)
-    idx += 1
-    u[idx] = (rho_v === nothing ? 0.0 : rho_v)
-    idx += 1
-    u[idx] = (rho_w === nothing ? 0.0 : rho_w)
-    idx += 1
-
-    # Energy mode components
-    u[idx] = (rho_erot === nothing ? 0.0 : rho_erot)
-    idx += 1
-    u[idx] = (rho_eeex === nothing ? 0.0 : rho_eeex)
-    idx += 1
-    u[idx] = (rho_evib === nothing ? 0.0 : rho_evib)
-
-    # Final sanity check
-    @assert idx==length(u) "Internal error: packed state length mismatch"
-
-    return u
-end
-
-"""
-$(SIGNATURES)
-
-Unpack ODE state vector into individual components.
-
-# Arguments
-- `u::Vector{Float64}`: Packed state vector
-- `dimensions`: Dimensions structure from get_state_dimensions()
-
-# Returns
-- Named tuple with unpacked components
-"""
-function unpack_state_vector(u::Vector{Float64}, dimensions)
-    n_species = dimensions.n_species
-    rho_ex_size = dimensions.rho_ex_size
-    rho_vx_size = dimensions.rho_vx_size
-
-    idx = 1
-
-    # Extract species densities (return a concrete Vector for wrapper calls)
-    rho_sp = Vector{Float64}(@view u[idx:(idx + n_species - 1)])
-    idx += n_species
-
-    # Extract total enthalpy density
-    rho_etot = u[idx]
-    idx += 1
-
-    # Extract electronic state densities
-    rho_ex_flat = @view u[idx:(idx + prod(rho_ex_size) - 1)]
-    rho_ex = reshape(Vector{Float64}(rho_ex_flat), rho_ex_size)
-    idx += prod(rho_ex_size)
-
-    # Extract vibrational state densities
-    rho_vx_flat = @view u[idx:(idx + prod(rho_vx_size) - 1)]
-    rho_vx = reshape(Vector{Float64}(rho_vx_flat), rho_vx_size)
-    idx += prod(rho_vx_size)
-
-    # Extract tail components (rho_u, rho_v, rho_w, rho_erot, rho_eeex, rho_evib)
-    rho_u = u[idx]
-    idx += 1
-    rho_v = u[idx]
-    idx += 1
-    rho_w = u[idx]
-    idx += 1
-    rho_erot = u[idx]
-    idx += 1
-    rho_eeex = u[idx]
-    idx += 1
-    rho_evib = u[idx]
-
-    return (
-        rho_sp = rho_sp,
-        rho_etot = rho_etot,
-        rho_ex = rho_ex,
-        rho_vx = rho_vx,
-        rho_u = rho_u,
-        rho_v = rho_v,
-        rho_w = rho_w,
-        rho_erot = rho_erot,
-        rho_eeex = rho_eeex,
-        rho_evib = rho_evib
-    )
-end
-
-"""
-$(SIGNATURES)
-
-Pack derivative components into ODE derivative vector.
-
-# Arguments
-- `du::Vector{Float64}`: Output derivative vector (modified in-place)
-- `derivatives`: Derivatives from calculate_sources_wrapper()
-- `dimensions`: Dimensions structure
-
-# Returns
-- Nothing (modifies du in-place)
-"""
-function pack_derivative_vector!(du::Vector{Float64}, derivatives, dimensions)
-    n_species = dimensions.n_species
-    rho_ex_size = dimensions.rho_ex_size
-    rho_vx_size = dimensions.rho_vx_size
-
-    idx = 1
-
-    # Pack species density derivatives
-    du[idx:(idx + n_species - 1)] .= derivatives.drho_sp
-    idx += n_species
-
-    # Pack total energy derivative
-    du[idx] = derivatives.drho_etot
-    idx += 1
-
-    # Pack electronic state derivatives
-    if derivatives.drho_ex !== nothing
-        if size(derivatives.drho_ex) != rho_ex_size
-            throw(DimensionMismatch("drho_ex size $(size(derivatives.drho_ex)) does not match expected $(rho_ex_size)"))
-        end
-        du[idx:(idx + prod(rho_ex_size) - 1)] .= vec(derivatives.drho_ex)
-    else
-        du[idx:(idx + prod(rho_ex_size) - 1)] .= 0.0
-    end
-    idx += prod(rho_ex_size)
-
-    # Pack vibrational state derivatives
-    if derivatives.drho_vx !== nothing
-        if size(derivatives.drho_vx) != rho_vx_size
-            throw(DimensionMismatch("drho_vx size $(size(derivatives.drho_vx)) does not match expected $(rho_vx_size)"))
-        end
-        du[idx:(idx + prod(rho_vx_size) - 1)] .= vec(derivatives.drho_vx)
-    else
-        du[idx:(idx + prod(rho_vx_size) - 1)] .= 0.0
-    end
-    idx += prod(rho_vx_size)
-
-    # Pack velocity derivatives (zero for 0D)
-    du[idx] = 0.0  # drho_u
-    idx += 1
-    du[idx] = 0.0  # drho_v
-    idx += 1
-    du[idx] = 0.0  # drho_w
-    idx += 1
-
-    # Pack energy derivatives
-    du[idx] = derivatives.drho_erot === nothing ? 0.0 : derivatives.drho_erot
-    idx += 1
-    du[idx] = derivatives.drho_eeex === nothing ? 0.0 : derivatives.drho_eeex
-    idx += 1
-    du[idx] = derivatives.drho_evib === nothing ? 0.0 : derivatives.drho_evib
-
-    # Sanity check: ensure we've filled the entire vector
-    @assert idx==length(du) "Internal error: derivative vector length mismatch"
-
-    return nothing
 end
 
 @inline function _is_electron_species(name::AbstractString, molecular_weight::Real)
@@ -988,6 +1051,7 @@ function reconstruct_energy_components(state, config;
     rho_ex_arg = has_electronic_sts ? state.rho_ex : nothing
     rho_vx_arg = has_vibrational_sts ? state.rho_vx : nothing
     energy_guess = energy_cache === nothing ? rho_enthalpy_total : energy_cache[]
+
     result = energy_from_enthalpy(rho_enthalpy_total, rho_sp;
         rho_ex = rho_ex_arg,
         rho_vx = rho_vx_arg,
@@ -1015,257 +1079,313 @@ function reconstruct_energy_components(state, config;
         pressure = result.pressure)
 end
 
-"""
-$(SIGNATURES)
-
-ODE system function for TERRA integration.
-
-This function defines the ODE system du/dt = f(u, p, t) where:
-- u is the state vector containing all TERRA variables
-- p contains parameters (dimensions, etc.)
-- t is time
-
-# Arguments
-- `du::Vector{Float64}`: Output derivative vector
-- `u::Vector{Float64}`: Input state vector
-- `p`: Parameters structure
-- `t::Float64`: Current time
-
-# Returns
-- Nothing (modifies du in-place)
-"""
-function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64)
-    # Guard against invalid inputs to the Fortran layer
-    if any(!isfinite, u)
-        fill!(du, 0.0)
-        return nothing
+@inline function _compact_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
+    if any(@view(u[layout.vib_range]) .< 0.0)
+        return false
     end
-    nsp = p.dimensions.n_species
-    if any(@view(u[1:nsp]) .< 0.0)
-        fill!(du, 0.0)
-        return nothing
+    if any(@view(u[layout.elec_range]) .< 0.0)
+        return false
     end
-    if u[nsp + 1] < 0.0
-        fill!(du, 0.0)
-        return nothing
+    if any(@view(u[layout.sp_range]) .< 0.0)
+        return false
     end
-    # Unpack state vector
-    state = unpack_state_vector(u, p.dimensions)
+    if u[layout.idx_etot] < 0.0
+        return false
+    end
+    if layout.idx_eeex != 0 && u[layout.idx_eeex] < 0.0
+        return false
+    end
+    if layout.idx_erot != 0 && u[layout.idx_erot] < 0.0
+        return false
+    end
+    if layout.idx_evib != 0 && u[layout.idx_evib] < 0.0
+        return false
+    end
+    return true
+end
 
-    # Calculate source terms using TERRA
-    try
-        config = hasproperty(p, :config) ? p.config : nothing
-        teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
-        teex_const = hasproperty(p, :teex_const) ? p.teex_const :
-                     (config === nothing ? 0.0 : config.temperatures.Te)
-        is_isothermal = config !== nothing && config.physics.is_isothermal_teex
+function _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp::Vector{Float64},
+        rho_ex::Union{Nothing, Matrix{Float64}},
+        u::Vector{Float64},
+        layout::ApiLayout)
+    fill!(rho_sp, 0.0)
+    if rho_ex !== nothing
+        fill!(rho_ex, 0.0)
+    end
 
-        if config === nothing
-            result = energy_from_enthalpy(state.rho_etot, state.rho_sp;
-                rho_ex = p.dimensions.has_electronic_sts ? state.rho_ex : nothing,
-                rho_vx = p.dimensions.has_vibrational_sts ? state.rho_vx : nothing,
-                rho_erot = state.rho_erot,
-                rho_eeex = state.rho_eeex,
-                rho_evib = state.rho_evib,
-                gas_constants = p.gas_constants,
-                molecular_weights = p.molecular_weights,
-                species_names = p.species,
-                energy_guess = hasproperty(p, :energy_cache) ? p.energy_cache[] :
-                               state.rho_etot)
+    idx = 1
 
-            electron_idx = hasproperty(p, :electron_index) ? p.electron_index :
-                           findfirst(
-                i -> _is_electron_species(p.species[i], p.molecular_weights[i]),
-                eachindex(p.species))
-            electron_enthalpy = electron_idx === nothing ? 0.0 :
-                                state.rho_sp[electron_idx] * p.gas_constants[electron_idx] *
-                                result.teex
-
-            energy = (rho_etot = result.rho_etot,
-                rho_eeex = state.rho_eeex,
-                rho_rem = result.rho_etot - state.rho_eeex - electron_enthalpy,
-                tvib = result.temps.tvib,
-                temps = result.temps,
-                pressure = result.pressure)
-            if hasproperty(p, :energy_cache)
-                p.energy_cache[] = result.rho_etot
+    # Vibrational STS densities (contribute to species totals)
+    if layout.n_eq_vib > 0
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
             end
-            if hasproperty(p, :pressure_cache)
-                p.pressure_cache[] = result.pressure
-            end
-        else
-            energy = reconstruct_energy_components(state, config;
-                teex_const = teex_const,
-                teex_vec = teex_vec,
-                molecular_weights = p.molecular_weights,
-                species_names = p.species,
-                gas_constants = p.gas_constants,
-                has_electronic_sts = p.dimensions.has_electronic_sts,
-                has_vibrational_sts = p.dimensions.has_vibrational_sts,
-                energy_cache = hasproperty(p, :energy_cache) ? p.energy_cache : nothing,
-                pressure_cache = hasproperty(p, :pressure_cache) ? p.pressure_cache :
-                                 nothing)
-        end
-
-        rho_etot_effective = energy.rho_etot
-        rho_eeex_effective = energy.rho_eeex
-
-        rho_ex_arg = p.dimensions.has_electronic_sts ? state.rho_ex : nothing
-        rho_vx_arg = p.dimensions.has_vibrational_sts ? state.rho_vx : nothing
-
-        # Always pass the current total energy to the Fortran RHS so that
-        # temperatures and rates are computed from the instantaneous state.
-        # Mirror TERRA handling of total energy:
-        # - If radiation is OFF, hold total energy constant across RHS calls
-        # - If radiation is ON, allow TERRA to evolve total energy
-        use_const_etot = !is_isothermal && hasproperty(p, :config) &&
-                         hasproperty(p.config, :processes) &&
-                         getfield(p.config.processes, :consider_rad) == 0
-        if use_const_etot && hasproperty(p, :rho_energy0)
-            rho_etot_to_use = p.rho_energy0
-            if hasproperty(p, :energy_cache)
-                p.energy_cache[] = p.rho_energy0
-            end
-        else
-            rho_etot_to_use = rho_etot_effective
-        end
-
-        derivatives = calculate_sources_wrapper(
-            state.rho_sp, rho_etot_to_use;
-            rho_ex = rho_ex_arg,
-            rho_vx = rho_vx_arg,
-            rho_u = state.rho_u,
-            rho_v = state.rho_v,
-            rho_w = state.rho_w,
-            rho_erot = state.rho_erot,
-            rho_eeex = rho_eeex_effective,
-            rho_evib = state.rho_evib
-        )
-
-        # Optional solver-side debug mirror of wrapper outputs
-        if get(ENV, "TERRA_SOLVER_DEBUG", "0") == "1"
-            @info "SOLVER_DERIV" drho_etot=derivatives.drho_etot drho_erot=derivatives.drho_erot drho_eeex=derivatives.drho_eeex drho_evib=derivatives.drho_evib
-        end
-
-        # If solving electrons via charge balance, adjust electron derivative
-        if hasproperty(p, :config) &&
-           p.config.physics.get_electron_density_by_charge_balance
-            names = p.config.species
-            weights = p.molecular_weights
-            # simple charge inference from species names
-            charges = map(nm -> count(==('+'), nm) - count(==('-'), nm), names)
-            elec_idx = findfirst(==("E-"), names)
-            elec_idx = elec_idx === nothing ? findfirst(==(-1), charges) : elec_idx
-            if elec_idx !== nothing
-                spwt_e = weights[elec_idx]
-                s = 0.0
-                @inbounds for i in eachindex(derivatives.drho_sp)
-                    if i == elec_idx
-                        continue
-                    end
-                    zi = charges[i]
-                    if zi != 0
-                        s += (zi / weights[i]) * derivatives.drho_sp[i]
-                    end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
                 end
-                new_drho_sp = copy(derivatives.drho_sp)
-                new_drho_sp[elec_idx] = spwt_e * s
-                derivatives = (
-                    drho_sp = new_drho_sp,
-                    drho_etot = derivatives.drho_etot,
-                    drho_ex = derivatives.drho_ex,
-                    drho_vx = derivatives.drho_vx,
-                    drho_erot = derivatives.drho_erot,
-                    drho_eeex = derivatives.drho_eeex,
-                    drho_evib = derivatives.drho_evib
-                )
+                mv_isp_iex = layout.mv[isp, iex]
+                for _ivx in 0:mv_isp_iex
+                    val = u[idx]
+                    rho_sp[isp] += val
+                    idx += 1
+                end
             end
         end
+    end
 
-        if is_isothermal
-            # Convert total enthalpy derivative into the stored remainder by
-            # removing electronic-mode changes and the electron enthalpy work term.
-            drho_eeex_val = derivatives.drho_eeex === nothing ? 0.0 : derivatives.drho_eeex
-            drho_etot_raw = derivatives.drho_etot
-            extra_electron_enthalpy = 0.0
-            electron_idx = hasproperty(p, :electron_index) ? p.electron_index : nothing
-            if electron_idx !== nothing && electron_idx <= length(derivatives.drho_sp)
-                gas_const_e = p.gas_constants[electron_idx]
-                te_for_enthalpy = hasproperty(p, :teex_const) ? p.teex_const :
-                                  config.temperatures.Te
-                extra_electron_enthalpy = te_for_enthalpy * gas_const_e *
-                                          derivatives.drho_sp[electron_idx]
+    # Electronic STS densities (contribute to species totals and rho_ex buffer)
+    if layout.is_elec_sts
+        @assert rho_ex !== nothing
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0
+                continue
             end
-
-            # Scaling factor that aligns the Julia wrapper output with native TERRA output
-            # for isothermal cases. Unsure of what the source of the bug is.
-            # TODO: Find source of this scaling factor error in drho_rem/dt and correct it
-            scaling_factor = -1.5
-            drho_rem = drho_etot_raw - drho_eeex_val -
-                       (scaling_factor * extra_electron_enthalpy)
-
-            derivatives = merge(derivatives, (drho_etot = drho_rem, drho_eeex = 0.0))
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                val = u[idx]
+                (rho_ex::Matrix{Float64})[iex, isp] = val
+                rho_sp[isp] += val
+                idx += 1
+            end
         end
+    end
 
-        # Debug: print derivative norms on first few RHS calls (debug-level only)
-        _TERRA_ODE_DBG_CALLS[] += 1
-        if _TERRA_ODE_DBG_CALLS[] <= 5
-            drsp_norm = maximum(abs, derivatives.drho_sp)
-            dr_etot = derivatives.drho_etot
-            dr_eeex = derivatives.drho_eeex === nothing ? 0.0 : derivatives.drho_eeex
-            dr_evib = derivatives.drho_evib === nothing ? 0.0 : derivatives.drho_evib
-            @debug "TERRA RHS debug" t=t drho_sp_max=drsp_norm drho_etot=dr_etot drho_eeex=dr_eeex drho_evib=dr_evib
+    # Species densities for non-electronic-specific species (except charge-balanced electrons)
+    @inbounds for isp in 1:(layout.nsp)
+        if layout.ies[isp] == 1
+            continue
         end
-
-        # Pack derivatives into output vector
-        pack_derivative_vector!(du, derivatives, p.dimensions)
-        if use_const_etot
-            n_species = p.dimensions.n_species
-            du[n_species + 1] = 0.0
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
         end
+        val = u[idx]
+        rho_sp[isp] = val
+        idx += 1
+    end
 
-    catch e
-        @error "Error in TERRA ODE system" exception=e time=t
-        # Fill with zeros to prevent integration failure
-        fill!(du, 0.0)
+    @assert idx==layout.mom_range.start "Internal error: continuity reconstruction index mismatch"
+
+    # Reconstruct electron mass density from charge balance if requested.
+    if layout.get_electron_density_by_charge_balance
+        esp = layout.esp
+        if esp >= 1 && esp <= layout.nsp
+            s = 0.0
+            @inbounds for isp in 1:(layout.nsp)
+                if isp == esp
+                    continue
+                end
+                if layout.ie[isp] != 0
+                    s += layout.ie[isp] * rho_sp[isp] / layout.spwt[isp]
+                end
+            end
+            rho_sp[esp] = layout.spwt[esp] * s
+        end
     end
 
     return nothing
 end
 
+function _reconstruct_drho_sp_from_compact!(drho_sp::Vector{Float64},
+        dy::AbstractVector{<:Real},
+        layout::ApiLayout)
+    fill!(drho_sp, 0.0)
+
+    idx = 1
+
+    # Vibrational STS derivatives (contribute to species totals)
+    if layout.n_eq_vib > 0
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                mv_isp_iex = layout.mv[isp, iex]
+                for _ivx in 0:mv_isp_iex
+                    drho_sp[isp] += Float64(dy[idx])
+                    idx += 1
+                end
+            end
+        end
+    end
+
+    # Electronic STS derivatives (contribute to species totals)
+    if layout.is_elec_sts
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                drho_sp[isp] += Float64(dy[idx])
+                idx += 1
+            end
+        end
+    end
+
+    # Species-density derivatives for non-electronic-specific species (except charge-balanced electrons)
+    @inbounds for isp in 1:(layout.nsp)
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        drho_sp[isp] = Float64(dy[idx])
+        idx += 1
+    end
+
+    @assert idx==layout.mom_range.start "Internal error: continuity derivative reconstruction index mismatch"
+
+    return nothing
+end
+
+@inline function _compact_drho_e_from_drho_sp(drho_sp::Vector{Float64}, layout::ApiLayout)
+    esp = layout.esp
+    if !(esp >= 1 && esp <= layout.nsp)
+        return 0.0
+    end
+    if !layout.get_electron_density_by_charge_balance
+        return drho_sp[esp]
+    end
+
+    s = 0.0
+    @inbounds for isp in 1:(layout.nsp)
+        if isp == esp
+            continue
+        end
+        zi = layout.ie[isp]
+        if zi != 0
+            s += zi * drho_sp[isp] / layout.spwt[isp]
+        end
+    end
+    return layout.spwt[esp] * s
+end
+
+function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
+        rho_sp::Vector{Float64},
+        rho_ex::Union{Nothing, Matrix{Float64}},
+        u::Vector{Float64},
+        p,
+        layout::ApiLayout)
+    config = p.config
+    teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
+    teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
+
+    _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp, rho_ex, u, layout)
+
+    rho_evib = u[layout.idx_evib]
+    tvib = calculate_vibrational_temperature_wrapper(rho_evib, rho_sp;
+        rho_ex = rho_ex,
+        tex = teex_vec)
+    rho_eeex_eff = calculate_electron_electronic_energy_wrapper(teex_const, tvib, rho_sp)
+
+    electron_idx = layout.esp
+    gas_const_e = (electron_idx >= 1 && electron_idx <= layout.nsp) ?
+                  Float64(p.gas_constants[electron_idx]) : 0.0
+    electron_enthalpy = (electron_idx >= 1 && electron_idx <= layout.nsp) ?
+                        rho_sp[electron_idx] * gas_const_e * teex_const : 0.0
+
+    rho_rem = u[layout.idx_etot]
+    rho_enthalpy_total = rho_rem + rho_eeex_eff + electron_enthalpy
+    energy_guess = hasproperty(p, :energy_cache) ? p.energy_cache[] :
+                   max(rho_enthalpy_total, 0.0)
+    result = energy_from_enthalpy(rho_enthalpy_total, rho_sp;
+        rho_ex = rho_ex,
+        rho_vx = nothing,
+        rho_erot = layout.idx_erot == 0 ? nothing : u[layout.idx_erot],
+        rho_eeex = rho_eeex_eff,
+        rho_evib = rho_evib,
+        gas_constants = p.gas_constants,
+        molecular_weights = p.molecular_weights,
+        species_names = p.species,
+        energy_guess = energy_guess,
+        teex_override = teex_const)
+    if hasproperty(p, :energy_cache)
+        p.energy_cache[] = result.rho_etot
+    end
+    if hasproperty(p, :pressure_cache)
+        p.pressure_cache[] = result.pressure
+    end
+
+    copyto!(y_work, u)
+    y_work[layout.idx_eeex] = rho_eeex_eff
+    y_work[layout.idx_etot] = result.rho_etot
+
+    return (
+        teex_const = teex_const,
+        gas_const_e = gas_const_e,
+        rho_eeex = rho_eeex_eff,
+        rho_evib = rho_evib,
+        temps = result.temps,
+        rho_etot = result.rho_etot,
+        pressure = result.pressure
+    )
+end
+
 """
 $(SIGNATURES)
 
-Integrate the 0D system over time using DifferentialEquations.jl.
+ODE system that calls the Fortran `rhs_api` directly (via `calculate_rhs_api`).
 
-# Arguments
-- `config::TERRAConfig`: Configuration object
-- `initial_state`: Initial state vectors in CGS units
-
-# Returns
-- `TERRAResults`: Simulation results (converted back to SI units)
+Assumptions about the state `u`:
+- Non-isothermal (`config.physics.is_isothermal_teex == false`): `u` matches the Fortran `rhs_api` `y` layout and
+  stores total energy density at `layout.idx_etot`.
+- Isothermal Teex (`== true`): `u[layout.idx_etot]` stores the remainder energy
+  `rho_rem = rho_h - rho_eeex - rho_e * R_e * Teex`. The `rho_eeex` slot is treated
+  as a dummy (its derivative is forced to zero). The Fortran call uses a working vector with `rho_eeex` recomputed from
+  the prescribed Teex, and with `rho_etot` reconstructed from `rho_rem` by converting total enthalpy back to energy.
 """
-function integrate_0d_system(config::TERRAConfig, initial_state)
-    # Time parameters
-    dt = config.time_params.dt
-    tlim = config.time_params.tlim
+function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64)
+    layout = p.layout
 
-    @info "Setting up ODE integration" tlim=tlim
+    if any(!isfinite, u) || !_compact_nonnegative_ok(u, layout)
+        fill!(du, 0.0)
+        return nothing
+    end
 
-    native_outputs_requested = config.write_native_outputs
-    outputs_opened = false
+    config = hasproperty(p, :config) ? p.config : nothing
+    is_isothermal = config !== nothing && config.physics.is_isothermal_teex
 
-    # Get state dimensions
-    dimensions = get_state_dimensions(config)
-    n_species = dimensions.n_species
-    is_isothermal = config.physics.is_isothermal_teex
-    error_norm = create_terra_error_norm(dimensions)
+    if !is_isothermal
+        calculate_rhs_api_wrapper!(du, u)
+        return nothing
+    end
 
-    # Derive electronic STS metadata from the Boltzmann-seeded initial state
-    rho_ex_initial = initial_state.rho_ex
+    if !layout.eex_noneq || layout.idx_eeex == 0
+        error("Isothermal Teex requires eex_noneq=1 (electron-electronic energy equation present) in the API layout.")
+    end
+    if layout.idx_evib == 0
+        error("Isothermal Teex requires vib_noneq=1 (vibrational energy present) so Tvib can be reconstructed.")
+    end
+    if config === nothing
+        error("Isothermal Teex requires a config in the parameter tuple.")
+    end
+    teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
+    energy_cache = hasproperty(p, :energy_cache) ? p.energy_cache : nothing
+    teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
+
+    calculate_rhs_api_isothermal_teex_wrapper!(du, u, teex_const;
+        energy_cache = energy_cache,
+        tex = teex_vec)
+
+    return nothing
+end
+
+function _electronic_state_print_metadata(rho_ex_initial::AbstractMatrix{<:Real},
+        n_species::Int;
+        ex_tol::Float64 = 1e-80)
     electronic_state_counts = zeros(Int, n_species)
     has_electronic_states = falses(n_species)
-    ex_tol = 1e-80                       # Treat anything smaller as numerical zero
+
     @inbounds for isp in 1:n_species
         col = @view rho_ex_initial[:, isp]
         last_idx = findlast(x -> abs(x) > ex_tol, col)
@@ -1278,55 +1398,225 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
         end
     end
 
-    # Create initial ODE state vector (all in CGS units)
-    # Include available electronic states and energy components so the ODE RHS
-    # receives consistent nonequilibrium energies at t=0.
-    energy_scalar0 = is_isothermal ? initial_state.rho_rem : initial_state.rho_etot
-    rho_eeex0 = is_isothermal ? 0.0 : initial_state.rho_eeex
-    u0 = pack_state_vector(
-        initial_state.rho_sp, energy_scalar0, dimensions;
-        rho_ex = initial_state.rho_ex,
-        # rho_vx = initial_state.rho_vx,
-        rho_eeex = initial_state.rho_eeex,
-        # rho_eeex = rho_eeex0,
-        rho_evib = initial_state.rho_evib
-    )
+    return (electronic_state_counts = electronic_state_counts,
+        has_electronic_states = has_electronic_states)
+end
 
-    @info "Initial state vector created" length_u0=length(u0) n_species=n_species
+function _print_terra_integration_output(t::Float64,
+        dt::Float64,
+        rho_sp::Vector{Float64},
+        molecular_weights::Vector{Float64},
+        temps,
+        rho_etot::Float64;
+        rho_ex::Union{Nothing, Matrix{Float64}} = nothing,
+        rho_eeex::Union{Nothing, Float64} = nothing,
+        rho_evib::Union{Nothing, Float64} = nothing,
+        has_electronic_states::Union{Nothing, AbstractVector{Bool}} = nothing,
+        electronic_state_counts::Union{Nothing, AbstractVector{Int}} = nothing)
+    # Mass fraction sum error
+    rho_total = sum(rho_sp)
+    ysum = 0.0
+    @inbounds for val in rho_sp
+        ysum += val / rho_total
+    end
+    yerr = abs(ysum - 1.0)
+    println(@sprintf(" Ytot,err   = % .3E", yerr))
 
-    # Time span for integration
+    # Relative enthalpy change (%) at current Tt vs reconstructed energy
+    Ecomp = calculate_total_energy_wrapper(temps.tt, rho_sp;
+        rho_ex = rho_ex,
+        rho_eeex = rho_eeex,
+        rho_evib = rho_evib)
+    dEnth = 100.0 * (Ecomp - rho_etot) / rho_etot
+    println(@sprintf(" dEnth (%%)  = % .5E", dEnth))
+
+    t_us = t * 1e6
+    dt_us = dt * 1e6
+    println(@sprintf(" time       = % .2E mu-s ", t_us))
+    println(@sprintf(" dt         = % .2E mu-s", dt_us))
+    println(@sprintf(" T(t,e,r,v) = % .3E % .3E % .3E % .3E K",
+        Float64(temps.tt), Float64(temps.teex), Float64(temps.trot), Float64(temps.tvib)))
+
+    # Mole fractions
+    denom = 0.0
+    @inbounds for i in eachindex(rho_sp, molecular_weights)
+        denom += rho_sp[i] / molecular_weights[i]
+    end
+    xbuf = IOBuffer()
+    print(xbuf, " X          =")
+    @inbounds for i in eachindex(rho_sp, molecular_weights)
+        xi = (rho_sp[i] / molecular_weights[i]) / denom
+        print(xbuf, @sprintf(" % .3E", xi))
+    end
+    println(String(take!(xbuf)))
+
+    tex = hasproperty(temps, :tex) ? temps.tex : nothing
+    if rho_ex !== nothing && has_electronic_states !== nothing &&
+       electronic_state_counts !== nothing && tex !== nothing
+        n_species = length(molecular_weights)
+        @inbounds for isp in 1:n_species
+            if !has_electronic_states[isp]
+                continue
+            end
+            mex = min(electronic_state_counts[isp], size(rho_ex, 1))
+            if mex <= 0
+                continue
+            end
+            if isp < 10
+                println(@sprintf(" Tex(%d)     = % .3E", isp, Float64(tex[isp])))
+            else
+                println(@sprintf(" Tex(%d)    = % .3E", isp, Float64(tex[isp])))
+            end
+
+            states_to_show = min(mex, 7)
+            nbuf = IOBuffer()
+            if isp < 10
+                print(nbuf, @sprintf(" n(%d,1:%d)   =", isp, states_to_show))
+            else
+                print(nbuf, @sprintf(" n(%d,1:%d)  =", isp, states_to_show))
+            end
+
+            for iex in 1:states_to_show
+                nval = Float64(rho_ex[iex, isp]) / molecular_weights[isp] * AVOGADRO
+                print(nbuf, @sprintf(" % .3E", nval))
+            end
+            println(String(take!(nbuf)))
+        end
+    end
+
+    println()
+    return nothing
+end
+
+"""
+$(SIGNATURES)
+
+Integrate the 0D system over time using the Fortran `rhs_api` layout.
+
+This uses `terra_ode_system!` and constructs a `y` vector that matches the
+ordering returned by `get_api_layout()`.
+
+Notes:
+- Vibrational STS is not yet supported in this wrapper (vibrational *mode* energy is supported).
+- For isothermal Teex cases, the stored energy slot in `u` is `rho_rem` (legacy semantics), and
+  the working `y` passed to Fortran is reconstructed each call.
+"""
+function integrate_0d_system(config::TERRAConfig, initial_state)
+    dt = config.time_params.dt
+    tlim = config.time_params.tlim
+
+    @info "Setting up ODE integration" tlim=tlim
+
+    native_outputs_requested = config.write_native_outputs
+    print_integration_output = config.print_integration_output
+    outputs_opened = false
+
+    layout = get_api_layout()
+    if layout.neq <= 0
+        error("Invalid API layout: layout.neq=$(layout.neq). Ensure the Fortran API is initialized.")
+    end
+    if layout.nd != 0
+        error("integrate_0d_system currently supports nd=0 only (got nd=$(layout.nd)).")
+    end
+    if layout.n_eq_vib > 0 || layout.is_vib_sts
+        error("Vibrational STS is not yet supported (layout.n_eq_vib=$(layout.n_eq_vib)).")
+    end
+
+    n_species = layout.nsp
+    is_isothermal = config.physics.is_isothermal_teex
+
+    electronic_state_counts = zeros(Int, n_species)
+    has_electronic_states = falses(n_species)
+    if print_integration_output && layout.is_elec_sts
+        meta = _electronic_state_print_metadata(initial_state.rho_ex, n_species)
+        electronic_state_counts = meta.electronic_state_counts
+        has_electronic_states = meta.has_electronic_states
+    end
+
+    # Initial state vector (rhs_api layout, CGS units)
+    energy_scalar0 = is_isothermal ? initial_state.rho_rem : initial_state.rho_energy
+    rho_ex0 = layout.is_elec_sts ? initial_state.rho_ex : nothing
+    rho_eeex0 = layout.eex_noneq ? initial_state.rho_eeex : nothing
+    rho_erot0 = layout.rot_noneq ? 0.0 : nothing
+    rho_evib0 = layout.vib_noneq ? initial_state.rho_evib : nothing
+
+    u0 = pack_state_vector(layout, initial_state.rho_sp, energy_scalar0;
+        rho_ex = rho_ex0,
+        rho_u = layout.nd >= 1 ? 0.0 : nothing,
+        rho_v = layout.nd >= 2 ? 0.0 : nothing,
+        rho_w = layout.nd >= 3 ? 0.0 : nothing,
+        rho_eeex = rho_eeex0,
+        rho_erot = rho_erot0,
+        rho_evib = rho_evib0)
+
+    @info "Initial state vector created" length_u0=length(u0) neq=layout.neq n_species=n_species
+
     tspan = (0.0, tlim)
 
-    # Parameters for the ODE system. Keep total energy density constant
-    # (aligned with Fortran API behavior) by passing it as a parameter.
     molecular_weights = get_molecular_weights(config.species)
     species_names = config.species
     gas_constants = initial_state.gas_constants
     teex_const_vec = fill(config.temperatures.Te, n_species)
-    electron_index = begin
-        idx = findfirst(i -> _is_electron_species(species_names[i], molecular_weights[i]),
-            eachindex(species_names))
-        idx === nothing ? nothing : idx
-    end
 
-    p = (dimensions = dimensions,
+    # Preallocate RHS work buffers
+    work_y = similar(u0)
+    work_rho_sp = zeros(Float64, layout.nsp)
+    work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
+
+    p = (
+        layout = layout,
         config = config,
-        rho_enth0 = initial_state.rho_etot,
-        rho_energy0 = initial_state.rho_energy,
         molecular_weights = molecular_weights,
         species = species_names,
         gas_constants = gas_constants,
         teex_const = initial_state.teex_const,
         teex_const_vec = teex_const_vec,
-        electron_index = electron_index,
         energy_cache = Ref(initial_state.rho_energy),
-        pressure_cache = Ref(initial_state.pressure))
+        pressure_cache = Ref(initial_state.pressure)
+    )
 
-    # Create ODE problem and attach step-size ramp mirroring native TERRA behaviour
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
     ramp_callback = native_ramp_callback(dt; understep_ratio = inv(128), history_steps = 5)
 
     @info "ODE problem created, starting integration..."
+
+    # Component-wise tolerances (CGS). The compact state mixes densities (g/cm^3)
+    # and energies (erg/cm^3). A scalar abstol tends to make the energy equation
+    # far more restrictive than the density equations. For isothermal Teex runs,
+    # loosen the energy absolute tolerance based on a target temperature
+    # resolution:
+    #   abstol_E ≈ (3/2) kB n_total ΔT  [erg/cm^3]
+    local_reltol = is_isothermal ? 1e-7 : 1e-8
+    local_abstol_density = 1e-10
+    local_abstol_vec = is_isothermal ? fill(local_abstol_density, layout.neq) : nothing
+    if is_isothermal
+        kB_erg_per_K = 1.380650524e-16
+        n_total = initial_state.number_density
+        rho_total = sum(initial_state.rho_sp)
+        local_abstol_density = max(1e-20, 1e-12 * rho_total)
+
+        deltaT = let s = strip(get(ENV, "TERRA_ISO_ENERGY_DELTAT_K", ""))
+            isempty(s) ? 0.5 : parse(Float64, s)
+        end
+        energy_abstol = max(1.5 * kB_erg_per_K * n_total * deltaT, 1e-8)
+
+        @inbounds begin
+            # Density-like blocks (g/cm^3)
+            local_abstol_vec[layout.vib_range] .= local_abstol_density
+            local_abstol_vec[layout.elec_range] .= local_abstol_density
+            local_abstol_vec[layout.sp_range] .= local_abstol_density
+            local_abstol_vec[layout.mom_range] .= local_abstol_density
+
+            # Energy-like block (erg/cm^3)
+            local_abstol_vec[layout.energy_range] .= energy_abstol
+
+            # In isothermal Teex mode, the rho_eeex slot is effectively fixed
+            # (du=0); avoid letting it influence step control.
+            if layout.idx_eeex != 0
+                local_abstol_vec[layout.idx_eeex] = max(energy_abstol, 1.0)
+            end
+        end
+    end
 
     try
         if native_outputs_requested && !outputs_opened
@@ -1337,177 +1627,103 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
         sol = solve(prob;
             alg_hints = [:stiff],
             dt = dt,
-            internalnorm = error_norm,
             callback = ramp_callback,
-            reltol = 1e-7,
-            abstol = 1e-10,
-            # qmin = 0.5,
-            # qmax = 1.02,
-            # qsteady_max = 1.02,
-            save_everystep = true
+            reltol = local_reltol,
+            abstol = (local_abstol_vec === nothing ? local_abstol_density :
+                      local_abstol_vec),
+            saveat = range(0.0, tlim; length = 100),
+            save_everystep = false
         )
 
-        @info "ODE integration completed" success=sol.retcode
+        @info "ODE integration completed" retcode=sol.retcode
 
-        # TERRA-style status printing for each solver step
-        iter = 0
-        first_dt = length(sol.t) >= 2 ? (sol.t[2] - sol.t[1]) : dt
-        for (i, t) in enumerate(sol.t)
-            steps = 0
-            if length(sol.t) > 5000
-                steps = 1000
-            elseif length(sol.t) > 2500
-                steps = 100
-            elseif length(sol.t) > 100
-                steps = 10
-            else
-                steps = 1
-            end
-            if outputs_opened
+        # Native output snapshots (optional)
+        if outputs_opened
+            first_dt = length(sol.t) >= 2 ? (sol.t[2] - sol.t[1]) : dt
+            for (i, t) in enumerate(sol.t)
                 local_dt = i == 1 ? first_dt : (t - sol.t[i - 1])
-                write_api_outputs_wrapper(i - 1, t, local_dt, sol.u[i]; dist = 0.0, dx = 0.0)
+                if is_isothermal
+                    _compact_isothermal_fill_fortran_y_work!(
+                        work_y, work_rho_sp, work_rho_ex, sol.u[i], p, layout)
+                    write_api_outputs_wrapper(
+                        i - 1, t, local_dt, work_y; dist = 0.0, dx = 0.0)
+                else
+                    write_api_outputs_wrapper(
+                        i - 1, t, local_dt, sol.u[i]; dist = 0.0, dx = 0.0)
+                end
             end
-            if (iter % steps == 0) || (iter + 1 == length(sol.t))
-                st = unpack_state_vector(sol.u[i], dimensions)
-                energy = reconstruct_energy_components(st, config;
-                    teex_const = config.temperatures.Te,
-                    teex_vec = teex_const_vec,
-                    molecular_weights = molecular_weights,
-                    species_names = species_names,
-                    gas_constants = gas_constants,
-                    has_electronic_sts = dimensions.has_electronic_sts,
-                    has_vibrational_sts = dimensions.has_vibrational_sts,
-                    energy_cache = nothing,
-                    pressure_cache = nothing)
-
-                temps = haskey(energy, :temps) ? energy.temps :
-                begin
-                    rho_ex_arg = dimensions.has_electronic_sts ? st.rho_ex : nothing
-                    rho_vx_arg = dimensions.has_vibrational_sts ? st.rho_vx : nothing
-                    calculate_temperatures_wrapper(st.rho_sp, energy.rho_etot;
-                        rho_ex = rho_ex_arg,
-                        rho_vx = rho_vx_arg,
-                        rho_eeex = energy.rho_eeex,
-                        rho_evib = st.rho_evib)
-                end
-
-                # Mass fraction sum error
-                ys = st.rho_sp ./ sum(st.rho_sp)
-                yerr = abs(sum(ys) - 1.0)
-                println(@sprintf(" Ytot,err   = % .3E", yerr))
-
-                # Relative enthalpy change (%) at current Tt vs reference energy
-                Ecomp = calculate_total_energy_wrapper(temps.tt, st.rho_sp;
-                    rho_ex = st.rho_ex,
-                    rho_eeex = energy.rho_eeex, rho_evib = st.rho_evib)
-                dEnth = 100.0 * (Ecomp - energy.rho_etot) / energy.rho_etot
-                println(@sprintf(" dEnth (%%)  = % .5E", dEnth))
-
-                t_us = t * 1e6
-                dt_us = (i == 1 ? first_dt : (sol.t[i] - sol.t[i - 1])) * 1e6
-                println(@sprintf(" iter       = %6d", iter))
-                println(@sprintf(" time       = % .2E mu-s ", t_us))
-                println(@sprintf(" dt         = % .2E mu-s", dt_us))
-                println(@sprintf(" T(t,e,r,v) = % .3E % .3E % .3E % .3E K",
-                    temps.tt, temps.teex, temps.trot, temps.tvib))
-
-                # Mole fractions
-                denom = sum(st.rho_sp ./ molecular_weights)
-                x = (st.rho_sp ./ molecular_weights) ./ denom
-                xbuf = IOBuffer()
-                print(xbuf, " X          =")
-                for xi in x
-                    print(xbuf, @sprintf(" % .3E", xi))
-                end
-                println(String(take!(xbuf)))
-
-                for isp in 1:n_species
-                    if !has_electronic_states[isp]
-                        continue
-                    end
-                    mex = min(electronic_state_counts[isp], size(st.rho_ex, 1))
-                    if mex <= 0
-                        continue
-                    end
-                    if isp < 10
-                        println(@sprintf(" Tex(%d)     = % .3E", isp, temps.tex[isp]))
-                    else
-                        println(@sprintf(" Tex(%d)    = % .3E", isp, temps.tex[isp]))
-                    end
-
-                    states_to_show = min(mex, 7)
-                    nbuf = IOBuffer()
-                    if isp < 10
-                        print(nbuf, @sprintf(" n(%d,1:%d)   =", isp, states_to_show))
-                    else
-                        print(nbuf, @sprintf(" n(%d,1:%d)  =", isp, states_to_show))
-                    end
-
-                    for iex in 1:states_to_show
-                        nval = st.rho_ex[iex, isp] / molecular_weights[isp] * AVOGADRO
-                        print(nbuf, @sprintf(" % .3E", nval))
-                    end
-                    println(String(take!(nbuf)))
-                end
-
-                println()
-            end
-            iter += 1
         end
 
         # Extract results at output times
         n_times = length(sol.t)
         time_points = collect(sol.t)
 
-        # Pre-allocate arrays
         species_densities = zeros(n_species, n_times)
         temperatures_tt = Vector{Float64}(undef, n_times)
         temperatures_te = Vector{Float64}(undef, n_times)
         temperatures_tv = Vector{Float64}(undef, n_times)
         total_energies = Vector{Float64}(undef, n_times)
 
-        # Extract species densities and calculate temperatures at each time point
+        rho_ex_arg = layout.is_elec_sts ? work_rho_ex : nothing
+        first_dt = length(sol.t) >= 2 ? (sol.t[2] - sol.t[1]) : dt
+
         for i in 1:n_times
-            state = unpack_state_vector(sol.u[i], dimensions)
-            energy = reconstruct_energy_components(state, config;
-                teex_const = config.temperatures.Te,
-                teex_vec = teex_const_vec,
-                molecular_weights = molecular_weights,
-                species_names = species_names,
-                gas_constants = gas_constants,
-                has_electronic_sts = dimensions.has_electronic_sts,
-                has_vibrational_sts = dimensions.has_vibrational_sts,
-                energy_cache = nothing,
-                pressure_cache = nothing)
+            t = sol.t[i]
+            local_dt = i == 1 ? first_dt : (t - sol.t[i - 1])
+            ui = sol.u[i]
 
-            # Store species densities
-            species_densities[:, i] = state.rho_sp
-            total_energies[i] = energy.rho_etot
+            if is_isothermal
+                iso = _compact_isothermal_fill_fortran_y_work!(
+                    work_y, work_rho_sp, rho_ex_arg, ui, p, layout)
+                species_densities[:, i] = work_rho_sp
+                total_energies[i] = iso.rho_etot
 
-            try
-                temps = haskey(energy, :temps) ? energy.temps :
-                begin
-                    rho_ex_arg = dimensions.has_electronic_sts ? state.rho_ex : nothing
-                    rho_vx_arg = dimensions.has_vibrational_sts ? state.rho_vx : nothing
-                    calculate_temperatures_wrapper(
-                        state.rho_sp, energy.rho_etot; rho_ex = rho_ex_arg, rho_vx = rho_vx_arg,
-                        rho_eeex = energy.rho_eeex, rho_evib = state.rho_evib)
-                end
-
+                temps = iso.temps
                 temperatures_tt[i] = temps.tt
                 temperatures_te[i] = temps.teex
                 temperatures_tv[i] = temps.tvib
-            catch e
-                @warn "Temperature calculation failed at time $(time_points[i])" exception=e
-                # Use previous values or reasonable defaults
-                if i > 1
-                    temperatures_tt[i] = temperatures_tt[i - 1]
-                    temperatures_te[i] = temperatures_te[i - 1]
-                    temperatures_tv[i] = temperatures_tv[i - 1]
-                else
-                    temperatures_tt[i] = config.temperatures.Tt
-                    temperatures_te[i] = config.temperatures.Te
-                    temperatures_tv[i] = config.temperatures.Tv
+
+                if print_integration_output
+                    _print_terra_integration_output(
+                        t, local_dt, work_rho_sp, molecular_weights, temps,
+                        iso.rho_etot;
+                        rho_ex = rho_ex_arg,
+                        rho_eeex = iso.rho_eeex,
+                        rho_evib = iso.rho_evib,
+                        has_electronic_states = has_electronic_states,
+                        electronic_state_counts = electronic_state_counts)
+                end
+            else
+                _reconstruct_rho_sp_rho_ex_from_compact!(
+                    work_rho_sp, rho_ex_arg, ui, layout)
+                species_densities[:, i] = work_rho_sp
+
+                rho_etot = Float64(ui[layout.idx_etot])
+                total_energies[i] = rho_etot
+
+                temps = calculate_temperatures_wrapper(work_rho_sp, rho_etot;
+                    rho_ex = rho_ex_arg,
+                    rho_erot = layout.idx_erot == 0 ? nothing :
+                               Float64(ui[layout.idx_erot]),
+                    rho_eeex = layout.idx_eeex == 0 ? nothing :
+                               Float64(ui[layout.idx_eeex]),
+                    rho_evib = layout.idx_evib == 0 ? nothing :
+                               Float64(ui[layout.idx_evib]))
+                temperatures_tt[i] = temps.tt
+                temperatures_te[i] = temps.teex
+                temperatures_tv[i] = temps.tvib
+
+                if print_integration_output
+                    _print_terra_integration_output(
+                        t, local_dt, work_rho_sp, molecular_weights, temps,
+                        rho_etot;
+                        rho_ex = rho_ex_arg,
+                        rho_eeex = layout.idx_eeex == 0 ? nothing :
+                                   Float64(ui[layout.idx_eeex]),
+                        rho_evib = layout.idx_evib == 0 ? nothing :
+                                   Float64(ui[layout.idx_evib]),
+                        has_electronic_states = has_electronic_states,
+                        electronic_state_counts = electronic_state_counts)
                 end
             end
         end
@@ -1526,41 +1742,32 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
             total_energies_si = total_energies
         end
 
-        # Create results structure
-        temperatures = (
-            tt = temperatures_tt,
-            te = temperatures_te,
-            tv = temperatures_tv
-        )
+        temperatures = (tt = temperatures_tt, te = temperatures_te, tv = temperatures_tv)
 
-        # Robust success detection across SciMLBase versions
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
         message = success ? "ODE integration completed successfully" :
                   "ODE integration terminated: $(rc)"
 
-        @info "Results processing completed" final_time=time_points[end] success=success
-
         return TERRAResults(
             time_points,
             species_densities_si,
             temperatures,
             total_energies_si,
-            nothing,  # source_terms - could be added later
+            nothing,
             success,
             message
         )
 
     catch e
         @error "ODE integration failed" exception=e
-
-        # Return minimal results with error information
         return TERRAResults(
             [0.0],
             reshape(initial_state.rho_sp, :, 1),
             (tt = [config.temperatures.Tt], te = [config.temperatures.Te],
-                tv = [config.temperatures.Tv], tee = [config.temperatures.Te]),
+                tv = [config.temperatures.Tv],
+                tee = [config.temperatures.Te]),
             [initial_state.rho_energy],
             nothing,
             false,
@@ -1661,7 +1868,8 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
         unit_system = config.unit_system,
         validate_species_against_terra = config.validate_species_against_terra,
         print_source_terms = config.print_source_terms,
-        write_native_outputs = config.write_native_outputs
+        write_native_outputs = config.write_native_outputs,
+        print_integration_output = config.print_integration_output
     )
 
     @info "Running 0D Nitrogen Te=10eV example case"
