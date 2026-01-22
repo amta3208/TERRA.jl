@@ -3,18 +3,6 @@
     @testset "Library Loading and Status" begin
         # Test initial state - no library loaded
         @test !terra.is_terra_loaded()
-
-        # Test that getting handle fails when no library is loaded
-        @test_throws ErrorException terra.get_terra_handle()
-
-        # Test error message content
-        try
-            terra.get_terra_handle()
-            @test false  # Should not reach here
-        catch e
-            @test occursin("TERRA library not loaded", e.msg)
-            @test occursin("load_terra_library!", e.msg)
-        end
     end
 
     @testset "Library Path Setting" begin
@@ -268,11 +256,13 @@ end
 
         max_species = terra.get_max_number_of_species_wrapper()
         active_species = terra.get_number_of_active_species_wrapper()
-        name_len = terra.get_species_name_length_wrapper()
+        species_names = terra.get_species_names_wrapper()
 
         @test max_species isa Int32 && max_species > 0
         @test active_species isa Int32 && 0 < active_species <= max_species
-        @test name_len isa Int32 && name_len > 0
+        @test species_names isa Vector{String}
+        @test length(species_names) == active_species
+        @test all(!isempty, species_names)
     end
     @testset "Maximum Species Count" begin
         # Ensure library path is set

@@ -1,179 +1,115 @@
-@testset "State Vector Layout" begin
-    # Ensure Fortran-side library is loaded and initialized for dimension queries
+@testset "State Vector Layout (rhs_api)" begin
     test_case_path = joinpath(@__DIR__, "test_case")
     @test_nowarn reset_and_init!(test_case_path)
 
-    # Use canonical nitrogen config for consistent dimensions
-    config = terra.nitrogen_10ev_config()
-    dims = terra.get_state_dimensions(config)
+    layout = terra.get_api_layout()
+    @test layout.neq > 0
+    @test layout.neq ==
+          layout.n_eq_vib + layout.n_eq_elec + layout.n_eq_sp + layout.n_eq_mom +
+          layout.n_eq_energy
 
-    # Basic dimension sanity
-    @test dims.n_species == length(config.species)
-    @test prod(dims.rho_ex_size) >= 0
-    @test prod(dims.rho_vx_size) >= 0
+    nsp = layout.nsp
+    rho_sp = collect(range(1.0, length = nsp))
 
-    # Build consistent arrays and verify pack/unpack round-trip
-    rho_sp = collect(1.0:(1.0 + dims.n_species - 1))
-    rho_etot = 5.0
-    rho_ex = fill(0.1, dims.rho_ex_size)
-    rho_vx = fill(0.01, dims.rho_vx_size)
+    rho_ex = nothing
+    if layout.is_elec_sts
+        rho_ex = zeros(Float64, layout.mnex, nsp)
+        @inbounds for isp in 1:nsp
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                rho_ex[iex, isp] = 1.0e-3 * (100 * isp + iex)
+            end
+        end
+    end
 
-    u = terra.pack_state_vector(rho_sp, rho_etot, dims;
-        rho_ex = rho_ex, rho_vx = rho_vx,
-        rho_u = 0.0, rho_v = 0.0, rho_w = 0.0,
-        rho_erot = 0.0, rho_eeex = 0.0, rho_evib = 0.0)
+    rho_vx = nothing
+    if layout.n_eq_vib > 0
+        rho_vx = zeros(Float64, layout.mnv + 1, layout.mmnex, nsp)
+        @inbounds for isp in 1:nsp
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                mv_isp_iex = layout.mv[isp, iex]
+                for ivx in 0:mv_isp_iex
+                    rho_vx[ivx + 1, iex, isp] = 1.0e-6 * (10000 * isp + 100 * iex + ivx)
+                end
+            end
+        end
+    end
 
-    expected_len = dims.n_species + 1 + prod(dims.rho_ex_size) + prod(dims.rho_vx_size) + 6
-    @test length(u) == expected_len
+    rho_etot = 123.0
+    rho_eeex = layout.eex_noneq ? 7.0 : nothing
+    rho_erot = layout.rot_noneq ? 5.0 : nothing
+    rho_evib = layout.vib_noneq ? 9.0 : nothing
 
-    state = terra.unpack_state_vector(u, dims)
-    @test state.rho_sp ≈ rho_sp
-    @test state.rho_etot ≈ rho_etot
-    @test state.rho_ex ≈ rho_ex
-    @test state.rho_vx ≈ rho_vx
-    @test state.rho_u == 0.0 && state.rho_v == 0.0 && state.rho_w == 0.0
-    @test state.rho_erot == 0.0 && state.rho_eeex == 0.0 && state.rho_evib == 0.0
+    y = terra.pack_state_vector(layout, rho_sp, rho_etot;
+        rho_ex = rho_ex,
+        rho_vx = rho_vx,
+        rho_u = layout.nd >= 1 ? 0.0 : nothing,
+        rho_v = layout.nd >= 2 ? 0.0 : nothing,
+        rho_w = layout.nd >= 3 ? 0.0 : nothing,
+        rho_eeex = rho_eeex,
+        rho_erot = rho_erot,
+        rho_evib = rho_evib)
+    @test length(y) == layout.neq
 
-    # Derivative packing with and without optional arrays
-    du = zeros(length(u))
-    derivs = (
-        drho_sp = ones(dims.n_species) * 0.1,
-        drho_etot = 0.2,
-        drho_ex = nothing,
-        drho_vx = nothing,
-        drho_erot = nothing,
-        drho_eeex = nothing,
-        drho_evib = nothing
-    )
-    @test_nowarn terra.pack_derivative_vector!(du, derivs, dims)
-    @test du[1:(dims.n_species)] ≈ derivs.drho_sp
-    @test du[dims.n_species + 1] ≈ derivs.drho_etot
-
-    derivs_full = (
-        drho_sp = ones(dims.n_species) * 0.1,
-        drho_etot = 0.2,
-        drho_ex = fill(0.01, dims.rho_ex_size),
-        drho_vx = fill(0.001, dims.rho_vx_size),
-        drho_erot = 0.05,
-        drho_eeex = 0.02,
-        drho_evib = 0.03
-    )
-    @test_nowarn terra.pack_derivative_vector!(du, derivs_full, dims)
-    @test du[end - 2] ≈ 0.05
-    @test du[end - 1] ≈ 0.02
-    @test du[end] ≈ 0.03
+    st = terra.unpack_state_vector(y, layout)
+    y2 = terra.pack_state_vector(layout, st.rho_sp, st.rho_etot;
+        rho_ex = st.rho_ex,
+        rho_vx = st.rho_vx,
+        rho_u = layout.nd >= 1 ? st.rho_u : nothing,
+        rho_v = layout.nd >= 2 ? st.rho_v : nothing,
+        rho_w = layout.nd >= 3 ? st.rho_w : nothing,
+        rho_eeex = layout.eex_noneq ? st.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? st.rho_erot : nothing,
+        rho_evib = layout.vib_noneq ? st.rho_evib : nothing)
+    @test y2 ≈ y
 end
 
-@testset "RHS and Temperatures (initialized Fortran)" begin
+@testset "RHS (rhs_api)" begin
     test_case_path = joinpath(@__DIR__, "test_case")
     @test_nowarn reset_and_init!(test_case_path)
 
-    config = terra.nitrogen_10ev_config()
+    config = terra.nitrogen_10ev_config(; isothermal = false)
     state = terra.config_to_initial_state(config)
-    dims = terra.get_state_dimensions(config)
-    species = config.species
-    molecular_weights = terra.get_molecular_weights(species)
-    gas_constants = state.gas_constants
-    teex_const_vec = fill(config.temperatures.Te, dims.n_species)
-    electron_index = findfirst(==("E-"), species)
+    layout = terra.get_api_layout()
 
-    @test haskey(state, :rho_rem)
-    electron_enthalpy = electron_index === nothing ? 0.0 :
-                        state.rho_sp[electron_index] * gas_constants[electron_index] *
-                        config.temperatures.Te
-    @test isapprox(state.rho_rem, state.rho_etot - state.rho_eeex - electron_enthalpy;
-        rtol = 1e-12, atol = 0.0)
-
-    # Pack current state
-    u = terra.pack_state_vector(state.rho_sp, state.rho_etot, dims;
+    y0 = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
         rho_ex = state.rho_ex,
-        rho_eeex = state.rho_eeex,
-        rho_evib = state.rho_evib)
-    du = zeros(length(u))
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    du = zeros(length(y0))
     p = (
-        dimensions = dims,
+        layout = layout,
         config = config,
-        rho_etot0 = state.rho_etot,
-        molecular_weights = molecular_weights,
-        species = species,
-        gas_constants = gas_constants,
         teex_const = state.teex_const,
-        teex_const_vec = teex_const_vec,
-        electron_index = electron_index,
-        energy_cache = Ref(state.rho_energy),
-        pressure_cache = Ref(state.pressure)
+        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        work_y = similar(y0),
+        work_dy = similar(y0),
+        work_rho_sp = zeros(Float64, layout.nsp),
+        work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) :
+                      zeros(Float64, 0, 0)
     )
 
-    # Compute RHS; expect finite derivatives
-    @test_nowarn terra.terra_ode_system!(du, u, p, 0.0)
+    @test_nowarn terra.terra_ode_system!(du, y0, p, 0.0)
     @test all(isfinite, du)
-    @test length(du) == length(u)
-
-    # Temperature calculation at current state (charge-balanced electrons optional)
-    temps = terra.calculate_temperatures_wrapper(state.rho_sp, state.rho_etot;
-        rho_ex = state.rho_ex, rho_eeex = state.rho_eeex, rho_evib = state.rho_evib)
-    @test temps.tt > 0 && temps.teex > 0 && temps.tvib > 0
-end
-
-@testset "Isothermal TeeX Handling" begin
-    temp_case_path = mktempdir()
-    config = terra.nitrogen_10ev_config(; isothermal = true)
-    @test_nowarn reset_and_init!(temp_case_path; config = config)
-
-    state = terra.config_to_initial_state(config)
-    dims = terra.get_state_dimensions(config)
-    teex_const_vec_local = fill(config.temperatures.Te, dims.n_species)
-    species_iso = config.species
-    molecular_weights_iso = terra.get_molecular_weights(species_iso)
-    gas_constants_iso = state.gas_constants
-    electron_index_iso = findfirst(==("E-"), species_iso)
-
-    u = terra.pack_state_vector(state.rho_sp, state.rho_rem, dims;
-        rho_ex = state.rho_ex,
-        rho_eeex = state.rho_eeex,
-        rho_evib = state.rho_evib)
-    du = zeros(length(u))
-    p = (
-        dimensions = dims,
-        config = config,
-        rho_etot0 = state.rho_etot,
-        molecular_weights = molecular_weights_iso,
-        species = species_iso,
-        gas_constants = gas_constants_iso,
-        teex_const = state.teex_const,
-        teex_const_vec = teex_const_vec_local,
-        electron_index = electron_index_iso,
-        energy_cache = Ref(state.rho_energy),
-        pressure_cache = Ref(state.pressure)
-    )
-
-    @test_nowarn terra.terra_ode_system!(du, u, p, 0.0)
-    @test all(isfinite, du)
-
-    state_unpacked = terra.unpack_state_vector(u, dims)
-    energy = terra.reconstruct_energy_components(state_unpacked, config;
-        teex_const = config.temperatures.Te,
-        teex_vec = teex_const_vec_local,
-        molecular_weights = molecular_weights_iso,
-        species_names = species_iso,
-        gas_constants = gas_constants_iso,
-        has_electronic_sts = dims.has_electronic_sts,
-        has_vibrational_sts = dims.has_vibrational_sts)
-    @test isapprox(energy.rho_rem, state.rho_rem; rtol = 1e-12)
-    @test isapprox(energy.rho_eeex, state.rho_eeex; rtol = 1e-12)
-    @test isapprox(energy.rho_etot, state.rho_energy; rtol = 1e-6)
-
-    temps = terra.calculate_temperatures_wrapper(state_unpacked.rho_sp, energy.rho_etot;
-        rho_ex = state_unpacked.rho_ex,
-        rho_eeex = energy.rho_eeex,
-        rho_evib = state_unpacked.rho_evib)
-    @test isapprox(temps.teex, config.temperatures.Te; rtol = 1e-6)
+    @test length(du) == length(y0)
 end
 
 @testset "Native Output Generation" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir(cleanup = false)
-    println(temp_case_path)
     config = terra.TERRAConfig(
         species = base_config.species,
         mole_fractions = base_config.mole_fractions,
@@ -187,7 +123,8 @@ end
         unit_system = base_config.unit_system,
         validate_species_against_terra = false,
         print_source_terms = false,
-        write_native_outputs = true
+        write_native_outputs = true,
+        print_integration_output = false
     )
 
     # Fresh initialization that preserves the generated case directory
@@ -259,7 +196,8 @@ end
         case_path = temp_case_path,
         unit_system = config.unit_system,
         validate_species_against_terra = false,
-        print_source_terms = false
+        print_source_terms = false,
+        print_integration_output = false
     )
 
     # Initialize the Fortran API using a temporary case generated from this config
@@ -273,10 +211,92 @@ end
     @test all(isfinite, results.temperatures.te)
     @test all(isfinite, results.temperatures.tv)
 end
-#= //TODO: Update solution values from TERRA
-@testset "End-to-end Example (0D Adiabatic Nitrogen 10eV)" begin
-    # Run the high-level example wrapper and verify structure and success
-    results = @time terra.nitrogen_10ev_example()
+
+@testset "Integrate 0D (adiabatic)" begin
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    temp_case_path = mktempdir()
+    config = terra.TERRAConfig(
+        species = config.species,
+        mole_fractions = config.mole_fractions,
+        total_number_density = config.total_number_density,
+        temperatures = config.temperatures,
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
+        physics = config.physics,
+        processes = config.processes,
+        database_path = config.database_path,
+        case_path = temp_case_path,
+        unit_system = config.unit_system,
+        validate_species_against_terra = false,
+        print_source_terms = false,
+        print_integration_output = false
+    )
+
+    @test_nowarn reset_and_init!(temp_case_path; config = config)
+
+    initial_state = terra.config_to_initial_state(config)
+    results = @time terra.integrate_0d_system(config, initial_state)
+    @test results.time[end] > results.time[1]
+    @test size(results.species_densities, 1) == length(config.species)
+    @test all(isfinite, results.temperatures.tt)
+    @test all(isfinite, results.temperatures.te)
+    @test all(isfinite, results.temperatures.tv)
+end
+
+@testset "Integrate 0D (isothermal)" begin
+    config = terra.nitrogen_10ev_config(; isothermal = true)
+    temp_case_path = mktempdir()
+    config = terra.TERRAConfig(
+        species = config.species,
+        mole_fractions = config.mole_fractions,
+        total_number_density = config.total_number_density,
+        temperatures = config.temperatures,
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
+        physics = config.physics,
+        processes = config.processes,
+        database_path = config.database_path,
+        case_path = temp_case_path,
+        unit_system = config.unit_system,
+        validate_species_against_terra = false,
+        print_source_terms = false,
+        print_integration_output = false
+    )
+
+    @test_nowarn reset_and_init!(temp_case_path; config = config)
+
+    initial_state = terra.config_to_initial_state(config)
+    results = @time terra.integrate_0d_system(config, initial_state)
+
+    @test results.time[end] > results.time[1]
+    @test size(results.species_densities, 1) == length(config.species)
+    @test all(isfinite, results.temperatures.tt)
+    @test all(isfinite, results.temperatures.te)
+    @test maximum(abs.(results.temperatures.te .- config.temperatures.Te)) <= 1e-6
+    @test all(isfinite, results.temperatures.tv)
+end
+
+@testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    temp_case_path = mktempdir()
+    config = terra.TERRAConfig(
+        species = config.species,
+        mole_fractions = config.mole_fractions,
+        total_number_density = config.total_number_density,
+        temperatures = config.temperatures,
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-3, 500000, 2),
+        physics = config.physics,
+        processes = config.processes,
+        database_path = config.database_path,
+        case_path = temp_case_path,
+        unit_system = config.unit_system,
+        validate_species_against_terra = false,
+        print_source_terms = false,
+        print_integration_output = false
+    )
+
+    @test_nowarn reset_and_init!(temp_case_path; config = config)
+
+    initial_state = terra.config_to_initial_state(config)
+    results = @time terra.integrate_0d_system(config, initial_state)
 
     @test results.success == true
     @test length(results.time) >= 2
@@ -287,19 +307,19 @@ end
     @test terra.validate_results(results)
 
     # Approximate final temperature values (update as needed)
-    @test results.temperatures.tt[end]≈750.13 rtol=0.03
-    @test results.temperatures.tv[end]≈758.49 rtol=0.03
-    @test results.temperatures.te[end]≈2300.30 rtol=0.03
+    @test results.temperatures.tt[end]≈754.6 rtol=0.03
+    @test results.temperatures.tv[end]≈759.2 rtol=0.03
+    @test results.temperatures.te[end]≈2474.0 rtol=0.03
 
     # Approximate final species densities in CGS (update as needed)
-    @test results.species_densities[1, end]≈4.341e-14 rtol=0.05 # N
+    @test results.species_densities[1, end]≈4.182e-14 rtol=0.05 # N
     @test results.species_densities[2, end]≈4.650e-10 rtol=0.03 # N₂
-    @test results.species_densities[3, end]≈4.889e-19 rtol=0.10 # N⁺
-    @test results.species_densities[4, end]≈4.760e-14 rtol=0.05 # N₂⁺
-    @test results.species_densities[5, end]≈9.322e-19 rtol=0.05 # E⁻
+    @test results.species_densities[3, end]≈5.513e-19 rtol=0.10 # N⁺
+    @test results.species_densities[4, end]≈4.943e-14 rtol=0.05 # N₂⁺
+    @test results.species_densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
 end
 
-@testset "End-to-end Example (0D Isothermal Nitrogen 10eV)" begin
+@testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.TERRAConfig(
@@ -307,14 +327,15 @@ end
         mole_fractions = config.mole_fractions,
         total_number_density = config.total_number_density,
         temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-4, 500000, 2),
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 5e-5, 500000, 2),
         physics = config.physics,
         processes = config.processes,
         database_path = config.database_path,
         case_path = temp_case_path,
         unit_system = config.unit_system,
         validate_species_against_terra = false,
-        print_source_terms = false
+        print_source_terms = false,
+        print_integration_output = false
     )
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
@@ -331,15 +352,14 @@ end
     @test all(isfinite, results.total_energy)
 
     # Approximate final temperature values (update as needed)
-    @test results.temperatures.tt[end]≈1252.0 rtol=0.03
-    @test results.temperatures.tv[end]≈751.1 rtol=0.03
+    @test results.temperatures.tt[end]≈1782.0 rtol=0.05
+    @test results.temperatures.tv[end]≈751.6 rtol=0.01
     @test results.temperatures.te[end]≈115000.0 rtol=0.01
 
     # Approximate final species densities in CGS (update as needed)
-    @test results.species_densities[1, end]≈4.988e-11 rtol=0.03 # N
-    @test results.species_densities[2, end]≈4.107e-10 rtol=0.03 # N₂
-    @test results.species_densities[3, end]≈8.219e-13 rtol=0.10 # N⁺
-    @test results.species_densities[4, end]≈3.754e-12 rtol=0.05 # N₂⁺
-    @test results.species_densities[5, end]≈1.057e-16 rtol=0.05 # E⁻
+    @test results.species_densities[1, end]≈4.461e-11 rtol=0.03 # N
+    @test results.species_densities[2, end]≈4.100e-10 rtol=0.03 # N₂
+    @test results.species_densities[3, end]≈9.969e-13 rtol=0.10 # N⁺
+    @test results.species_densities[4, end]≈9.487e-12 rtol=0.03 # N₂⁺
+    @test results.species_densities[5, end]≈2.248e-16 rtol=0.05 # E⁻
 end
-=#

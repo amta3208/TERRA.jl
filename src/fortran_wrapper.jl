@@ -133,19 +133,120 @@ end
 """
 $(SIGNATURES)
 
-Get the handle to the loaded TERRA library.
+Get the API layout for the `y`/`dy` vectors used by the Fortran `rhs_api`.
 
-# Returns
-- `Ptr{Cvoid}`: Handle to the loaded library
-
-# Throws
-- `ErrorException`: If no library is loaded
+This calls the Fortran `get_api_layout()` routine and returns sizes, flags, and
+species/state metadata needed to construct an ODE state in the `rhs_api` ordering on the Julia side.
 """
-function get_terra_handle()
-    if TERRA_HANDLE[] == C_NULL
+function get_api_layout_wrapper()
+    if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
-    return TERRA_HANDLE[]
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
+    end
+
+    # Allocate scalar outputs
+    layout_version = Ref{Int32}(0)
+    mnsp_out = Ref{Int32}(0)
+    mnex_out = Ref{Int32}(0)
+    mmnex_out = Ref{Int32}(0)
+    mnv_out = Ref{Int32}(0)
+    mneq_out = Ref{Int32}(0)
+    nsp_out = Ref{Int32}(0)
+    nd_out = Ref{Int32}(0)
+    neq_out = Ref{Int32}(0)
+    esp_out = Ref{Int32}(0)
+    get_electron_density_by_charge_balance_out = Ref{Int32}(0)
+    eex_noneq_out = Ref{Int32}(0)
+    rot_noneq_out = Ref{Int32}(0)
+    vib_noneq_out = Ref{Int32}(0)
+    is_isothermal_out = Ref{Int32}(0)
+    is_isothermal_teex_out = Ref{Int32}(0)
+    is_elec_sts_out = Ref{Int32}(0)
+    is_vib_sts_out = Ref{Int32}(0)
+    n_eq_vib_out = Ref{Int32}(0)
+    n_eq_elec_out = Ref{Int32}(0)
+    n_eq_sp_out = Ref{Int32}(0)
+    n_eq_mom_out = Ref{Int32}(0)
+    n_eq_energy_out = Ref{Int32}(0)
+
+    # Allocate array outputs using library maxima
+    max_species = Int(get_max_number_of_species_wrapper())
+    max_atomic_electronic_states = Int(get_max_number_of_atomic_electronic_states_wrapper())
+    max_molecular_electronic_states = Int(get_max_number_of_molecular_electronic_states_wrapper())
+
+    ih_full = zeros(Int32, max_species)
+    ie_full = zeros(Int32, max_species)
+    ies_full = zeros(Int32, max_species)
+    mex_full = zeros(Int32, max_species)
+    ivs_full = zeros(Int32, max_atomic_electronic_states, max_species)
+    mv_full = zeros(Int32, max_species, max_molecular_electronic_states)
+    spwt_full = zeros(Float64, max_species)
+
+    ccall((:get_api_layout, get_terra_lib_path()), Cvoid,
+        (Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+            Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+            Ref{Int32},
+            Ref{Int32}, Ref{Int32}, Ref{Int32},
+            Ref{Int32}, Ref{Int32},
+            Ref{Int32}, Ref{Int32},
+            Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+            Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Float64}),
+        layout_version, mnsp_out, mnex_out, mmnex_out, mnv_out, mneq_out,
+        nsp_out, nd_out, neq_out, esp_out,
+        get_electron_density_by_charge_balance_out,
+        eex_noneq_out, rot_noneq_out, vib_noneq_out,
+        is_isothermal_out, is_isothermal_teex_out,
+        is_elec_sts_out, is_vib_sts_out,
+        n_eq_vib_out, n_eq_elec_out, n_eq_sp_out, n_eq_mom_out, n_eq_energy_out,
+        ih_full, ie_full, ies_full, mex_full, ivs_full, mv_full, spwt_full)
+
+    if layout_version[] == 0
+        error("get_api_layout() returned layout_version=0 (Fortran API not initialized). Call initialize_api_wrapper() first.")
+    end
+
+    nsp = Int(nsp_out[])
+    ih = copy(@view ih_full[1:nsp])
+    ie = copy(@view ie_full[1:nsp])
+    ies = copy(@view ies_full[1:nsp])
+    mex = copy(@view mex_full[1:nsp])
+    ivs = copy(@view ivs_full[:, 1:nsp])
+    mv = copy(@view mv_full[1:nsp, :])
+    spwt = copy(@view spwt_full[1:nsp])
+
+    return (
+        layout_version = Int(layout_version[]),
+        mnsp = Int(mnsp_out[]),
+        mnex = Int(mnex_out[]),
+        mmnex = Int(mmnex_out[]),
+        mnv = Int(mnv_out[]),
+        mneq = Int(mneq_out[]),
+        nsp = nsp,
+        nd = Int(nd_out[]),
+        neq = Int(neq_out[]),
+        esp = Int(esp_out[]),
+        get_electron_density_by_charge_balance = Int(get_electron_density_by_charge_balance_out[]),
+        eex_noneq = Int(eex_noneq_out[]),
+        rot_noneq = Int(rot_noneq_out[]),
+        vib_noneq = Int(vib_noneq_out[]),
+        is_isothermal = Int(is_isothermal_out[]),
+        is_isothermal_teex = Int(is_isothermal_teex_out[]),
+        is_elec_sts = Int(is_elec_sts_out[]),
+        is_vib_sts = Int(is_vib_sts_out[]),
+        n_eq_vib = Int(n_eq_vib_out[]),
+        n_eq_elec = Int(n_eq_elec_out[]),
+        n_eq_sp = Int(n_eq_sp_out[]),
+        n_eq_mom = Int(n_eq_mom_out[]),
+        n_eq_energy = Int(n_eq_energy_out[]),
+        ih = ih,
+        ie = ie,
+        ies = ies,
+        mex = mex,
+        ivs = ivs,
+        mv = mv,
+        spwt = spwt
+    )
 end
 
 """
@@ -336,20 +437,6 @@ end
 """
 $(SIGNATURES)
 
-Control whether the Fortran interface emits additional debug prints.
-"""
-function set_api_debug_wrapper(enable::Bool)
-    if !is_terra_loaded()
-        return nothing
-    end
-    flag = enable ? Int32(1) : Int32(0)
-    ccall((:set_api_debug, get_terra_lib_path()), Cvoid, (Int32,), flag)
-    return nothing
-end
-
-"""
-$(SIGNATURES)
-
 Get the maximum number of species supported by TERRA.
 
 # Returns
@@ -499,21 +586,6 @@ end
 """
 $(SIGNATURES)
 
-Get the fixed species-name length (`nmlen`) used by the Fortran API.
-
-# Returns
-- `Int32`: Name buffer length per species
-"""
-function get_species_name_length_wrapper()
-    if !is_terra_loaded()
-        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
-    end
-    return ccall((:get_species_name_length, get_terra_lib_path()), Int32, ())
-end
-
-"""
-$(SIGNATURES)
-
 Get species names from TERRA.
 
 # Returns
@@ -530,7 +602,7 @@ function get_species_names_wrapper()
     # Query dimensions from Fortran
     max_species = get_max_number_of_species_wrapper()
     active_species = get_number_of_active_species_wrapper()
-    name_length = get_species_name_length_wrapper()
+    name_length = ccall((:get_species_name_length, get_terra_lib_path()), Int32, ())
 
     # Allocate buffer for species names (exact size expected by Fortran)
     names_buffer = zeros(UInt8, name_length * max_species)
@@ -1542,9 +1614,8 @@ end
 """
 $(SIGNATURES)
 
-Write a snapshot of the current API state to the native TERRA output files.
-
-The state vector must match the layout expected by the TERRA API (packed conservative variables).
+Write a snapshot of the current API state to the native TERRA output files, using
+the `y` layout expected by `rhs_api`.
 """
 function write_api_outputs_wrapper(istep::Integer, time::Real, dt::Real,
         state::AbstractVector{<:Real}; dist::Real = 0.0, dx::Real = 0.0)
@@ -1603,6 +1674,156 @@ function close_api_output_files_wrapper()
         error("Failed to close TERRA output files: $(e)")
     finally
         TERRA_OUTPUTS_OPEN[] = false
+    end
+
+    return nothing
+end
+
+"""
+$(SIGNATURES)
+
+Compute `dy = rhs_api(y)` for a `y` vector using the `rhs_api` layout.
+
+`y` and `dy` must use the ordering returned by `get_api_layout_wrapper()`.
+"""
+function calculate_rhs_api_wrapper!(dy::Vector{Float64}, y::Vector{Float64})
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
+    end
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
+    end
+    if length(dy) != length(y)
+        throw(ArgumentError("dy length ($(length(dy))) must match y length ($(length(y)))."))
+    end
+
+    neq32 = Int32(length(y))
+    GC.@preserve y dy begin
+        y_ptr = Base.unsafe_convert(Ptr{Float64}, y)
+        dy_ptr = Base.unsafe_convert(Ptr{Float64}, dy)
+        ccall((:calculate_rhs_api, get_terra_lib_path()), Cvoid,
+            (Int32, Ptr{Float64}, Ptr{Float64}),
+            neq32, y_ptr, dy_ptr)
+    end
+
+    return nothing
+end
+
+"""
+$(SIGNATURES)
+
+Convert total enthalpy density to total energy density for 0D isothermal Teex cases.
+
+This calls the Fortran API routine `energy_from_enthalpy_isothermal_teex_api`, which performs
+the closed-form enthalpy→energy inversion used by the isothermal Teex API RHS.
+
+# Returns
+- Named tuple with `rho_etot`, `pressure`, and `tt` (all CGS units; `tt` in K).
+"""
+function energy_from_enthalpy_isothermal_teex_wrapper(rho_enth::Float64,
+        rho_sp::Vector{Float64},
+        teex_const::Float64;
+        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+        rho_erot::Float64 = 0.0,
+        rho_eeex::Float64 = 0.0,
+        rho_evib::Float64 = 0.0)
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
+    end
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
+    end
+    if !isfinite(rho_enth)
+        throw(ArgumentError("rho_enth must be finite (got $rho_enth)."))
+    end
+    if any(rho_sp .< 0)
+        throw(ArgumentError("rho_sp contains negative densities."))
+    end
+    if !isfinite(teex_const) || teex_const <= 0.0
+        throw(ArgumentError("teex_const must be finite and positive (got $teex_const)."))
+    end
+
+    # Fortran expects rho_sp of length mnsp
+    max_species = get_max_number_of_species_wrapper()
+    nsp = length(rho_sp)
+    if nsp > max_species
+        throw(ArgumentError("rho_sp length ($nsp) exceeds library maximum species ($max_species)."))
+    end
+    rho_sp_full = zeros(Float64, max_species)
+    @inbounds rho_sp_full[1:nsp] .= rho_sp
+
+    # Optional rho_ex padded to [mnex, mnsp]
+    rho_ex_full = nothing
+    if rho_ex !== nothing
+        max_atomic_electronic_states = get_max_number_of_atomic_electronic_states_wrapper()
+        if size(rho_ex, 1) > max_atomic_electronic_states || size(rho_ex, 2) > max_species
+            throw(ArgumentError("rho_ex size $(size(rho_ex)) exceeds library maxima ($(max_atomic_electronic_states), $(max_species))."))
+        end
+        rho_ex_full = zeros(Float64, max_atomic_electronic_states, max_species)
+        m1 = min(size(rho_ex, 1), max_atomic_electronic_states)
+        m2 = min(size(rho_ex, 2), max_species)
+        @inbounds (rho_ex_full::Matrix{Float64})[1:m1, 1:m2] .= rho_ex[1:m1, 1:m2]
+    end
+
+    rho_etot = Ref{Float64}(0.0)
+    pres = Ref{Float64}(0.0)
+    tt = Ref{Float64}(0.0)
+
+    GC.@preserve rho_sp_full rho_ex_full begin
+        rho_ex_ptr = rho_ex_full === nothing ? C_NULL :
+                     Ptr{Cvoid}(Base.unsafe_convert(Ptr{Float64}, rho_ex_full))
+
+        ccall((:energy_from_enthalpy_isothermal_teex_api, get_terra_lib_path()), Cvoid,
+            (Float64, Ptr{Float64}, Ptr{Cvoid}, Float64, Float64, Float64, Float64,
+                Ref{Float64}, Ref{Float64}, Ref{Float64}),
+            rho_enth, rho_sp_full, rho_ex_ptr,
+            rho_erot, rho_eeex, rho_evib, teex_const,
+            rho_etot, pres, tt)
+    end
+
+    return (rho_etot = rho_etot[], pressure = pres[], tt = tt[])
+end
+
+"""
+$(SIGNATURES)
+
+Compute `du = rhs_api(u)` for a `u` vector in isothermal Teex mode, using the `rhs_api` layout.
+
+This calls the Fortran API routine `calculate_rhs_api_isothermal_teex`, which expects:
+- Ordering from `get_api_layout_wrapper()`
+- `u[idx_etot]` stores the legacy enthalpy remainder `rho_rem`
+- `u[idx_eeex]` is treated as a dummy; `du[idx_eeex]` is forced to zero
+
+Optional inputs:
+- `tex`: per-species electronic temperatures passed to the Tvib inversion (length `nsp`)
+"""
+function calculate_rhs_api_isothermal_teex_wrapper!(du::Vector{Float64}, u::Vector{Float64},
+        teex_const::Float64;
+        tex = nothing)
+    if !is_terra_loaded()
+        error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
+    end
+    if !TERRA_INITIALIZED[]
+        error("TERRA not initialized. Call initialize_api_wrapper() first.")
+    end
+    if length(du) != length(u)
+        throw(ArgumentError("du length ($(length(du))) must match u length ($(length(u)))."))
+    end
+    if !isfinite(teex_const) || teex_const <= 0.0
+        throw(ArgumentError("teex_const must be finite and positive (got $teex_const)."))
+    end
+
+    neq32 = Int32(length(u))
+
+    GC.@preserve u du tex begin
+        u_ptr = Base.unsafe_convert(Ptr{Float64}, u)
+        du_ptr = Base.unsafe_convert(Ptr{Float64}, du)
+        tex_ptr = tex === nothing ? C_NULL :
+                  Ptr{Cvoid}(Base.unsafe_convert(Ptr{Float64}, tex))
+
+        ccall((:calculate_rhs_api_isothermal_teex, get_terra_lib_path()), Cvoid,
+            (Int32, Ptr{Float64}, Ptr{Float64}, Float64, Ptr{Cvoid}, Ptr{Cvoid}),
+            neq32, u_ptr, du_ptr, teex_const, C_NULL, tex_ptr)
     end
 
     return nothing

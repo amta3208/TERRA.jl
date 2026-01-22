@@ -1,7 +1,7 @@
 name = "TERRA"
 uuid = "8a405caf-3569-4c97-876d-2cf871ca8799"
 authors = ["Amin Taziny"]
-version = "0.6.0"
+version = "0.7.0"
 
 [deps]
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"

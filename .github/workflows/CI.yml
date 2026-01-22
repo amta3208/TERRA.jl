@@ -20,7 +20,7 @@ jobs:
       actions: write
       contents: read
     env:
-      TERRA_BINARY_VERSION: v0.2.0
+      TERRA_BINARY_VERSION: v0.3.0
     strategy:
       fail-fast: false
       matrix:
