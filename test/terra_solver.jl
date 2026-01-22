@@ -319,7 +319,7 @@ end
     @test results.species_densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
 end
 
-@testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 10us]" begin
+@testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.TERRAConfig(
@@ -327,7 +327,7 @@ end
         mole_fractions = config.mole_fractions,
         total_number_density = config.total_number_density,
         temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-5, 500000, 2),
+        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 5e-5, 500000, 2),
         physics = config.physics,
         processes = config.processes,
         database_path = config.database_path,
@@ -352,14 +352,14 @@ end
     @test all(isfinite, results.total_energy)
 
     # Approximate final temperature values (update as needed)
-    @test results.temperatures.tt[end]≈756.0 rtol=0.03
-    @test results.temperatures.tv[end]≈750.0 rtol=0.01
+    @test results.temperatures.tt[end]≈1782.0 rtol=0.05
+    @test results.temperatures.tv[end]≈751.6 rtol=0.01
     @test results.temperatures.te[end]≈115000.0 rtol=0.01
 
     # Approximate final species densities in CGS (update as needed)
-    @test results.species_densities[1, end]≈4.236e-13 rtol=0.03 # N
-    @test results.species_densities[2, end]≈4.646e-10 rtol=0.03 # N₂
-    @test results.species_densities[3, end]≈4.811e-17 rtol=0.10 # N⁺
-    @test results.species_densities[4, end]≈1.083e-13 rtol=0.05 # N₂⁺
-    @test results.species_densities[5, end]≈2.123e-18 rtol=0.05 # E⁻
+    @test results.species_densities[1, end]≈4.461e-11 rtol=0.03 # N
+    @test results.species_densities[2, end]≈4.100e-10 rtol=0.03 # N₂
+    @test results.species_densities[3, end]≈9.969e-13 rtol=0.10 # N⁺
+    @test results.species_densities[4, end]≈9.487e-12 rtol=0.03 # N₂⁺
+    @test results.species_densities[5, end]≈2.248e-16 rtol=0.05 # E⁻
 end
