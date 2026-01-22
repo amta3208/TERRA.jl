@@ -9,10 +9,6 @@ a clean, Julia-native API.
 # Debug: RHS call counter
 const _TERRA_ODE_DBG_CALLS = Ref(0)
 
-const ENERGY_FROM_ENTHALPY_MAX_ITERS = 11
-const ENERGY_FROM_ENTHALPY_RTOL = 1e-10
-const ENERGY_FROM_ENTHALPY_ATOL = 1e-8
-
 """
 Compact API layout information for the Fortran `rhs_api` / `calculate_rhs_api` state vectors.
 
@@ -873,212 +869,6 @@ function enthalpy_from_energy(rho_etot::Float64, rho_sp::AbstractVector{<:Real},
     return rho_etot + pressure, pressure
 end
 
-"""
-$(SIGNATURES)
-
-Recover the total energy density from enthalpy by iteratively updating pressure.
-
-# Arguments
-- `rho_enth::Float64`: Target enthalpy density (CGS units)
-- `rho_sp::AbstractVector{<:Real}`: Species mass densities
-- `rho_ex`: Optional electronic-state populations used when electronic STS is active
-- `rho_vx`: Optional vibrational-state populations used when vibrational STS is active
-- `rho_erot`: Optional rotational-mode energy density
-- `rho_eeex`: Optional electron-electronic energy density
-- `rho_evib`: Optional vibrational-mode energy density
-- `gas_constants::AbstractVector{<:Real}`: Species-specific gas constants
-- `molecular_weights::AbstractVector{<:Real}`: Species molecular weights
-- `species_names::AbstractVector{<:AbstractString}`: Species identifiers used for electron detection
-- `energy_guess::Float64`: Initial guess for the total energy density
-- `teex_override::Union{Nothing, Float64}`: Optional enforced electron temperature for pressure evaluation
-
-# Returns
-- Named tuple containing `rho_etot`, `pressure`, `temps`, and `teex`
-"""
-function energy_from_enthalpy(rho_enth::Float64, rho_sp::AbstractVector{<:Real};
-        rho_ex::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
-        rho_vx::Union{Nothing, Array{<:Real, 3}} = nothing,
-        rho_erot::Union{Nothing, Real} = nothing,
-        rho_eeex::Union{Nothing, Real} = nothing,
-        rho_evib::Union{Nothing, Real} = nothing,
-        gas_constants::AbstractVector{<:Real},
-        molecular_weights::AbstractVector{<:Real},
-        species_names::AbstractVector{<:AbstractString},
-        energy_guess::Float64,
-        teex_override::Union{Nothing, Float64} = nothing)
-    energy = max(energy_guess, 0.0)
-    temps = nothing
-    pressure = 0.0
-
-    for iter in 1:ENERGY_FROM_ENTHALPY_MAX_ITERS
-        energy = max(energy, 0.0)
-        temps = calculate_temperatures_wrapper(rho_sp, energy;
-            rho_ex = rho_ex,
-            rho_vx = rho_vx,
-            rho_erot = rho_erot,
-            rho_eeex = rho_eeex,
-            rho_evib = rho_evib)
-
-        te_used = teex_override === nothing ? temps.teex : teex_override
-        pressure = compute_mixture_pressure(
-            rho_sp, gas_constants, species_names, molecular_weights,
-            temps.tt, te_used)
-        new_energy = rho_enth - pressure
-        if !isfinite(new_energy)
-            error("Encountered non-finite energy while converting enthalpy to energy.")
-        end
-
-        tol = max(abs(energy), abs(new_energy), 1.0) * ENERGY_FROM_ENTHALPY_RTOL +
-              ENERGY_FROM_ENTHALPY_ATOL
-        if abs(new_energy - energy) ≤ tol
-            energy = new_energy
-            break
-        end
-
-        energy = 0.5 * (energy + new_energy)
-    end
-
-    temps = calculate_temperatures_wrapper(rho_sp, energy;
-        rho_ex = rho_ex,
-        rho_vx = rho_vx,
-        rho_erot = rho_erot,
-        rho_eeex = rho_eeex,
-        rho_evib = rho_evib)
-    te_used = teex_override === nothing ? temps.teex : teex_override
-    pressure = compute_mixture_pressure(
-        rho_sp, gas_constants, species_names, molecular_weights,
-        temps.tt, te_used)
-
-    return (rho_etot = energy, pressure = pressure, temps = temps, teex = te_used)
-end
-
-"""
-$(SIGNATURES)
-
-Reconstruct energy components based on configuration flags.
-
-When the isothermal electron-electronic mode is enabled, the energy slot stored
-in the state vector holds the remainder energy (`rho_rem`). This helper
-recomputes the electron-electronic energy from the prescribed `Tee`, rebuilds
-the total energy, and returns all relevant pieces for downstream use. When the
-mode is disabled, it simply returns the existing state components.
-
-# Arguments
-- `state`: Unpacked state tuple produced by `unpack_state_vector`
-- `config::TERRAConfig`: Simulation configuration controlling physics toggles
-- `teex_const::Float64`: Keyword override for the uniform electron temperature
-- `teex_vec::Union{Nothing, AbstractVector{<:Real}}`: Optional per-species electron temperatures
-- `molecular_weights::AbstractVector{<:Real}`: Species molecular weights
-- `species_names::AbstractVector{<:AbstractString}`: Species identifiers
-- `gas_constants::AbstractVector{<:Real}`: Species-specific gas constants
-- `has_electronic_sts::Bool`: Indicates whether electronic STS data are present
-- `has_vibrational_sts::Bool`: Indicates whether vibrational STS data are present
-- `energy_cache::Union{Nothing, Ref{Float64}}`: Optional cache storing the last energy estimate
-- `pressure_cache::Union{Nothing, Ref{Float64}}`: Optional cache storing the last pressure
-
-# Returns
-- Named tuple containing `rho_etot`, `rho_eeex`, `rho_rem`, `tvib`, `temps`, and `pressure`
-"""
-function reconstruct_energy_components(state, config;
-        teex_const::Float64 = config.temperatures.Te,
-        teex_vec::Union{Nothing, AbstractVector{<:Real}} = nothing,
-        molecular_weights::AbstractVector{<:Real},
-        species_names::AbstractVector{<:AbstractString},
-        gas_constants::AbstractVector{<:Real},
-        has_electronic_sts::Bool,
-        has_vibrational_sts::Bool,
-        energy_cache::Union{Nothing, Ref{Float64}} = nothing,
-        pressure_cache::Union{Nothing, Ref{Float64}} = nothing)
-    is_isothermal = config.physics.is_isothermal_teex
-
-    if !is_isothermal
-        energy_guess = energy_cache === nothing ? state.rho_etot : energy_cache[]
-        rho_ex_arg = has_electronic_sts ? state.rho_ex : nothing
-        rho_vx_arg = has_vibrational_sts ? state.rho_vx : nothing
-        result = energy_from_enthalpy(state.rho_etot, state.rho_sp;
-            rho_ex = rho_ex_arg,
-            rho_vx = rho_vx_arg,
-            rho_erot = state.rho_erot,
-            rho_eeex = state.rho_eeex,
-            rho_evib = state.rho_evib,
-            gas_constants = gas_constants,
-            molecular_weights = molecular_weights,
-            species_names = species_names,
-            energy_guess = energy_guess)
-
-        if energy_cache !== nothing
-            energy_cache[] = result.rho_etot
-        end
-        if pressure_cache !== nothing
-            pressure_cache[] = result.pressure
-        end
-
-        rho_eeex = state.rho_eeex
-        electron_idx = findfirst(
-            i -> _is_electron_species(species_names[i], molecular_weights[i]),
-            eachindex(species_names))
-        electron_enthalpy = electron_idx === nothing ? 0.0 :
-                            state.rho_sp[electron_idx] * gas_constants[electron_idx] *
-                            result.teex
-        rho_rem = result.rho_etot - rho_eeex - electron_enthalpy
-
-        return (rho_etot = result.rho_etot,
-            rho_eeex = rho_eeex,
-            rho_rem = rho_rem,
-            tvib = result.temps.tvib,
-            temps = result.temps,
-            pressure = result.pressure)
-    end
-
-    rho_rem = state.rho_etot
-    rho_sp = state.rho_sp
-
-    teex_kw = teex_vec === nothing ? nothing : teex_vec
-
-    tvib = calculate_vibrational_temperature_wrapper(
-        state.rho_evib, rho_sp;
-        rho_ex = state.rho_ex,
-        tex = teex_kw)
-
-    rho_eeex = calculate_electron_electronic_energy_wrapper(teex_const, tvib, rho_sp)
-    electron_idx = findfirst(
-        i -> _is_electron_species(species_names[i], molecular_weights[i]),
-        eachindex(species_names))
-    electron_enthalpy = electron_idx === nothing ? 0.0 :
-                        rho_sp[electron_idx] * gas_constants[electron_idx] * teex_const
-
-    rho_enthalpy_total = rho_rem + rho_eeex + electron_enthalpy
-    rho_ex_arg = has_electronic_sts ? state.rho_ex : nothing
-    rho_vx_arg = has_vibrational_sts ? state.rho_vx : nothing
-    energy_guess = energy_cache === nothing ? rho_enthalpy_total : energy_cache[]
-
-    result = energy_from_enthalpy(rho_enthalpy_total, rho_sp;
-        rho_ex = rho_ex_arg,
-        rho_vx = rho_vx_arg,
-        rho_erot = state.rho_erot,
-        rho_eeex = rho_eeex,
-        rho_evib = state.rho_evib,
-        gas_constants = gas_constants,
-        molecular_weights = molecular_weights,
-        species_names = species_names,
-        energy_guess = energy_guess,
-        teex_override = teex_const)
-
-    if energy_cache !== nothing
-        energy_cache[] = result.rho_etot
-    end
-    if pressure_cache !== nothing
-        pressure_cache[] = result.pressure
-    end
-
-    return (rho_etot = result.rho_etot,
-        rho_eeex = rho_eeex,
-        rho_rem = rho_rem,
-        tvib = result.temps.tvib,
-        temps = result.temps,
-        pressure = result.pressure)
-end
-
 @inline function _compact_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
     if any(@view(u[layout.vib_range]) .< 0.0)
         return false
@@ -1296,38 +1086,32 @@ function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
 
     rho_rem = u[layout.idx_etot]
     rho_enthalpy_total = rho_rem + rho_eeex_eff + electron_enthalpy
-    energy_guess = hasproperty(p, :energy_cache) ? p.energy_cache[] :
-                   max(rho_enthalpy_total, 0.0)
-    result = energy_from_enthalpy(rho_enthalpy_total, rho_sp;
+    rho_erot = layout.idx_erot == 0 ? 0.0 : Float64(u[layout.idx_erot])
+    conversion = energy_from_enthalpy_isothermal_teex_wrapper(rho_enthalpy_total, rho_sp, teex_const;
         rho_ex = rho_ex,
-        rho_vx = nothing,
-        rho_erot = layout.idx_erot == 0 ? nothing : u[layout.idx_erot],
         rho_eeex = rho_eeex_eff,
-        rho_evib = rho_evib,
-        gas_constants = p.gas_constants,
-        molecular_weights = p.molecular_weights,
-        species_names = p.species,
-        energy_guess = energy_guess,
-        teex_override = teex_const)
-    if hasproperty(p, :energy_cache)
-        p.energy_cache[] = result.rho_etot
-    end
-    if hasproperty(p, :pressure_cache)
-        p.pressure_cache[] = result.pressure
-    end
+        rho_erot = rho_erot,
+        rho_evib = rho_evib)
+    rho_etot = conversion.rho_etot
 
     copyto!(y_work, u)
     y_work[layout.idx_eeex] = rho_eeex_eff
-    y_work[layout.idx_etot] = result.rho_etot
+    y_work[layout.idx_etot] = rho_etot
+
+    temps_raw = calculate_temperatures_wrapper(rho_sp, rho_etot;
+        rho_ex = rho_ex,
+        rho_erot = layout.idx_erot == 0 ? nothing : rho_erot,
+        rho_eeex = rho_eeex_eff,
+        rho_evib = rho_evib)
+    temps = (; temps_raw..., teex = teex_const)
 
     return (
         teex_const = teex_const,
-        gas_const_e = gas_const_e,
         rho_eeex = rho_eeex_eff,
         rho_evib = rho_evib,
-        temps = result.temps,
-        rho_etot = result.rho_etot,
-        pressure = result.pressure
+        temps = temps,
+        rho_etot = rho_etot,
+        pressure = conversion.pressure
     )
 end
 
@@ -1370,11 +1154,9 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
         error("Isothermal Teex requires a config in the parameter tuple.")
     end
     teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
-    energy_cache = hasproperty(p, :energy_cache) ? p.energy_cache : nothing
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
 
     calculate_rhs_api_isothermal_teex_wrapper!(du, u, teex_const;
-        energy_cache = energy_cache,
         tex = teex_vec)
 
     return nothing
@@ -1570,9 +1352,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
         species = species_names,
         gas_constants = gas_constants,
         teex_const = initial_state.teex_const,
-        teex_const_vec = teex_const_vec,
-        energy_cache = Ref(initial_state.rho_energy),
-        pressure_cache = Ref(initial_state.pressure)
+        teex_const_vec = teex_const_vec
     )
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
