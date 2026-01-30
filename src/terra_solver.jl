@@ -710,6 +710,235 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
     )
 end
 
+"""
+$(SIGNATURES)
+
+Residence-time (CSTR / flow-through) configuration for the 0D ODE system.
+
+This adds wrapper-side inflow/outflow exchange terms to the ODE:
+
+- Neutral continuity entries: `du[i] += (u_in[i] - u[i]) / τ_neutral`
+- Ion continuity entries:     `du[i] += (u_in[i] - u[i]) / τ_ion`
+- Energy entries:             `du[i] += (u_in[i] - u[i]) / τ_energy`
+
+Residence times are parameterized as `τ = L / U` (so `1/τ = U/L`).
+
+Notes:
+- By default, the inlet state is hardwired to the initial condition (`u_in == u0`).
+- To prescribe a different inlet, set `inlet_config` (must use the same species ordering).
+- By default, the energy exchange velocity uses a mass-weighted mixture value based on the inlet
+  heavy-species density split:
+  `U_energy = (ρ_n U_neutral + ρ_i U_ion) / (ρ_n + ρ_i)`, where `ρ_n` and `ρ_i` are inlet neutral and
+  ion mass densities (excluding electrons).
+- In isothermal-Teex mode, the `rho_eeex` slot is treated as a dummy and is not modified
+  by the residence-time term.
+"""
+struct ResidenceTimeConfig
+    L::Float64
+    U_neutral::Float64
+    U_ion::Float64
+    U_energy::Union{Nothing, Float64}
+    inlet_config::Union{Nothing, TERRAConfig}
+
+    function ResidenceTimeConfig(L, U_neutral, U_ion, U_energy = nothing, inlet_config = nothing)
+        if !isfinite(L) || L <= 0
+            error("ResidenceTimeConfig: L must be finite and positive (got $L).")
+        end
+        if !isfinite(U_neutral) || U_neutral <= 0
+            error("ResidenceTimeConfig: U_neutral must be finite and positive (got $U_neutral).")
+        end
+        if !isfinite(U_ion) || U_ion <= 0
+            error("ResidenceTimeConfig: U_ion must be finite and positive (got $U_ion).")
+        end
+        if U_energy !== nothing
+            if !isfinite(U_energy) || U_energy <= 0
+                error("ResidenceTimeConfig: U_energy must be finite and positive (got $U_energy).")
+            end
+        end
+        return new(Float64(L), Float64(U_neutral), Float64(U_ion),
+            U_energy === nothing ? nothing : Float64(U_energy), inlet_config)
+    end
+end
+
+function ResidenceTimeConfig(;
+        L, U_neutral, U_ion, U_energy = nothing,
+        inlet_config::Union{Nothing, TERRAConfig} = nothing)
+    return ResidenceTimeConfig(L, U_neutral, U_ion, U_energy, inlet_config)
+end
+
+function _build_residence_time_continuity_indices(layout::ApiLayout)
+    neutral_indices = Int[]
+    ion_indices = Int[]
+
+    idx = 1
+
+    # Vibrational STS entries (if any)
+    if layout.n_eq_vib > 0
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                mv_isp_iex = layout.mv[isp, iex]
+                for _ivx in 0:mv_isp_iex
+                    if isp != layout.esp
+                        if layout.ie[isp] == 0
+                            push!(neutral_indices, idx)
+                        else
+                            push!(ion_indices, idx)
+                        end
+                    end
+                    idx += 1
+                end
+            end
+        end
+    end
+
+    # Electronic STS entries
+    if layout.is_elec_sts
+        @inbounds for isp in 1:(layout.nsp)
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                if isp != layout.esp
+                    if layout.ie[isp] == 0
+                        push!(neutral_indices, idx)
+                    else
+                        push!(ion_indices, idx)
+                    end
+                end
+                idx += 1
+            end
+        end
+    end
+
+    # Species-density entries for non-electronic-specific species (except charge-balanced electrons)
+    @inbounds for isp in 1:(layout.nsp)
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        # Ignore explicit electrons for now (when charge balance is off).
+        if isp != layout.esp
+            if layout.ie[isp] == 0
+                push!(neutral_indices, idx)
+            else
+                push!(ion_indices, idx)
+            end
+        end
+        idx += 1
+    end
+
+    @assert idx==layout.mom_range.start "Internal error: continuity index mismatch while building residence-time indices"
+
+    return (neutral_indices = neutral_indices, ion_indices = ion_indices)
+end
+
+function _build_residence_time_energy_indices(layout::ApiLayout, is_isothermal_teex::Bool)
+    indices = collect(layout.energy_range)
+    if is_isothermal_teex && layout.idx_eeex != 0
+        filter!(i -> i != layout.idx_eeex, indices)
+    end
+    return indices
+end
+
+@inline function _apply_residence_time_term!(du::Vector{Float64}, u::Vector{Float64}, rt)
+    if rt === nothing
+        return nothing
+    end
+    u_in = rt.u_in
+    @inbounds for i in rt.neutral_indices
+        du[i] += (u_in[i] - u[i]) * rt.inv_tau_neutral
+    end
+    @inbounds for i in rt.ion_indices
+        du[i] += (u_in[i] - u[i]) * rt.inv_tau_ion
+    end
+    @inbounds for i in rt.energy_indices
+        du[i] += (u_in[i] - u[i]) * rt.inv_tau_energy
+    end
+    return nothing
+end
+
+function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
+        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
+    inv_tau_neutral = rt_cfg.U_neutral / rt_cfg.L
+    inv_tau_ion = rt_cfg.U_ion / rt_cfg.L
+
+    continuity = _build_residence_time_continuity_indices(layout)
+    neutral_indices = continuity.neutral_indices
+    ion_indices = continuity.ion_indices
+    energy_indices = _build_residence_time_energy_indices(
+        layout, config.physics.is_isothermal_teex)
+
+    u_in = if rt_cfg.inlet_config === nothing
+        copy(u0)
+    else
+        inlet_config = rt_cfg.inlet_config
+        if inlet_config.species != config.species
+            error("ResidenceTimeConfig inlet_config species must match the initialized TERRA species ordering.")
+        end
+        if inlet_config.physics.is_isothermal_teex != config.physics.is_isothermal_teex
+            error("ResidenceTimeConfig inlet_config isothermal_teex flag must match the simulation config.")
+        end
+
+        inlet_state = config_to_initial_state(inlet_config)
+        energy_scalar_in = config.physics.is_isothermal_teex ? inlet_state.rho_rem :
+                           inlet_state.rho_energy
+        rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing
+        rho_eeex_in = layout.eex_noneq ? inlet_state.rho_eeex : nothing
+        rho_erot_in = layout.rot_noneq ? 0.0 : nothing
+        rho_evib_in = layout.vib_noneq ? inlet_state.rho_evib : nothing
+
+        pack_state_vector(layout, inlet_state.rho_sp, energy_scalar_in;
+            rho_ex = rho_ex_in,
+            rho_u = layout.nd >= 1 ? 0.0 : nothing,
+            rho_v = layout.nd >= 2 ? 0.0 : nothing,
+            rho_w = layout.nd >= 3 ? 0.0 : nothing,
+            rho_eeex = rho_eeex_in,
+            rho_erot = rho_erot_in,
+            rho_evib = rho_evib_in)
+    end
+
+    U_energy = if rt_cfg.U_energy === nothing
+        rho_n = 0.0
+        @inbounds for i in neutral_indices
+            rho_n += u_in[i]
+        end
+        rho_i = 0.0
+        @inbounds for i in ion_indices
+            rho_i += u_in[i]
+        end
+        rho_total = rho_n + rho_i
+        if !(rho_total > 0.0) || !isfinite(rho_total)
+            error("ResidenceTimeConfig: cannot infer U_energy from inlet state (rho_n+rho_i=$rho_total).")
+        end
+        (rho_n * rt_cfg.U_neutral + rho_i * rt_cfg.U_ion) / rho_total
+    else
+        rt_cfg.U_energy
+    end
+
+    inv_tau_energy = U_energy / rt_cfg.L
+
+    return (
+        u_in = u_in,
+        neutral_indices = neutral_indices,
+        ion_indices = ion_indices,
+        energy_indices = energy_indices,
+        inv_tau_neutral = inv_tau_neutral,
+        inv_tau_ion = inv_tau_ion,
+        inv_tau_energy = inv_tau_energy
+    )
+end
+
 mutable struct NativeRampLimiter{T <: Real}
     base_dt::T
     understep_dt::T
@@ -1141,6 +1370,9 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
 
     if !is_isothermal
         calculate_rhs_api_wrapper!(du, u)
+        if hasproperty(p, :residence_time)
+            _apply_residence_time_term!(du, u, p.residence_time)
+        end
         return nothing
     end
 
@@ -1158,6 +1390,10 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
 
     calculate_rhs_api_isothermal_teex_wrapper!(du, u, teex_const;
         tex = teex_vec)
+
+    if hasproperty(p, :residence_time)
+        _apply_residence_time_term!(du, u, p.residence_time)
+    end
 
     return nothing
 end
@@ -1282,8 +1518,10 @@ Notes:
 - Vibrational STS is not yet supported in this wrapper (vibrational *mode* energy is supported).
 - For isothermal Teex cases, the stored energy slot in `u` is `rho_rem` (legacy semantics), and
   the working `y` passed to Fortran is reconstructed each call.
+- Optional residence-time (CSTR) terms can be enabled via `residence_time`.
 """
-function integrate_0d_system(config::TERRAConfig, initial_state)
+function integrate_0d_system(config::TERRAConfig, initial_state;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
     dt = config.time_params.dt
     tlim = config.time_params.tlim
 
@@ -1345,6 +1583,9 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
+    residence_time_data = residence_time === nothing ? nothing :
+                          _prepare_residence_time_data(layout, config, u0, residence_time)
+
     p = (
         layout = layout,
         config = config,
@@ -1352,7 +1593,8 @@ function integrate_0d_system(config::TERRAConfig, initial_state)
         species = species_names,
         gas_constants = gas_constants,
         teex_const = initial_state.teex_const,
-        teex_const_vec = teex_const_vec
+        teex_const_vec = teex_const_vec,
+        residence_time = residence_time_data
     )
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
@@ -1583,7 +1825,8 @@ and result processing.
 # Throws
 - `ErrorException` if TERRA not initialized or simulation fails
 """
-function solve_terra_0d(config::TERRAConfig)
+function solve_terra_0d(config::TERRAConfig;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
@@ -1595,7 +1838,7 @@ function solve_terra_0d(config::TERRAConfig)
         initial_state = config_to_initial_state(config)
 
         # Run the time integration
-        results = integrate_0d_system(config, initial_state)
+        results = integrate_0d_system(config, initial_state; residence_time = residence_time)
 
         @info "TERRA simulation completed successfully"
         return results
