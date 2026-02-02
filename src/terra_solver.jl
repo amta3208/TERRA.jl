@@ -1123,6 +1123,96 @@ end
     return true
 end
 
+@inline function _compact_density_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
+    if any(@view(u[layout.vib_range]) .< 0.0)
+        return false
+    end
+    if any(@view(u[layout.elec_range]) .< 0.0)
+        return false
+    end
+    if any(@view(u[layout.sp_range]) .< 0.0)
+        return false
+    end
+    return true
+end
+
+@inline function _compact_energy_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
+    if u[layout.idx_etot] < 0.0
+        return false
+    end
+    if layout.idx_eeex != 0 && u[layout.idx_eeex] < 0.0
+        return false
+    end
+    if layout.idx_erot != 0 && u[layout.idx_erot] < 0.0
+        return false
+    end
+    if layout.idx_evib != 0 && u[layout.idx_evib] < 0.0
+        return false
+    end
+    return true
+end
+
+@inline function _compact_project_density_nonnegative!(u_work::Vector{Float64},
+        u::AbstractVector{<:Real},
+        layout::ApiLayout)
+    copyto!(u_work, u)
+
+    density_stop = layout.mom_range.start - 1
+    if density_stop <= 0
+        return true
+    end
+
+    # Preserve total density for the continuity block. This avoids creating an
+    # unphysical (rho, etot) pair by simply clamping negatives to zero, which can
+    # drive temperatures negative/undefined inside the Fortran RHS.
+    rho_target = 0.0
+    rho_clamped = 0.0
+    @inbounds for i in 1:density_stop
+        ui_raw = Float64(u_work[i])
+        rho_target += Float64(u[i])
+        if ui_raw < 0.0
+            ui_raw = 0.0
+            u_work[i] = 0.0
+        end
+        rho_clamped += ui_raw
+    end
+
+    if !(rho_target > 0.0) || !isfinite(rho_target)
+        return false
+    end
+    if !(rho_clamped > 0.0) || !isfinite(rho_clamped)
+        return false
+    end
+
+    scale = rho_target / rho_clamped
+    if !(isfinite(scale)) || scale <= 0.0
+        return false
+    end
+
+    if scale != 1.0
+        @inbounds for i in 1:density_stop
+            u_work[i] *= scale
+        end
+    end
+
+    return true
+end
+
+@inline function _compact_apply_shampine_positivity!(du::AbstractVector{<:Real},
+        u::AbstractVector{<:Real},
+        layout::ApiLayout)
+    density_stop = layout.mom_range.start - 1
+    if density_stop <= 0
+        return nothing
+    end
+    @inbounds for i in 1:density_stop
+        if u[i] < 0.0
+            du[i] = max(Float64(du[i]), 0.0)
+        end
+    end
+    return nothing
+end
+
 function _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp::Vector{Float64},
         rho_ex::Union{Nothing, Matrix{Float64}},
         u::Vector{Float64},
@@ -1360,18 +1450,49 @@ Assumptions about the state `u`:
 function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float64)
     layout = p.layout
 
-    if any(!isfinite, u) || !_compact_nonnegative_ok(u, layout)
+    if any(!isfinite, u)
         fill!(du, 0.0)
         return nothing
+    end
+    if !_compact_energy_nonnegative_ok(u, layout)
+        fill!(du, 0.0)
+        return nothing
+    end
+
+    # Enforce a nonnegative evaluation state for the Fortran RHS. This keeps the RHS
+    # informative for stiffness detection (autoswitch) while protecting the Fortran
+    # routines from invalid intermediate stage states.
+    needs_clamp = !_compact_density_nonnegative_ok(u, layout)
+    u_eval = u
+    if needs_clamp
+        u_work = if hasproperty(p, :work_u)
+            p.work_u
+        elseif hasproperty(p, :work_y)
+            p.work_y
+        else
+            nothing
+        end
+        if u_work === nothing
+            u_work = similar(u)
+        end
+        ok = _compact_project_density_nonnegative!(u_work, u, layout)
+        if !ok
+            fill!(du, 0.0)
+            return nothing
+        end
+        u_eval = u_work
     end
 
     config = hasproperty(p, :config) ? p.config : nothing
     is_isothermal = config !== nothing && config.physics.is_isothermal_teex
 
     if !is_isothermal
-        calculate_rhs_api_wrapper!(du, u)
+        calculate_rhs_api_wrapper!(du, u_eval)
         if hasproperty(p, :residence_time)
-            _apply_residence_time_term!(du, u, p.residence_time)
+            _apply_residence_time_term!(du, u_eval, p.residence_time)
+        end
+        if needs_clamp
+            _compact_apply_shampine_positivity!(du, u, layout)
         end
         return nothing
     end
@@ -1388,11 +1509,14 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
 
-    calculate_rhs_api_isothermal_teex_wrapper!(du, u, teex_const;
+    calculate_rhs_api_isothermal_teex_wrapper!(du, u_eval, teex_const;
         tex = teex_vec)
 
     if hasproperty(p, :residence_time)
-        _apply_residence_time_term!(du, u, p.residence_time)
+        _apply_residence_time_term!(du, u_eval, p.residence_time)
+    end
+    if needs_clamp
+        _compact_apply_shampine_positivity!(du, u, layout)
     end
 
     return nothing
@@ -1580,6 +1704,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
 
     # Preallocate RHS work buffers
     work_y = similar(u0)
+    work_u = similar(u0)
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
@@ -1594,6 +1719,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
         gas_constants = gas_constants,
         teex_const = initial_state.teex_const,
         teex_const_vec = teex_const_vec,
+        work_u = work_u,
         residence_time = residence_time_data
     )
 
@@ -1650,6 +1776,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
             alg_hints = [:stiff],
             dt = dt,
             callback = ramp_callback,
+            isoutofdomain = (u, _p, _t) -> (!_compact_nonnegative_ok(u, layout) || any(!isfinite, u)),
             reltol = local_reltol,
             abstol = (local_abstol_vec === nothing ? local_abstol_density :
                       local_abstol_vec),
