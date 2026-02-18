@@ -6,14 +6,14 @@ using Aqua
 Reset the TERRA state (Fortran + Julia) and initialize from scratch.
 
 - `case_path`: Path to a case directory containing `input/prob_setup.inp`
-- `config` (keyword, optional): If provided, a temporary case directory is created,
+- `config` (keyword, optional; `TERRAConfig` or nested `Config`): If provided, a temporary case directory is created,
   input files are generated from this config there, and initialization is performed
   from that temporary directory (leaving `case_path` untouched).
 
 Returns a NamedTuple with `(num_species, num_dimensions)`.
 """
 function reset_and_init!(case_path::AbstractString;
-        config::Union{Nothing, terra.TERRAConfig} = nothing)
+        config::Union{Nothing, terra.TERRAConfig, terra.Config} = nothing)
     # Best-effort cleanup (ignore errors if library is not loaded yet)
     try
         terra.finalize_api_wrapper()

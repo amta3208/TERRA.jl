@@ -171,6 +171,15 @@ the `TERRA_LIB_PATH` environment variable when it is not already loaded.
 - `ErrorException` if initialization fails
 """
 function initialize_terra(config::TERRAConfig, case_path::String = config.case_path)
+    return initialize_terra(to_config(config), case_path)
+end
+
+"""
+$(SIGNATURES)
+
+Initialize TERRA using nested `Config`.
+"""
+function initialize_terra(config::Config, case_path::String = config.runtime.case_path)
     try
         # Ensure the shared library is loaded
         if !is_terra_loaded()
@@ -199,8 +208,9 @@ function initialize_terra(config::TERRAConfig, case_path::String = config.case_p
         num_dimensions = result.num_dimensions
 
         # Hard consistency check: configured species count must match TERRA setup
-        if num_species != length(config.species)
-            error("Configured species count ($(length(config.species))) does not match TERRA setup ($num_species). " *
+        configured_species = config.reactor.composition.species
+        if num_species != length(configured_species)
+            error("Configured species count ($(length(configured_species))) does not match TERRA setup ($num_species). " *
                   "Ensure configuration and generated input match the TERRA database.")
         end
 
@@ -218,15 +228,6 @@ function initialize_terra(config::TERRAConfig, case_path::String = config.case_p
         @error "Failed to initialize TERRA" exception=e
         rethrow(e)
     end
-end
-
-"""
-$(SIGNATURES)
-
-Initialize TERRA using nested `Config`.
-"""
-function initialize_terra(config::Config, case_path::String = config.runtime.case_path)
-    return initialize_terra(to_legacy_config(config), case_path)
 end
 
 """
@@ -281,23 +282,30 @@ end
 $(SIGNATURES)
 
 Convert TERRAConfig to initial state vectors for TERRA.
-
-# Arguments
-- `config::TERRAConfig`: Configuration object
-
-# Returns
-- Named tuple with initial state vectors in CGS units (as required by TERRA)
 """
 function config_to_initial_state(config::TERRAConfig)
+    return config_to_initial_state(to_config(config))
+end
+
+"""
+$(SIGNATURES)
+
+Convert nested `Config` to initial state vectors for TERRA.
+"""
+function config_to_initial_state(config::Config)
+    species = config.reactor.composition.species
+
     # Get molecular weights
-    molecular_weights = get_molecular_weights(config.species)
+    molecular_weights = get_molecular_weights(species)
 
     # Ensure we're working in CGS - convert if needed
-    config_cgs = config.unit_system == :CGS ? config : convert_config_units(config, :CGS)
+    config_cgs = config.runtime.unit_system == :CGS ? config : convert_config_units(config, :CGS)
+    composition = config_cgs.reactor.composition
+    thermal = config_cgs.reactor.thermal
 
     # Convert mole fractions to mass densities (CGS units)
     mass_densities_cgs = mole_fractions_to_mass_densities(
-        config_cgs.mole_fractions, molecular_weights, config_cgs.total_number_density
+        composition.mole_fractions, molecular_weights, composition.total_number_density
     )
 
     gas_constants_full = get_species_gas_constants_wrapper()
@@ -311,9 +319,9 @@ function config_to_initial_state(config::TERRAConfig)
         # electron-electronic temperature (TEE). Species that are not
         # electronically resolved do not contribute here (their mex = 0),
         # so using TEE only affects resolved species as intended.
-        config_cgs.temperatures.Tee,  # Electronic-state populations use TEE
-        config_cgs.temperatures.Tt,  # Rotational temperature (use translational as proxy)
-        config_cgs.temperatures.Tv   # Vibrational temperature
+        thermal.Tee,  # Electronic-state populations use TEE
+        thermal.Tt,  # Rotational temperature (use translational as proxy)
+        thermal.Tv   # Vibrational temperature
     )
 
     # Calculate electron-electronic energy using TERRA's method.
@@ -322,7 +330,7 @@ function config_to_initial_state(config::TERRAConfig)
     # electron temperature (TE), not TEE. TERRA internally excludes species with
     # resolved electronic states from this mode, so passing TE here is correct.
     initial_electron_electronic_energy = calculate_electron_electronic_energy_wrapper(
-        config_cgs.temperatures.Te, config_cgs.temperatures.Tv, mass_densities_cgs
+        thermal.Te, thermal.Tv, mass_densities_cgs
     )
 
     # Initialize vibrational state populations using TERRA's Boltzmann
@@ -333,24 +341,24 @@ function config_to_initial_state(config::TERRAConfig)
     # in Etot.
     initial_vibrational_states = set_vibrational_boltzmann_wrapper(
         initial_electronic_states,
-        config_cgs.temperatures.Te,
-        config_cgs.temperatures.Tt,
-        config_cgs.temperatures.Tv
+        thermal.Te,
+        thermal.Tt,
+        thermal.Tv
     )
 
     # Mode-level vibrational energy at Tv. Provide per-species electronic
     # temperature proxy as TE uniformly; species with resolved electronic
     # states are already accounted through rho_ex above.
     initial_vibrational_energy = calculate_vibrational_energy_wrapper(
-        config_cgs.temperatures.Tv, mass_densities_cgs;
+        thermal.Tv, mass_densities_cgs;
         rho_ex = initial_electronic_states,
-        tex = fill(config_cgs.temperatures.Te, length(mass_densities_cgs))
+        tex = fill(thermal.Te, length(mass_densities_cgs))
     )
 
     # Total energy: do not include rho_vx to avoid double counting when TERRA
     # is not in vibrational STS mode.
     initial_total_energy = calculate_total_energy_wrapper(
-        config_cgs.temperatures.Tt, mass_densities_cgs;
+        thermal.Tt, mass_densities_cgs;
         rho_ex = initial_electronic_states,
         u = 0.0, v = 0.0, w = 0.0,
         rho_eeex = initial_electron_electronic_energy,
@@ -373,17 +381,17 @@ function config_to_initial_state(config::TERRAConfig)
         initial_total_energy,
         mass_densities_cgs,
         gas_constants,
-        config.species,
+        species,
         molecular_weights,
         initial_temperatures.tt,
         initial_temperatures.teex)
 
     electron_index = findfirst(
-        i -> _is_electron_species(config.species[i], molecular_weights[i]),
-        eachindex(config.species))
+        i -> _is_electron_species(species[i], molecular_weights[i]),
+        eachindex(species))
     electron_enthalpy = electron_index === nothing ? 0.0 :
                         mass_densities_cgs[electron_index] * gas_constants[electron_index] *
-                        config_cgs.temperatures.Te
+                        thermal.Te
 
     initial_remainder_energy = initial_enthalpy - initial_electron_electronic_energy -
                                electron_enthalpy
@@ -397,22 +405,13 @@ function config_to_initial_state(config::TERRAConfig)
         rho_vx = nothing,
         rho_eeex = initial_electron_electronic_energy,
         rho_evib = initial_vibrational_energy,
-        number_density = config_cgs.total_number_density,
+        number_density = composition.total_number_density,
         molecular_weights = molecular_weights,
-        teex_const = config_cgs.temperatures.Te,
+        teex_const = thermal.Te,
         gas_constants = gas_constants,
         pressure = initial_pressure,
         initial_temperatures = initial_temperatures
     )
-end
-
-"""
-$(SIGNATURES)
-
-Convert nested `Config` to initial state vectors for TERRA.
-"""
-function config_to_initial_state(config::Config)
-    return config_to_initial_state(to_legacy_config(config))
 end
 
 """
@@ -830,7 +829,7 @@ end
     return nothing
 end
 
-function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
+function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
     inv_tau_neutral = rt_cfg.U_neutral / rt_cfg.L
     inv_tau_ion = rt_cfg.U_ion / rt_cfg.L
@@ -839,21 +838,23 @@ function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
     neutral_indices = continuity.neutral_indices
     ion_indices = continuity.ion_indices
     energy_indices = _build_residence_time_energy_indices(
-        layout, config.physics.is_isothermal_teex)
+        layout, config.models.physics.is_isothermal_teex)
 
-    u_in = if rt_cfg.inlet_config === nothing
+    u_in = if rt_cfg.inlet_reactor === nothing
         copy(u0)
     else
-        inlet_config = rt_cfg.inlet_config
-        if inlet_config.species != config.species
-            error("ResidenceTimeConfig inlet_config species must match the initialized TERRA species ordering.")
+        inlet_reactor = rt_cfg.inlet_reactor
+        if inlet_reactor.composition.species != config.reactor.composition.species
+            error("ResidenceTimeConfig inlet_reactor species must match the initialized TERRA species ordering.")
         end
-        if inlet_config.physics.is_isothermal_teex != config.physics.is_isothermal_teex
-            error("ResidenceTimeConfig inlet_config isothermal_teex flag must match the simulation config.")
-        end
+        inlet_config = Config(;
+            reactor = inlet_reactor,
+            models = config.models,
+            numerics = config.numerics,
+            runtime = config.runtime)
 
         inlet_state = config_to_initial_state(inlet_config)
-        energy_scalar_in = config.physics.is_isothermal_teex ? inlet_state.rho_rem :
+        energy_scalar_in = config.models.physics.is_isothermal_teex ? inlet_state.rho_rem :
                            inlet_state.rho_energy
         rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing
         rho_eeex_in = layout.eex_noneq ? inlet_state.rho_eeex : nothing
@@ -899,6 +900,11 @@ function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
         inv_tau_ion = inv_tau_ion,
         inv_tau_energy = inv_tau_energy
     )
+end
+
+function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
+        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
+    return _prepare_residence_time_data(layout, to_config(config), u0, rt_cfg)
 end
 
 @inline function _resolve_residence_time(
@@ -1352,6 +1358,11 @@ end
     return layout.spwt[esp] * s
 end
 
+@inline _config_electron_temperature(config::TERRAConfig) = config.temperatures.Te
+@inline _config_electron_temperature(config::Config) = config.reactor.thermal.Te
+@inline _config_is_isothermal_teex(config::TERRAConfig) = config.physics.is_isothermal_teex
+@inline _config_is_isothermal_teex(config::Config) = config.models.physics.is_isothermal_teex
+
 function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
         rho_sp::Vector{Float64},
         rho_ex::Union{Nothing, Matrix{Float64}},
@@ -1360,7 +1371,8 @@ function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
         layout::ApiLayout)
     config = p.config
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
-    teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
+    teex_const = hasproperty(p, :teex_const) ? p.teex_const :
+                 _config_electron_temperature(config)
 
     _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp, rho_ex, u, layout)
 
@@ -1457,7 +1469,7 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     end
 
     config = hasproperty(p, :config) ? p.config : nothing
-    is_isothermal = config !== nothing && config.physics.is_isothermal_teex
+    is_isothermal = config !== nothing && _config_is_isothermal_teex(config)
 
     if !is_isothermal
         calculate_rhs_api_wrapper!(du, u_eval)
@@ -1479,7 +1491,8 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     if config === nothing
         error("Isothermal Teex requires a config in the parameter tuple.")
     end
-    teex_const = hasproperty(p, :teex_const) ? p.teex_const : config.temperatures.Te
+    teex_const = hasproperty(p, :teex_const) ? p.teex_const :
+                 _config_electron_temperature(config)
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
 
     calculate_rhs_api_isothermal_teex_wrapper!(du, u_eval, teex_const;
@@ -1617,15 +1630,17 @@ Notes:
   the working `y` passed to Fortran is reconstructed each call.
 - Optional residence-time (CSTR) terms can be enabled via `residence_time`.
 """
-function integrate_0d_system(config::TERRAConfig, initial_state;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
-    dt = config.time_params.dt
-    tlim = config.time_params.tlim
+function integrate_0d_system(config::Config, initial_state;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing)
+    dt = config.numerics.time.dt
+    tlim = config.numerics.time.duration
+    solver_cfg = config.numerics.solver
 
     @info "Setting up ODE integration" tlim=tlim
 
-    native_outputs_requested = config.write_native_outputs
-    print_integration_output = config.print_integration_output
+    native_outputs_requested = config.runtime.write_native_outputs
+    print_integration_output = config.runtime.print_integration_output
     outputs_opened = false
 
     layout = get_api_layout()
@@ -1640,7 +1655,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     end
 
     n_species = layout.nsp
-    is_isothermal = config.physics.is_isothermal_teex
+    is_isothermal = config.models.physics.is_isothermal_teex
 
     electronic_state_counts = zeros(Int, n_species)
     has_electronic_states = falses(n_species)
@@ -1670,10 +1685,10 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
 
     tspan = (0.0, tlim)
 
-    molecular_weights = get_molecular_weights(config.species)
-    species_names = config.species
+    molecular_weights = get_molecular_weights(config.reactor.composition.species)
+    species_names = config.reactor.composition.species
     gas_constants = initial_state.gas_constants
-    teex_const_vec = fill(config.temperatures.Te, n_species)
+    teex_const_vec = fill(config.reactor.thermal.Te, n_species)
 
     # Preallocate RHS work buffers
     work_y = similar(u0)
@@ -1681,8 +1696,11 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
-    residence_time_data = (residence_time === nothing || !residence_time.enabled) ? nothing :
-                          _prepare_residence_time_data(layout, config, u0, residence_time)
+    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
+    residence_time_data = (effective_residence_time === nothing ||
+                           !effective_residence_time.enabled) ? nothing :
+                          _prepare_residence_time_data(
+        layout, config, u0, effective_residence_time)
 
     p = (
         layout = layout,
@@ -1697,7 +1715,9 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     )
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
-    ramp_callback = native_ramp_callback(dt; understep_ratio = inv(128), history_steps = 5)
+    ramp_callback = native_ramp_callback(dt;
+        understep_ratio = solver_cfg.ramp_understep_ratio,
+        history_steps = solver_cfg.ramp_history_steps)
 
     @info "ODE problem created, starting integration..."
 
@@ -1707,8 +1727,8 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     # loosen the energy absolute tolerance based on a target temperature
     # resolution:
     #   abstol_E ≈ (3/2) kB n_total ΔT  [erg/cm^3]
-    local_reltol = is_isothermal ? 1e-7 : 1e-8
-    local_abstol_density = 1e-10
+    local_reltol = is_isothermal ? max(1e-7, solver_cfg.reltol) : solver_cfg.reltol
+    local_abstol_density = solver_cfg.abstol_density
     local_abstol_vec = is_isothermal ? fill(local_abstol_density, layout.neq) : nothing
     if is_isothermal
         kB_erg_per_K = 1.380650524e-16
@@ -1753,7 +1773,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
             reltol = local_reltol,
             abstol = (local_abstol_vec === nothing ? local_abstol_density :
                       local_abstol_vec),
-            saveat = range(0.0, tlim; length = 100),
+            saveat = range(0.0, tlim; length = solver_cfg.saveat_count),
             save_everystep = false
         )
 
@@ -1851,7 +1871,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
         end
 
         # Convert results back to SI units if needed
-        if config.unit_system == :SI
+        if config.runtime.unit_system == :SI
             species_densities_si = zeros(size(species_densities))
             for i in axes(species_densities, 2)
                 species_densities_si[:, i] = convert_density_cgs_to_si(species_densities[
@@ -1887,9 +1907,9 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
         return TERRAResults(
             [0.0],
             reshape(initial_state.rho_sp, :, 1),
-            (tt = [config.temperatures.Tt], te = [config.temperatures.Te],
-                tv = [config.temperatures.Tv],
-                tee = [config.temperatures.Te]),
+            (tt = [config.reactor.thermal.Tt], te = [config.reactor.thermal.Te],
+                tv = [config.reactor.thermal.Tv],
+                tee = [config.reactor.thermal.Te]),
             [initial_state.rho_energy],
             nothing,
             false,
@@ -1907,19 +1927,14 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     end
 end
 
-"""
-$(SIGNATURES)
-
-Integrate the 0D system using nested `Config`.
-"""
-function integrate_0d_system(config::Config, initial_state;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+function integrate_0d_system(config::TERRAConfig, initial_state;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing,
         use_residence_time::Union{Nothing, Bool} = nothing)
-    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
     return integrate_0d_system(
-        to_legacy_config(config),
+        to_config(config),
         initial_state;
-        residence_time = effective_residence_time)
+        residence_time = residence_time,
+        use_residence_time = use_residence_time)
 end
 
 """
@@ -1941,19 +1956,35 @@ and result processing.
 - `ErrorException` if TERRA not initialized or simulation fails
 """
 function solve_terra_0d(config::TERRAConfig;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
+        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing,
+        use_residence_time::Union{Nothing, Bool} = nothing)
+    return solve_terra_0d(
+        to_config(config);
+        residence_time = residence_time,
+        use_residence_time = use_residence_time)
+end
+
+"""
+$(SIGNATURES)
+
+Solve a 0D TERRA simulation using nested `Config`.
+"""
+function solve_terra_0d(config::Config;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
 
     try
-        @info "Starting TERRA 0D simulation" species=config.species
+        @info "Starting TERRA 0D simulation" species=config.reactor.composition.species
 
         # Convert configuration to initial conditions (SI to CGS)
         initial_state = config_to_initial_state(config)
 
         # Run the time integration
-        results = integrate_0d_system(config, initial_state; residence_time = residence_time)
+        results = integrate_0d_system(config, initial_state;
+            residence_time = residence_time, use_residence_time = use_residence_time)
 
         @info "TERRA simulation completed successfully"
         return results
@@ -1965,20 +1996,6 @@ function solve_terra_0d(config::TERRAConfig;
             "Simulation failed: $(string(e))"
         )
     end
-end
-
-"""
-$(SIGNATURES)
-
-Solve a 0D TERRA simulation using nested `Config`.
-"""
-function solve_terra_0d(config::Config;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing)
-    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
-    return solve_terra_0d(
-        to_legacy_config(config);
-        residence_time = effective_residence_time)
 end
 
 """

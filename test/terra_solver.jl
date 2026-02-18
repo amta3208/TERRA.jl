@@ -259,6 +259,80 @@ end
     @test du_rt[layout.idx_eeex] == 0.0
 end
 
+@testset "Residence-time override toggle" begin
+    rt_cfg = terra.ResidenceTimeConfig(; enabled = true, L = 1.0, U_neutral = 1.0, U_ion = 1.0)
+    @test terra._resolve_residence_time(rt_cfg, nothing) === rt_cfg
+    @test terra._resolve_residence_time(rt_cfg, false) === nothing
+
+    forced_rt = terra._resolve_residence_time(nothing, true)
+    @test forced_rt !== nothing
+    @test forced_rt.enabled == true
+end
+
+@testset "Residence-time inlet_reactor support" begin
+    config = terra.to_config(terra.nitrogen_10ev_config(; isothermal = false))
+    @test_nowarn reset_and_init!(tempname(); config = config)
+
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+    u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    inlet_reactor = terra.ReactorConfig(;
+        composition = terra.ReactorComposition(;
+            species = config.reactor.composition.species,
+            mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
+            total_number_density = config.reactor.composition.total_number_density),
+        thermal = config.reactor.thermal)
+    rt_cfg = terra.ResidenceTimeConfig(; L = 1.0, U_neutral = 1.0, U_ion = 2.0,
+        inlet_reactor = inlet_reactor)
+    rt = terra._prepare_residence_time_data(layout, config, u_base, rt_cfg)
+
+    @test any(abs.(rt.u_in .- u_base) .> 0.0)
+end
+
+@testset "Nested Config solver controls" begin
+    base = terra.to_config(terra.nitrogen_10ev_config(; isothermal = false))
+    case_path = mktempdir()
+
+    config = terra.Config(;
+        reactor = base.reactor,
+        models = base.models,
+        numerics = terra.NumericsConfig(;
+            time = terra.TimeConfig(;
+                dt = 5e-12,
+                dt_output = 1e-6,
+                duration = 5e-7,
+                nstep = 1000,
+                method = 2),
+            solver = terra.ODESolverConfig(;
+                saveat_count = 7,
+                reltol = 1e-8,
+                abstol_density = 1e-10,
+                ramp_understep_ratio = inv(64),
+                ramp_history_steps = 4),
+            space = base.numerics.space,
+            residence_time = nothing),
+        runtime = terra.RuntimeConfig(;
+            database_path = base.runtime.database_path,
+            case_path = case_path,
+            unit_system = base.runtime.unit_system,
+            validate_species_against_terra = false,
+            print_source_terms = false,
+            write_native_outputs = false,
+            print_integration_output = false))
+
+    @test_nowarn reset_and_init!(case_path; config = config)
+    initial_state = terra.config_to_initial_state(config)
+    results = terra.integrate_0d_system(config, initial_state)
+
+    @test results.success == true
+    @test length(results.time) == config.numerics.solver.saveat_count
+end
+
 @testset "Native Output Generation" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir(cleanup = false)

@@ -325,6 +325,44 @@
             U_ion = 2.5, U_energy = 3.0)
         @test rt_disabled.enabled == false
         @test rt_disabled.U_energy == 3.0
+
+        legacy_inlet = terra.TERRAConfig(
+            species = ["N", "N2", "E-"],
+            mole_fractions = [0.2, 0.7, 0.1],
+            total_number_density = 2e13,
+            temperatures = terra.TemperatureConfig(;
+                Tt = 800.0, Tv = 900.0, Tee = 1000.0, Te = 11000.0),
+            time_params = terra.TimeIntegrationConfig(; dt = 1e-6, dtm = 1e-4, tlim = 1e-3),
+            database_path = ".",
+            case_path = pwd()
+        )
+
+        rt_legacy_inlet = terra.ResidenceTimeConfig(;
+            enabled = true,
+            L = 1.0,
+            U_neutral = 1.0,
+            U_ion = 1.0,
+            inlet_config = legacy_inlet)
+        @test rt_legacy_inlet.inlet_reactor !== nothing
+        @test rt_legacy_inlet.inlet_reactor.composition.species == legacy_inlet.species
+        @test rt_legacy_inlet.inlet_reactor.thermal.Te == legacy_inlet.temperatures.Te
+
+        nested_inlet = terra.to_config(legacy_inlet)
+        rt_nested_inlet = terra.ResidenceTimeConfig(;
+            enabled = true,
+            L = 1.0,
+            U_neutral = 1.0,
+            U_ion = 1.0,
+            inlet_reactor = nested_inlet)
+        @test rt_nested_inlet.inlet_reactor == nested_inlet.reactor
+
+        @test_throws ArgumentError terra.ResidenceTimeConfig(;
+            enabled = true,
+            L = 1.0,
+            U_neutral = 1.0,
+            U_ion = 1.0,
+            inlet_reactor = nested_inlet.reactor,
+            inlet_config = legacy_inlet)
     end
 
     @testset "validate_config" begin
@@ -466,6 +504,26 @@
                 @test isfile(joinpath(temp_dir, "input", "sources_setup.inp"))
                 @test isfile(joinpath(temp_dir, "input", "tau_scaling.inp"))
 
+            finally
+                rm(temp_dir; recursive = true)
+            end
+        end
+
+        @testset "Nested Config Input Generation" begin
+            temp_dir = mktempdir()
+            try
+                legacy = terra.nitrogen_10ev_config()
+                nested = terra.to_config(legacy)
+
+                @test terra.generate_input_files(nested, temp_dir) == true
+                @test isfile(joinpath(temp_dir, "input", "prob_setup.inp"))
+                @test isfile(joinpath(temp_dir, "input", "sources_setup.inp"))
+                @test isfile(joinpath(temp_dir, "input", "tau_scaling.inp"))
+
+                prob_setup_content = read(joinpath(temp_dir, "input", "prob_setup.inp"), String)
+                @test occursin("NSP=5", prob_setup_content)
+                @test occursin("ND=0", prob_setup_content)
+                @test occursin("DT=5.0e-6", prob_setup_content)
             finally
                 rm(temp_dir; recursive = true)
             end
@@ -668,6 +726,19 @@
             @test converted.species == config_cgs.species
             @test converted.mole_fractions == config_cgs.mole_fractions
             @test converted.write_native_outputs == config_cgs.write_native_outputs
+        end
+
+        @testset "Nested Config Conversion" begin
+            legacy = terra.nitrogen_10ev_config()
+            nested = terra.to_config(legacy)
+
+            converted_nested = terra.convert_config_units(nested, :SI)
+            @test converted_nested.runtime.unit_system == :SI
+            @test converted_nested.reactor.composition.total_number_density ≈ 1e19
+            @test converted_nested.reactor.composition.species ==
+                  nested.reactor.composition.species
+            @test converted_nested.models.physics == nested.models.physics
+            @test converted_nested.models.processes == nested.models.processes
         end
 
         @testset "Invalid Conversion" begin

@@ -454,10 +454,10 @@ struct ResidenceTimeConfig
     U_neutral::Float64
     U_ion::Float64
     U_energy::Union{Nothing, Float64}
-    inlet_config::Union{Nothing, TERRAConfig}
+    inlet_reactor::Union{Nothing, ReactorConfig}
 
     function ResidenceTimeConfig(enabled::Bool, L, U_neutral, U_ion,
-            U_energy = nothing, inlet_config = nothing)
+            U_energy = nothing, inlet_reactor = nothing)
         if !isfinite(L) || L <= 0
             throw(ArgumentError("ResidenceTimeConfig: L must be finite and positive (got $L)."))
         end
@@ -470,9 +470,7 @@ struct ResidenceTimeConfig
         if U_energy !== nothing && (!isfinite(U_energy) || U_energy <= 0)
             throw(ArgumentError("ResidenceTimeConfig: U_energy must be finite and positive (got $U_energy)."))
         end
-        if inlet_config !== nothing && !(inlet_config isa TERRAConfig)
-            throw(ArgumentError("ResidenceTimeConfig: inlet_config must be `TERRAConfig` or `nothing`."))
-        end
+        inlet_reactor_val = _coerce_residence_time_inlet_reactor(inlet_reactor)
 
         return new(
             enabled,
@@ -480,7 +478,7 @@ struct ResidenceTimeConfig
             Float64(U_neutral),
             Float64(U_ion),
             U_energy === nothing ? nothing : Float64(U_energy),
-            inlet_config)
+            inlet_reactor_val)
     end
 end
 
@@ -494,8 +492,34 @@ function ResidenceTimeConfig(;
         U_neutral::Real = 1.0,
         U_ion::Real = 1.0,
         U_energy::Union{Nothing, Real} = nothing,
-        inlet_config::Union{Nothing, TERRAConfig} = nothing)
-    return ResidenceTimeConfig(enabled, L, U_neutral, U_ion, U_energy, inlet_config)
+        inlet_reactor = nothing,
+        inlet_config = nothing)
+    if inlet_reactor !== nothing && inlet_config !== nothing
+        throw(ArgumentError("ResidenceTimeConfig: provide only one of `inlet_reactor` or legacy `inlet_config`."))
+    end
+    inlet_value = inlet_reactor === nothing ? inlet_config : inlet_reactor
+    return ResidenceTimeConfig(enabled, L, U_neutral, U_ion, U_energy, inlet_value)
+end
+
+function _coerce_residence_time_inlet_reactor(inlet)
+    if inlet === nothing
+        return nothing
+    elseif inlet isa ReactorConfig
+        return inlet
+    elseif inlet isa TERRAConfig
+        return ReactorConfig(;
+            composition = ReactorComposition(;
+                species = inlet.species,
+                mole_fractions = inlet.mole_fractions,
+                total_number_density = inlet.total_number_density),
+            thermal = ReactorThermalState(;
+                Tt = inlet.temperatures.Tt,
+                Tv = inlet.temperatures.Tv,
+                Tee = inlet.temperatures.Tee,
+                Te = inlet.temperatures.Te))
+    else
+        throw(ArgumentError("ResidenceTimeConfig: inlet_reactor/inlet_config must be `ReactorConfig`, `Config`, `TERRAConfig`, or `nothing`."))
+    end
 end
 
 """
@@ -571,6 +595,8 @@ struct Config
         return new(reactor, models, numerics, runtime)
     end
 end
+
+_coerce_residence_time_inlet_reactor(inlet::Config) = inlet.reactor
 
 """
 $(SIGNATURES)
@@ -773,6 +799,10 @@ This function creates the directory structure required by the Fortran wrapper:
 - `ErrorException` if file generation fails
 """
 function generate_input_files(config::TERRAConfig, case_path::String = config.case_path)
+    return generate_input_files(to_config(config), case_path)
+end
+
+function generate_input_files(config::Config, case_path::String = config.runtime.case_path)
     try
         # Create required directory structure as expected by fortran_wrapper
         input_dir = joinpath(case_path, "input")
@@ -788,7 +818,7 @@ function generate_input_files(config::TERRAConfig, case_path::String = config.ca
         end
 
         # Validate database path if it's a relative path
-        database_path = config.database_path
+        database_path = config.runtime.database_path
         if !isabspath(database_path)
             # Convert relative path to absolute from case_path
             database_path = abspath(joinpath(case_path, database_path))
@@ -825,84 +855,96 @@ $(SIGNATURES)
 Generate prob_setup.inp file from configuration.
 """
 function generate_prob_setup_file(config::TERRAConfig, filepath::String)
+    return generate_prob_setup_file(to_config(config), filepath)
+end
+
+function generate_prob_setup_file(config::Config, filepath::String)
+    runtime = config.runtime
+    composition = config.reactor.composition
+    thermal = config.reactor.thermal
+    physics = config.models.physics
+    processes = config.models.processes
+    time = config.numerics.time
+    space = config.numerics.space
+
     open(filepath, "w") do io
         println(io, "####################################################")
         println(io, "# Location of database and output folders")
         println(io, "####################################################")
-        println(io, "DATABASE_PATH=$(config.database_path)")
+        println(io, "DATABASE_PATH=$(runtime.database_path)")
         println(io, "CHEM_FILE_NAME=chemistry.dat")
         println(io)
         println(io, "--- Turn on source term printouts")
-        println(io, "PRINT_SOURCE_TERMS=$(config.print_source_terms ? 1 : 0)")
+        println(io, "PRINT_SOURCE_TERMS=$(runtime.print_source_terms ? 1 : 0)")
         println(io)
         println(io, "####################################################")
         println(io, "# Freestream condition")
         println(io, "####################################################")
         println(io)
         println(io, "---  Number of species, must match chemistry.dat")
-        println(io, "NSP=$(length(config.species))")
+        println(io, "NSP=$(length(composition.species))")
         println(io)
-        println(io, "--- Species mole fractions ($(join(config.species, ", ")))")
-        for (i, frac) in enumerate(config.mole_fractions)
+        println(io, "--- Species mole fractions ($(join(composition.species, ", ")))")
+        for (i, frac) in enumerate(composition.mole_fractions)
             println(io, "X$(i)=$(frac)")
         end
         println(io)
         println(io, "--- Total number density (1/cm³)")
         # Ensure number density is written in CGS units as expected by TERRA
-        tn_cgs = config.unit_system == :CGS ? config.total_number_density :
-                 convert_number_density_si_to_cgs(config.total_number_density)
+        tn_cgs = runtime.unit_system == :CGS ? composition.total_number_density :
+                 convert_number_density_si_to_cgs(composition.total_number_density)
         println(io, "TOTAL_NUMBER_DENSITY=$(tn_cgs)")
         println(io)
         println(io, "--- Temperatures (K)")
-        println(io, "TT=$(config.temperatures.Tt)")
-        println(io, "TV=$(config.temperatures.Tv)")
-        println(io, "TEE=$(config.temperatures.Tee)")
-        println(io, "TE=$(config.temperatures.Te)")
+        println(io, "TT=$(thermal.Tt)")
+        println(io, "TV=$(thermal.Tv)")
+        println(io, "TEE=$(thermal.Tee)")
+        println(io, "TE=$(thermal.Te)")
         println(io)
         println(io, "--- Radiation length scale (cm)")
-        println(io, "RAD_LEN=$(config.physics.radiation_length)")
+        println(io, "RAD_LEN=$(physics.radiation_length)")
         println(io)
         println(io, "####################################################")
         println(io, "# Physical modeling variables")
         println(io, "####################################################")
         println(io, "--- Physics options")
-        println(io, "BBHMODEL=$(config.physics.bbh_model)")
-        println(io, "ESC_MODEL=$(config.physics.esc_model)")
-        println(io, "AR_ET_MODEL=$(config.physics.ar_et_model)")
-        println(io, "EEX_NONEQ=$(config.physics.eex_noneq)")
-        println(io, "EV_RELAX_SET=$(config.physics.ev_relax_set)")
-        println(io, "ET_RELAX_SET=$(config.physics.et_relax_set)")
-        println(io, "ENERGY_LOSS_PER_EII=$(config.physics.energy_loss_per_eii)")
+        println(io, "BBHMODEL=$(physics.bbh_model)")
+        println(io, "ESC_MODEL=$(physics.esc_model)")
+        println(io, "AR_ET_MODEL=$(physics.ar_et_model)")
+        println(io, "EEX_NONEQ=$(physics.eex_noneq)")
+        println(io, "EV_RELAX_SET=$(physics.ev_relax_set)")
+        println(io, "ET_RELAX_SET=$(physics.et_relax_set)")
+        println(io, "ENERGY_LOSS_PER_EII=$(physics.energy_loss_per_eii)")
         println(io,
-            "GET_ELECTRON_DENSITY_BY_CHARGE_BALANCE=$(config.physics.get_electron_density_by_charge_balance ? 1 : 0)")
-        println(io, "IS_ISOTHERMAL_TEEX=$(config.physics.is_isothermal_teex ? 1 : 0)")
-        println(io, "MIN_STS_FRAC=$(config.physics.min_sts_frac)")
+            "GET_ELECTRON_DENSITY_BY_CHARGE_BALANCE=$(physics.get_electron_density_by_charge_balance ? 1 : 0)")
+        println(io, "IS_ISOTHERMAL_TEEX=$(physics.is_isothermal_teex ? 1 : 0)")
+        println(io, "MIN_STS_FRAC=$(physics.min_sts_frac)")
         println(io)
         println(io, "--- Process flags")
-        println(io, "CONSIDER_ELEC_BBE=$(config.processes.consider_elec_bbe)")
-        println(io, "CONSIDER_ELEC_BFE=$(config.processes.consider_elec_bfe)")
-        println(io, "CONSIDER_ELEC_BBH=$(config.processes.consider_elec_bbh)")
-        println(io, "CONSIDER_ELEC_BFH=$(config.processes.consider_elec_bfh)")
-        println(io, "CONSIDER_RAD=$(config.processes.consider_rad)")
-        println(io, "CONSIDER_RDR=$(config.processes.consider_rdr)")
-        println(io, "CONSIDER_CHEM=$(config.processes.consider_chem)")
+        println(io, "CONSIDER_ELEC_BBE=$(processes.consider_elec_bbe)")
+        println(io, "CONSIDER_ELEC_BFE=$(processes.consider_elec_bfe)")
+        println(io, "CONSIDER_ELEC_BBH=$(processes.consider_elec_bbh)")
+        println(io, "CONSIDER_ELEC_BFH=$(processes.consider_elec_bfh)")
+        println(io, "CONSIDER_RAD=$(processes.consider_rad)")
+        println(io, "CONSIDER_RDR=$(processes.consider_rdr)")
+        println(io, "CONSIDER_CHEM=$(processes.consider_chem)")
         println(io)
         println(io, "####################################################")
         println(io, "# Computational setup")
         println(io, "####################################################")
         println(io,
             "--- Time integration method: forward euler == 0, high order explicit == 1, numerical implicit == 2")
-        println(io, "TIME_METHOD=$(config.time_params.method)")
+        println(io, "TIME_METHOD=$(time.method)")
         println(io)
         println(io, "--- Number of dimensions, 0 or 1")
-        println(io, "ND=0")
+        println(io, "ND=$(space.nd)")
         println(io)
         println(io, "--- 0D time integration setup (time in microseconds)")
         # Convert seconds from config to microseconds for Fortran input and format
         # with stable representations to satisfy tests and Fortran parsing
-        dt_us = config.time_params.dt * 1e6
-        dtm_us = config.time_params.dtm * 1e6
-        tlim_us = config.time_params.tlim * 1e6
+        dt_us = time.dt * 1e6
+        dtm_us = time.dt_output * 1e6
+        tlim_us = time.duration * 1e6
         # DT is typically very small; print with 2 significant digits (e.g., 5.0e-6)
         println(io, "DT=$(round(dt_us, sigdigits=2))")
         # DTM and TLIM: keep ~6 significant digits to avoid precision loss
@@ -910,7 +952,7 @@ function generate_prob_setup_file(config::TERRAConfig, filepath::String)
         println(io, "TLIM=$(round(tlim_us, sigdigits=6))")
         println(io)
         println(io, "-- Max number of iterations")
-        println(io, "NSTEP=$(config.time_params.nstep)")
+        println(io, "NSTEP=$(time.nstep)")
     end
 end
 
@@ -920,9 +962,15 @@ $(SIGNATURES)
 Generate sources_setup.inp file from configuration.
 """
 function generate_sources_setup_file(config::TERRAConfig, filepath::String)
+    return generate_sources_setup_file(to_config(config), filepath)
+end
+
+function generate_sources_setup_file(config::Config, filepath::String)
+    species_names = config.reactor.composition.species
+
     open(filepath, "w") do io
         println(io, "BEGIN SPECIES SOURCES")
-        for species in config.species
+        for species in species_names
             println(io, species)
         end
         println(io, "END SPECIES SOURCES")
@@ -930,17 +978,17 @@ function generate_sources_setup_file(config::TERRAConfig, filepath::String)
         println(io, "BEGIN EXCITED STATE SOURCES")
         # For now, include common excited states for nitrogen
         # This should be made more general based on the species
-        if "N" in config.species
+        if "N" in species_names
             for i in 1:5
                 println(io, "N($(i))")
             end
         end
-        if "N2" in config.species
+        if "N2" in species_names
             for i in 1:9
                 println(io, "N2($(i))")
             end
         end
-        if "N2+" in config.species
+        if "N2+" in species_names
             for i in 1:4
                 println(io, "N2+($(i))")
             end
@@ -955,6 +1003,10 @@ $(SIGNATURES)
 Generate tau_scaling.inp file from configuration.
 """
 function generate_tau_scaling_file(config::TERRAConfig, filepath::String)
+    return generate_tau_scaling_file(to_config(config), filepath)
+end
+
+function generate_tau_scaling_file(config::Config, filepath::String)
     # For now, create an empty file
     # This can be expanded later if tau scaling is needed
     open(filepath, "w") do io
@@ -1282,4 +1334,54 @@ function convert_config_units(config::TERRAConfig, target_unit_system::Symbol)
     else
         error("Unsupported unit conversion: $(config.unit_system) to $target_unit_system")
     end
+end
+
+"""
+$(SIGNATURES)
+
+Convert nested `Config` units if needed.
+
+# Arguments
+- `config::Config`: Configuration to convert
+- `target_unit_system::Symbol`: Target unit system (:SI or :CGS)
+
+# Returns
+- `Config`: Configuration with converted units
+"""
+function convert_config_units(config::Config, target_unit_system::Symbol)
+    current_unit_system = config.runtime.unit_system
+    if current_unit_system == target_unit_system
+        return config
+    end
+
+    composition = config.reactor.composition
+    new_total_number_density = if current_unit_system == :SI && target_unit_system == :CGS
+        convert_number_density_si_to_cgs(composition.total_number_density)
+    elseif current_unit_system == :CGS && target_unit_system == :SI
+        convert_number_density_cgs_to_si(composition.total_number_density)
+    else
+        error("Unsupported unit conversion: $current_unit_system to $target_unit_system")
+    end
+
+    new_reactor = ReactorConfig(;
+        composition = ReactorComposition(;
+            species = composition.species,
+            mole_fractions = composition.mole_fractions,
+            total_number_density = new_total_number_density),
+        thermal = config.reactor.thermal)
+
+    new_runtime = RuntimeConfig(;
+        database_path = config.runtime.database_path,
+        case_path = config.runtime.case_path,
+        unit_system = target_unit_system,
+        validate_species_against_terra = config.runtime.validate_species_against_terra,
+        print_source_terms = config.runtime.print_source_terms,
+        write_native_outputs = config.runtime.write_native_outputs,
+        print_integration_output = config.runtime.print_integration_output)
+
+    return Config(;
+        reactor = new_reactor,
+        models = config.models,
+        numerics = config.numerics,
+        runtime = new_runtime)
 end
