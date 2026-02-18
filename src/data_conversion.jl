@@ -24,6 +24,48 @@ const J_M3_TO_ERG_CM3 = 10.0  # J/m³ to erg/cm³
 const ERG_CM3_TO_J_M3 = 0.1   # erg/cm³ to J/m³
 const AVOGADRO = 6.02214076e23  # Avogadro's number (1/mol)
 
+# Common molecular weights (g/mol)
+const MOLECULAR_WEIGHT_DB = Dict{String, Float64}(
+    "N" => 14.007,
+    "N2" => 28.014,
+    "N+" => 14.007,
+    "N2+" => 28.014,
+    "E-" => 5.485799e-4,  # electron mass
+    "Ar" => 39.948,
+    "Ar+" => 39.948,
+    "Xe" => 131.293,
+    "Xe+" => 131.293,
+    "Kr" => 83.798,
+    "Kr+" => 83.798,
+    "O" => 15.999,
+    "O2" => 31.998,
+    "O+" => 15.999,
+    "O2+" => 31.998
+)
+
+"""
+$(SIGNATURES)
+
+Get molecular weights for common species (g/mol).
+
+# Arguments
+- `species::Vector{String}`: Species names
+
+# Returns
+- `Vector{Float64}`: Molecular weights in g/mol
+"""
+function get_molecular_weights(species::Vector{String})
+    weights = Float64[]
+    for sp in species
+        if haskey(MOLECULAR_WEIGHT_DB, sp)
+            push!(weights, MOLECULAR_WEIGHT_DB[sp])
+        else
+            error("Molecular weight not found for species: $(sp)")
+        end
+    end
+    return weights
+end
+
 """
 $(SIGNATURES)
 
