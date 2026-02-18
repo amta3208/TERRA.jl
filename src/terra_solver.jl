@@ -223,6 +223,15 @@ end
 """
 $(SIGNATURES)
 
+Initialize TERRA using nested `Config`.
+"""
+function initialize_terra(config::Config, case_path::String = config.runtime.case_path)
+    return initialize_terra(to_legacy_config(config), case_path)
+end
+
+"""
+$(SIGNATURES)
+
 Finalize the TERRA system and clean up resources.
 
 This function should be called when TERRA is no longer needed to properly
@@ -395,6 +404,15 @@ function config_to_initial_state(config::TERRAConfig)
         pressure = initial_pressure,
         initial_temperatures = initial_temperatures
     )
+end
+
+"""
+$(SIGNATURES)
+
+Convert nested `Config` to initial state vectors for TERRA.
+"""
+function config_to_initial_state(config::Config)
+    return config_to_initial_state(to_legacy_config(config))
 end
 
 """
@@ -710,62 +728,6 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
     )
 end
 
-"""
-$(SIGNATURES)
-
-Residence-time (CSTR / flow-through) configuration for the 0D ODE system.
-
-This adds wrapper-side inflow/outflow exchange terms to the ODE:
-
-- Neutral continuity entries: `du[i] += (u_in[i] - u[i]) / τ_neutral`
-- Ion continuity entries:     `du[i] += (u_in[i] - u[i]) / τ_ion`
-- Energy entries:             `du[i] += (u_in[i] - u[i]) / τ_energy`
-
-Residence times are parameterized as `τ = L / U` (so `1/τ = U/L`).
-
-Notes:
-- By default, the inlet state is hardwired to the initial condition (`u_in == u0`).
-- To prescribe a different inlet, set `inlet_config` (must use the same species ordering).
-- By default, the energy exchange velocity uses a mass-weighted mixture value based on the inlet
-  heavy-species density split:
-  `U_energy = (ρ_n U_neutral + ρ_i U_ion) / (ρ_n + ρ_i)`, where `ρ_n` and `ρ_i` are inlet neutral and
-  ion mass densities (excluding electrons).
-- In isothermal-Teex mode, the `rho_eeex` slot is treated as a dummy and is not modified
-  by the residence-time term.
-"""
-struct ResidenceTimeConfig
-    L::Float64
-    U_neutral::Float64
-    U_ion::Float64
-    U_energy::Union{Nothing, Float64}
-    inlet_config::Union{Nothing, TERRAConfig}
-
-    function ResidenceTimeConfig(L, U_neutral, U_ion, U_energy = nothing, inlet_config = nothing)
-        if !isfinite(L) || L <= 0
-            error("ResidenceTimeConfig: L must be finite and positive (got $L).")
-        end
-        if !isfinite(U_neutral) || U_neutral <= 0
-            error("ResidenceTimeConfig: U_neutral must be finite and positive (got $U_neutral).")
-        end
-        if !isfinite(U_ion) || U_ion <= 0
-            error("ResidenceTimeConfig: U_ion must be finite and positive (got $U_ion).")
-        end
-        if U_energy !== nothing
-            if !isfinite(U_energy) || U_energy <= 0
-                error("ResidenceTimeConfig: U_energy must be finite and positive (got $U_energy).")
-            end
-        end
-        return new(Float64(L), Float64(U_neutral), Float64(U_ion),
-            U_energy === nothing ? nothing : Float64(U_energy), inlet_config)
-    end
-end
-
-function ResidenceTimeConfig(;
-        L, U_neutral, U_ion, U_energy = nothing,
-        inlet_config::Union{Nothing, TERRAConfig} = nothing)
-    return ResidenceTimeConfig(L, U_neutral, U_ion, U_energy, inlet_config)
-end
-
 function _build_residence_time_continuity_indices(layout::ApiLayout)
     neutral_indices = Int[]
     ion_indices = Int[]
@@ -937,6 +899,17 @@ function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
         inv_tau_ion = inv_tau_ion,
         inv_tau_energy = inv_tau_energy
     )
+end
+
+@inline function _resolve_residence_time(
+        residence_time::Union{Nothing, ResidenceTimeConfig},
+        use_residence_time::Union{Nothing, Bool})
+    default_enabled = residence_time !== nothing && residence_time.enabled
+    enabled = use_residence_time === nothing ? default_enabled : use_residence_time
+    if !enabled
+        return nothing
+    end
+    return residence_time === nothing ? ResidenceTimeConfig() : residence_time
 end
 
 mutable struct NativeRampLimiter{T <: Real}
@@ -1708,7 +1681,7 @@ function integrate_0d_system(config::TERRAConfig, initial_state;
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
-    residence_time_data = residence_time === nothing ? nothing :
+    residence_time_data = (residence_time === nothing || !residence_time.enabled) ? nothing :
                           _prepare_residence_time_data(layout, config, u0, residence_time)
 
     p = (
@@ -1937,6 +1910,21 @@ end
 """
 $(SIGNATURES)
 
+Integrate the 0D system using nested `Config`.
+"""
+function integrate_0d_system(config::Config, initial_state;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing)
+    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
+    return integrate_0d_system(
+        to_legacy_config(config),
+        initial_state;
+        residence_time = effective_residence_time)
+end
+
+"""
+$(SIGNATURES)
+
 Solve a 0D TERRA simulation.
 
 This is the main high-level interface for running TERRA simulations.
@@ -1977,6 +1965,20 @@ function solve_terra_0d(config::TERRAConfig;
             "Simulation failed: $(string(e))"
         )
     end
+end
+
+"""
+$(SIGNATURES)
+
+Solve a 0D TERRA simulation using nested `Config`.
+"""
+function solve_terra_0d(config::Config;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing)
+    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
+    return solve_terra_0d(
+        to_legacy_config(config);
+        residence_time = effective_residence_time)
 end
 
 """

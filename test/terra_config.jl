@@ -250,6 +250,83 @@
         end
     end
 
+    @testset "Nested Config + Adapters" begin
+        species = ["N", "N2", "E-"]
+        mole_fractions = [0.1, 0.8, 0.1]
+        temperatures = terra.TemperatureConfig(;
+            Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0)
+        time_params = terra.TimeIntegrationConfig(;
+            dt = 1e-6, dtm = 1e-4, tlim = 1e-3, nstep = 1234, method = 2)
+
+        legacy = terra.TERRAConfig(
+            species = species,
+            mole_fractions = mole_fractions,
+            total_number_density = 1e13,
+            temperatures = temperatures,
+            time_params = time_params,
+            database_path = ".",
+            case_path = pwd(),
+            unit_system = :CGS,
+            validate_species_against_terra = true,
+            print_source_terms = false,
+            write_native_outputs = true,
+            print_integration_output = false
+        )
+
+        nested = terra.to_config(legacy)
+        @test nested.reactor.composition.species == legacy.species
+        @test nested.reactor.composition.mole_fractions == legacy.mole_fractions
+        @test nested.reactor.composition.total_number_density == legacy.total_number_density
+        @test nested.reactor.thermal.Tt == legacy.temperatures.Tt
+        @test nested.reactor.thermal.Tv == legacy.temperatures.Tv
+        @test nested.reactor.thermal.Tee == legacy.temperatures.Tee
+        @test nested.reactor.thermal.Te == legacy.temperatures.Te
+        @test nested.models.physics == legacy.physics
+        @test nested.models.processes == legacy.processes
+        @test nested.numerics.time.dt == legacy.time_params.dt
+        @test nested.numerics.time.dt_output == legacy.time_params.dtm
+        @test nested.numerics.time.duration == legacy.time_params.tlim
+        @test nested.runtime.database_path == legacy.database_path
+        @test nested.runtime.case_path == legacy.case_path
+        @test nested.runtime.unit_system == legacy.unit_system
+        @test nested.numerics.residence_time !== nothing
+        @test nested.numerics.residence_time.enabled == false
+
+        legacy_roundtrip = terra.to_legacy_config(nested)
+        @test legacy_roundtrip.species == legacy.species
+        @test legacy_roundtrip.mole_fractions == legacy.mole_fractions
+        @test legacy_roundtrip.total_number_density == legacy.total_number_density
+        @test legacy_roundtrip.temperatures == legacy.temperatures
+        @test legacy_roundtrip.time_params == legacy.time_params
+        @test legacy_roundtrip.physics == legacy.physics
+        @test legacy_roundtrip.processes == legacy.processes
+        @test legacy_roundtrip.database_path == legacy.database_path
+        @test legacy_roundtrip.case_path == legacy.case_path
+        @test legacy_roundtrip.unit_system == legacy.unit_system
+        @test legacy_roundtrip.validate_species_against_terra ==
+              legacy.validate_species_against_terra
+        @test legacy_roundtrip.print_source_terms == legacy.print_source_terms
+        @test legacy_roundtrip.write_native_outputs == legacy.write_native_outputs
+        @test legacy_roundtrip.print_integration_output == legacy.print_integration_output
+
+        rt = terra.ResidenceTimeConfig(; enabled = true, L = 2.0, U_neutral = 3.0, U_ion = 4.0)
+        nested_with_rt = terra.to_config(legacy; residence_time = rt)
+        @test nested_with_rt.numerics.residence_time === rt
+    end
+
+    @testset "ResidenceTimeConfig (Phase 1)" begin
+        rt_default = terra.ResidenceTimeConfig(1.0, 1.0, 1.0)
+        @test rt_default.enabled == true
+        @test rt_default.L == 1.0
+        @test rt_default.U_neutral == 1.0
+        @test rt_default.U_ion == 1.0
+
+        rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_neutral = 2.0,
+            U_ion = 2.5, U_energy = 3.0)
+        @test rt_disabled.enabled == false
+        @test rt_disabled.U_energy == 3.0
+    end
+
     @testset "validate_config" begin
         @testset "Valid Inputs" begin
             species = ["N", "N2", "E-"]

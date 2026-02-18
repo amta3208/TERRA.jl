@@ -16,6 +16,9 @@ include("terra_solver.jl")
 
 export initialize_terra, finalize_terra
 export TERRAConfig, TERRAResults
+export Config, ReactorConfig, ReactorComposition, ReactorThermalState
+export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig, NumericsConfig, RuntimeConfig
+export ResidenceTimeConfig, to_config, to_legacy_config
 export solve_terra_0d, nitrogen_10ev_example
 
 end
