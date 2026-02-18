@@ -1,0 +1,809 @@
+"""
+# TERRA Configuration Module
+
+This module handles configuration management for TERRA simulations,
+including parameter validation, default values, and input file generation.
+"""
+
+"""
+$(SIGNATURES)
+
+Temperature configuration for TERRA simulation.
+
+# Fields
+- `Tt::Float64`: Translational temperature (K)
+- `Tv::Float64`: Vibrational temperature (K)
+- `Tee::Float64`: Electron-electronic temperature (K)
+- `Te::Float64`: Electron temperature (K)
+"""
+struct TemperatureConfig
+    Tt::Float64
+    Tv::Float64
+    Tee::Float64
+    Te::Float64
+
+    function TemperatureConfig(Tt, Tv, Tee, Te)
+        if any([Tt, Tv, Tee, Te] .<= 0)
+            error("All temperatures must be positive")
+        end
+        new(Float64(Tt), Float64(Tv), Float64(Tee), Float64(Te))
+    end
+end
+
+# Preferred keyword constructor
+TemperatureConfig(; Tt, Tv, Tee, Te) = TemperatureConfig(Tt, Tv, Tee, Te)
+
+"""
+$(SIGNATURES)
+
+Time integration configuration for TERRA simulation.
+
+All time values are in seconds within the TERRA.jl wrapper. When writing
+Fortran input files, these values are converted to microseconds to match
+the TERRA input format requirements.
+
+# Fields
+- `dt::Float64`: Time step (seconds)
+- `dtm::Float64`: Native-output time step (seconds)
+- `tlim::Float64`: Final time (seconds)
+- `nstep::Int`: Maximum number of time steps
+- `method::Int`: Integration method (0=forward Euler, 1=high order explicit, 2=implicit)
+"""
+struct TimeIntegrationConfig
+    dt::Float64
+    dtm::Float64
+    tlim::Float64
+    nstep::Int
+    method::Int
+
+    function TimeIntegrationConfig(dt, dtm, tlim, nstep = 500000, method = 2)
+        if dt <= 0 || dtm <= 0 || tlim <= 0
+            error("Time parameters must be positive")
+        end
+        if nstep <= 0
+            error("Number of steps must be positive")
+        end
+        if !(method in [0, 1, 2])
+            error("Integration method must be 0, 1, or 2")
+        end
+        new(Float64(dt), Float64(dtm), Float64(tlim), Int(nstep), Int(method))
+    end
+end
+
+# Preferred keyword constructor
+function TimeIntegrationConfig(;
+        dt, dtm, tlim, nstep::Integer = 500000, method::Integer = 2)
+    TimeIntegrationConfig(dt, dtm, tlim, nstep, method)
+end
+
+"""
+$(SIGNATURES)
+
+Physics modeling configuration for TERRA simulation.
+
+# Fields
+- `bbh_model::Int`: Bound-bound heavy particle model
+- `esc_model::Int`: Escape model
+- `ar_et_model::Int`: Ar-ET model
+- `eex_noneq::Int`: Electron-electronic nonequilibrium flag
+- `ev_relax_set::Int`: Electron-vibrational relaxation set
+- `et_relax_set::Int`: Electron-translational relaxation set
+- `radiation_length::Float64`: Radiation length scale (cm)
+- `get_electron_density_by_charge_balance::Bool`: Electron density by charge balance
+- `min_sts_frac::Float64`: Minimum state-to-state fraction
+- `is_isothermal_teex::Bool`: Isothermal electron-electronic flag
+- `energy_loss_per_eii::Float64`: Average electron energy loss per EII event (× E_ion)
+"""
+struct PhysicsConfig
+    bbh_model::Int
+    esc_model::Int
+    ar_et_model::Int
+    eex_noneq::Int
+    ev_relax_set::Int
+    et_relax_set::Int
+    radiation_length::Float64
+    get_electron_density_by_charge_balance::Bool
+    min_sts_frac::Float64
+    is_isothermal_teex::Bool
+    energy_loss_per_eii::Float64
+
+    function PhysicsConfig(;
+            bbh_model = 4,
+            esc_model = 1,
+            ar_et_model = 1,
+            eex_noneq = 1,
+            ev_relax_set = 1,
+            et_relax_set = 1,
+            radiation_length = 1.0,
+            get_electron_density_by_charge_balance = true,
+            min_sts_frac = 1e-30,
+            is_isothermal_teex = false,
+            energy_loss_per_eii = 1.0
+    )
+        new(bbh_model, esc_model, ar_et_model, eex_noneq, ev_relax_set, et_relax_set,
+            radiation_length, get_electron_density_by_charge_balance,
+            min_sts_frac, is_isothermal_teex, energy_loss_per_eii)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Process flags configuration for TERRA simulation.
+
+# Fields
+- `consider_elec_bbe::Int`: Consider electron bound-bound excitation
+- `consider_elec_bfe::Int`: Consider electron bound-free excitation
+- `consider_elec_bbh::Int`: Consider electron bound-bound heavy
+- `consider_elec_bfh::Int`: Consider electron bound-free heavy
+- `consider_rad::Int`: Consider radiation
+- `consider_rdr::Int`: Consider RDR
+- `consider_chem::Int`: Consider chemistry
+"""
+struct ProcessConfig
+    consider_elec_bbe::Int
+    consider_elec_bfe::Int
+    consider_elec_bbh::Int
+    consider_elec_bfh::Int
+    consider_rad::Int
+    consider_rdr::Int
+    consider_chem::Int
+
+    function ProcessConfig(;
+            consider_elec_bbe = 1,
+            consider_elec_bfe = 1,
+            consider_elec_bbh = 1,
+            consider_elec_bfh = 1,
+            consider_rad = 0,
+            consider_rdr = 0,
+            consider_chem = 1
+    )
+        new(consider_elec_bbe, consider_elec_bfe, consider_elec_bbh,
+            consider_elec_bfh, consider_rad, consider_rdr, consider_chem)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Main configuration struct for TERRA simulations.
+
+# Fields
+- `species::Vector{String}`: Species names
+- `mole_fractions::Vector{Float64}`: Initial mole fractions
+- `total_number_density::Float64`: Total number density (1/cm³)
+- `temperatures::TemperatureConfig`: Temperature configuration
+- `time_params::TimeIntegrationConfig`: Time integration parameters
+- `physics::PhysicsConfig`: Physics modeling options
+- `processes::ProcessConfig`: Process flags
+- `database_path::String`: Path to chemistry database
+- `case_path::String`: Working directory for TERRA simulation
+- `unit_system::Symbol`: Unit system (:SI or :CGS)
+- `validate_species_against_terra::Bool`: Validate species against TERRA database
+- `print_source_terms::Bool`: Print source terms flag
+- `write_native_outputs::Bool`: Mirror native TERRA Tecplot outputs when running via the Julia wrapper
+- `print_integration_output::Bool`: Print per-save-point integration status output
+
+"""
+struct TERRAConfig
+    species::Vector{String}
+    mole_fractions::Vector{Float64}
+    total_number_density::Float64
+    temperatures::TemperatureConfig
+    time_params::TimeIntegrationConfig
+    physics::PhysicsConfig
+    processes::ProcessConfig
+    database_path::String
+    case_path::String
+    unit_system::Symbol
+    validate_species_against_terra::Bool
+    print_source_terms::Bool
+    write_native_outputs::Bool
+    print_integration_output::Bool
+
+    function TERRAConfig(;
+            species::Vector{String},
+            mole_fractions::Vector{Float64},
+            total_number_density::Float64,
+            temperatures::TemperatureConfig,
+            time_params::TimeIntegrationConfig,
+            physics::PhysicsConfig = PhysicsConfig(),
+            processes::ProcessConfig = ProcessConfig(),
+            database_path::String = "../../databases/n2/elec_sts_expanded_electron_fits",
+            case_path::String = pwd(),
+            unit_system::Symbol = :CGS,
+            validate_species_against_terra::Bool = false,
+            print_source_terms::Bool = true,
+            write_native_outputs::Bool = false,
+            print_integration_output::Bool = true
+    )
+
+        # Validate inputs
+        validate_config(
+            species, mole_fractions, total_number_density,
+            temperatures, time_params, case_path, unit_system)
+
+        new(species, mole_fractions, total_number_density, temperatures,
+            time_params, physics, processes, database_path, case_path, unit_system,
+            validate_species_against_terra, print_source_terms, write_native_outputs,
+            print_integration_output)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Reactor composition inputs for a simulation case.
+
+# Fields
+- `species::Vector{String}`: Species names
+- `mole_fractions::Vector{Float64}`: Species mole fractions (must sum to 1)
+- `total_number_density::Float64`: Total number density
+"""
+struct ReactorComposition
+    species::Vector{String}
+    mole_fractions::Vector{Float64}
+    total_number_density::Float64
+
+    function ReactorComposition(species, mole_fractions, total_number_density)
+        species_vec = String.(species)
+        mole_frac_vec = Float64.(mole_fractions)
+        n_tot = Float64(total_number_density)
+
+        if length(species_vec) != length(mole_frac_vec)
+            throw(ArgumentError("Species and mole_fractions arrays must have same length"))
+        end
+        if isempty(species_vec)
+            throw(ArgumentError("At least one species must be specified"))
+        end
+        if any(mole_frac_vec .< 0)
+            throw(ArgumentError("Mole fractions must be non-negative"))
+        end
+        if abs(sum(mole_frac_vec) - 1.0) > 1e-10
+            throw(ArgumentError("Mole fractions must sum to 1.0, got $(sum(mole_frac_vec))"))
+        end
+        if n_tot <= 0
+            throw(ArgumentError("Total number density must be positive"))
+        end
+        if length(unique(species_vec)) != length(species_vec)
+            throw(ArgumentError("Duplicate species names found"))
+        end
+        for name in species_vec
+            if isempty(strip(name))
+                throw(ArgumentError("Species names cannot be empty"))
+            end
+        end
+
+        return new(species_vec, mole_frac_vec, n_tot)
+    end
+end
+
+ReactorComposition(; species, mole_fractions, total_number_density) = ReactorComposition(
+    species, mole_fractions, total_number_density)
+
+"""
+$(SIGNATURES)
+
+Thermal state for the reactor.
+
+# Fields
+- `Tt::Float64`: Translational temperature (K)
+- `Tv::Float64`: Vibrational temperature (K)
+- `Tee::Float64`: Electron-electronic temperature (K)
+- `Te::Float64`: Electron temperature (K)
+"""
+struct ReactorThermalState
+    Tt::Float64
+    Tv::Float64
+    Tee::Float64
+    Te::Float64
+
+    function ReactorThermalState(Tt, Tv, Tee, Te)
+        if any([Tt, Tv, Tee, Te] .<= 0)
+            throw(ArgumentError("All temperatures must be positive"))
+        end
+        return new(Float64(Tt), Float64(Tv), Float64(Tee), Float64(Te))
+    end
+end
+
+ReactorThermalState(; Tt, Tv, Tee, Te) = ReactorThermalState(Tt, Tv, Tee, Te)
+
+"""
+$(SIGNATURES)
+
+Combined reactor-state configuration.
+"""
+struct ReactorConfig
+    composition::ReactorComposition
+    thermal::ReactorThermalState
+end
+
+function ReactorConfig(;
+        composition::ReactorComposition,
+        thermal::ReactorThermalState)
+    return ReactorConfig(composition, thermal)
+end
+
+"""
+$(SIGNATURES)
+
+Physics/process model configuration.
+"""
+struct ModelConfig
+    physics::PhysicsConfig
+    processes::ProcessConfig
+end
+
+function ModelConfig(;
+        physics::PhysicsConfig = PhysicsConfig(),
+        processes::ProcessConfig = ProcessConfig())
+    return ModelConfig(physics, processes)
+end
+
+"""
+$(SIGNATURES)
+
+Numerical time-integration controls.
+
+# Fields
+- `dt::Float64`: Time step (seconds)
+- `dt_output::Float64`: Native-output time step (seconds)
+- `duration::Float64`: Final time (seconds)
+- `nstep::Int`: Maximum number of time steps
+- `method::Int`: Integration method (0=forward Euler, 1=high order explicit, 2=implicit)
+"""
+struct TimeConfig
+    dt::Float64
+    dt_output::Float64
+    duration::Float64
+    nstep::Int
+    method::Int
+
+    function TimeConfig(dt, dt_output, duration, nstep = 500000, method = 2)
+        if dt <= 0 || dt_output <= 0 || duration <= 0
+            throw(ArgumentError("Time parameters must be positive"))
+        end
+        if nstep <= 0
+            throw(ArgumentError("Number of steps must be positive"))
+        end
+        if !(method in [0, 1, 2])
+            throw(ArgumentError("Integration method must be 0, 1, or 2"))
+        end
+        return new(Float64(dt), Float64(dt_output), Float64(duration), Int(nstep), Int(method))
+    end
+end
+
+function TimeConfig(;
+        dt, dt_output, duration, nstep::Integer = 500000, method::Integer = 2)
+    return TimeConfig(dt, dt_output, duration, nstep, method)
+end
+
+"""
+$(SIGNATURES)
+
+ODE-solver controls managed by the Julia wrapper.
+"""
+struct ODESolverConfig
+    reltol::Float64
+    abstol_density::Float64
+    saveat_count::Int
+    ramp_understep_ratio::Float64
+    ramp_history_steps::Int
+
+    function ODESolverConfig(;
+            reltol::Real = 1e-8,
+            abstol_density::Real = 1e-10,
+            saveat_count::Integer = 100,
+            ramp_understep_ratio::Real = inv(128),
+            ramp_history_steps::Integer = 5)
+        if reltol <= 0
+            throw(ArgumentError("reltol must be positive"))
+        end
+        if abstol_density <= 0
+            throw(ArgumentError("abstol_density must be positive"))
+        end
+        if saveat_count <= 0
+            throw(ArgumentError("saveat_count must be positive"))
+        end
+        if ramp_understep_ratio <= 0
+            throw(ArgumentError("ramp_understep_ratio must be positive"))
+        end
+        if ramp_history_steps <= 0
+            throw(ArgumentError("ramp_history_steps must be positive"))
+        end
+
+        return new(
+            Float64(reltol),
+            Float64(abstol_density),
+            Int(saveat_count),
+            Float64(ramp_understep_ratio),
+            Int(ramp_history_steps))
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Spatial-discretization metadata.
+"""
+struct SpaceConfig
+    nd::Int
+    dr::Union{Nothing, Float64}
+
+    function SpaceConfig(; nd::Integer = 0, dr::Union{Nothing, Real} = nothing)
+        nd_val = Int(nd)
+        if nd_val < 0
+            throw(ArgumentError("nd must be non-negative"))
+        end
+        dr_val = dr === nothing ? nothing : Float64(dr)
+        if dr_val !== nothing && dr_val <= 0
+            throw(ArgumentError("dr must be positive when provided"))
+        end
+        return new(nd_val, dr_val)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Residence-time (CSTR / flow-through) model controls.
+"""
+struct ResidenceTimeConfig
+    enabled::Bool
+    L::Float64
+    U_neutral::Float64
+    U_ion::Float64
+    U_energy::Union{Nothing, Float64}
+    inlet_reactor::Union{Nothing, ReactorConfig}
+
+    function ResidenceTimeConfig(enabled::Bool, L, U_neutral, U_ion,
+            U_energy = nothing, inlet_reactor = nothing)
+        if !isfinite(L) || L <= 0
+            throw(ArgumentError("ResidenceTimeConfig: L must be finite and positive (got $L)."))
+        end
+        if !isfinite(U_neutral) || U_neutral <= 0
+            throw(ArgumentError("ResidenceTimeConfig: U_neutral must be finite and positive (got $U_neutral)."))
+        end
+        if !isfinite(U_ion) || U_ion <= 0
+            throw(ArgumentError("ResidenceTimeConfig: U_ion must be finite and positive (got $U_ion)."))
+        end
+        if U_energy !== nothing && (!isfinite(U_energy) || U_energy <= 0)
+            throw(ArgumentError("ResidenceTimeConfig: U_energy must be finite and positive (got $U_energy)."))
+        end
+        inlet_reactor_val = _coerce_residence_time_inlet_reactor(inlet_reactor)
+
+        return new(
+            enabled,
+            Float64(L),
+            Float64(U_neutral),
+            Float64(U_ion),
+            U_energy === nothing ? nothing : Float64(U_energy),
+            inlet_reactor_val)
+    end
+end
+
+# Backward-compatible positional constructor (enabled defaults to true)
+ResidenceTimeConfig(L, U_neutral, U_ion, U_energy = nothing, inlet_config = nothing) =
+    ResidenceTimeConfig(true, L, U_neutral, U_ion, U_energy, inlet_config)
+
+function ResidenceTimeConfig(;
+        enabled::Bool = true,
+        L::Real = 1.0,
+        U_neutral::Real = 1.0,
+        U_ion::Real = 1.0,
+        U_energy::Union{Nothing, Real} = nothing,
+        inlet_reactor = nothing,
+        inlet_config = nothing)
+    if inlet_reactor !== nothing && inlet_config !== nothing
+        throw(ArgumentError("ResidenceTimeConfig: provide only one of `inlet_reactor` or legacy `inlet_config`."))
+    end
+    inlet_value = inlet_reactor === nothing ? inlet_config : inlet_reactor
+    return ResidenceTimeConfig(enabled, L, U_neutral, U_ion, U_energy, inlet_value)
+end
+
+function _coerce_residence_time_inlet_reactor(inlet)
+    if inlet === nothing
+        return nothing
+    elseif inlet isa ReactorConfig
+        return inlet
+    elseif inlet isa TERRAConfig
+        return ReactorConfig(;
+            composition = ReactorComposition(;
+                species = inlet.species,
+                mole_fractions = inlet.mole_fractions,
+                total_number_density = inlet.total_number_density),
+            thermal = ReactorThermalState(;
+                Tt = inlet.temperatures.Tt,
+                Tv = inlet.temperatures.Tv,
+                Tee = inlet.temperatures.Tee,
+                Te = inlet.temperatures.Te))
+    else
+        throw(ArgumentError("ResidenceTimeConfig: inlet_reactor/inlet_config must be `ReactorConfig`, `Config`, `TERRAConfig`, or `nothing`."))
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Numerical controls for the wrapper runtime.
+"""
+struct NumericsConfig
+    time::TimeConfig
+    solver::ODESolverConfig
+    space::SpaceConfig
+    residence_time::Union{Nothing, ResidenceTimeConfig}
+
+    function NumericsConfig(;
+            time::TimeConfig,
+            solver::ODESolverConfig = ODESolverConfig(),
+            space::SpaceConfig = SpaceConfig(),
+            residence_time::Union{Nothing, ResidenceTimeConfig} = ResidenceTimeConfig())
+        return new(time, solver, space, residence_time)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Runtime and I/O configuration controls.
+"""
+struct RuntimeConfig
+    database_path::String
+    case_path::String
+    unit_system::Symbol
+    validate_species_against_terra::Bool
+    print_source_terms::Bool
+    write_native_outputs::Bool
+    print_integration_output::Bool
+
+    function RuntimeConfig(;
+            database_path::String = "../../databases/n2/elec_sts_expanded_electron_fits",
+            case_path::String = pwd(),
+            unit_system::Symbol = :CGS,
+            validate_species_against_terra::Bool = false,
+            print_source_terms::Bool = true,
+            write_native_outputs::Bool = false,
+            print_integration_output::Bool = true)
+        if !isdir(case_path)
+            throw(ArgumentError("Case path directory does not exist: $case_path"))
+        end
+        if !(unit_system in [:SI, :CGS])
+            throw(ArgumentError("Unit system must be :SI or :CGS, got :$unit_system"))
+        end
+        return new(database_path, case_path, unit_system,
+            validate_species_against_terra, print_source_terms,
+            write_native_outputs, print_integration_output)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Top-level configuration for refactored TERRA workflows.
+"""
+struct Config
+    reactor::ReactorConfig
+    models::ModelConfig
+    numerics::NumericsConfig
+    runtime::RuntimeConfig
+
+    function Config(;
+            reactor::ReactorConfig,
+            numerics::NumericsConfig,
+            models::ModelConfig = ModelConfig(),
+            runtime::RuntimeConfig = RuntimeConfig())
+        return new(reactor, models, numerics, runtime)
+    end
+end
+
+_coerce_residence_time_inlet_reactor(inlet::Config) = inlet.reactor
+
+"""
+$(SIGNATURES)
+
+Convert legacy `TERRAConfig` to nested `Config`.
+"""
+function to_config(config::TERRAConfig;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
+    reactor = ReactorConfig(;
+        composition = ReactorComposition(;
+            species = config.species,
+            mole_fractions = config.mole_fractions,
+            total_number_density = config.total_number_density),
+        thermal = ReactorThermalState(;
+            Tt = config.temperatures.Tt,
+            Tv = config.temperatures.Tv,
+            Tee = config.temperatures.Tee,
+            Te = config.temperatures.Te))
+
+    models = ModelConfig(;
+        physics = config.physics,
+        processes = config.processes)
+
+    numerics = NumericsConfig(;
+        time = TimeConfig(;
+            dt = config.time_params.dt,
+            dt_output = config.time_params.dtm,
+            duration = config.time_params.tlim,
+            nstep = config.time_params.nstep,
+            method = config.time_params.method),
+        residence_time = residence_time === nothing ? ResidenceTimeConfig(; enabled = false) :
+                         residence_time)
+
+    runtime = RuntimeConfig(;
+        database_path = config.database_path,
+        case_path = config.case_path,
+        unit_system = config.unit_system,
+        validate_species_against_terra = config.validate_species_against_terra,
+        print_source_terms = config.print_source_terms,
+        write_native_outputs = config.write_native_outputs,
+        print_integration_output = config.print_integration_output)
+
+    return Config(;
+        reactor = reactor,
+        models = models,
+        numerics = numerics,
+        runtime = runtime)
+end
+
+"""
+$(SIGNATURES)
+
+Convert nested `Config` to legacy `TERRAConfig`.
+"""
+function to_legacy_config(config::Config)
+    return TERRAConfig(
+        species = config.reactor.composition.species,
+        mole_fractions = config.reactor.composition.mole_fractions,
+        total_number_density = config.reactor.composition.total_number_density,
+        temperatures = TemperatureConfig(;
+            Tt = config.reactor.thermal.Tt,
+            Tv = config.reactor.thermal.Tv,
+            Tee = config.reactor.thermal.Tee,
+            Te = config.reactor.thermal.Te),
+        time_params = TimeIntegrationConfig(;
+            dt = config.numerics.time.dt,
+            dtm = config.numerics.time.dt_output,
+            tlim = config.numerics.time.duration,
+            nstep = config.numerics.time.nstep,
+            method = config.numerics.time.method),
+        physics = config.models.physics,
+        processes = config.models.processes,
+        database_path = config.runtime.database_path,
+        case_path = config.runtime.case_path,
+        unit_system = config.runtime.unit_system,
+        validate_species_against_terra = config.runtime.validate_species_against_terra,
+        print_source_terms = config.runtime.print_source_terms,
+        write_native_outputs = config.runtime.write_native_outputs,
+        print_integration_output = config.runtime.print_integration_output
+    )
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `config` with an updated runtime block.
+"""
+function with_runtime(config::Config;
+        database_path::AbstractString = config.runtime.database_path,
+        case_path::AbstractString = config.runtime.case_path,
+        unit_system::Symbol = config.runtime.unit_system,
+        validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
+        print_source_terms::Bool = config.runtime.print_source_terms,
+        write_native_outputs::Bool = config.runtime.write_native_outputs,
+        print_integration_output::Bool = config.runtime.print_integration_output)
+    runtime = RuntimeConfig(;
+        database_path = String(database_path),
+        case_path = String(case_path),
+        unit_system = unit_system,
+        validate_species_against_terra = validate_species_against_terra,
+        print_source_terms = print_source_terms,
+        write_native_outputs = write_native_outputs,
+        print_integration_output = print_integration_output)
+
+    return Config(;
+        reactor = config.reactor,
+        models = config.models,
+        numerics = config.numerics,
+        runtime = runtime)
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `config` with an updated case path.
+"""
+function with_case_path(config::Config, case_path::AbstractString)
+    return with_runtime(config; case_path = case_path)
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `config` with updated time-integration controls.
+"""
+function with_time(config::Config;
+        dt::Real = config.numerics.time.dt,
+        dt_output::Real = config.numerics.time.dt_output,
+        duration::Real = config.numerics.time.duration,
+        nstep::Integer = config.numerics.time.nstep,
+        method::Integer = config.numerics.time.method)
+    time = TimeConfig(;
+        dt = dt,
+        dt_output = dt_output,
+        duration = duration,
+        nstep = nstep,
+        method = method)
+    numerics = NumericsConfig(;
+        time = time,
+        solver = config.numerics.solver,
+        space = config.numerics.space,
+        residence_time = config.numerics.residence_time)
+    return Config(;
+        reactor = config.reactor,
+        models = config.models,
+        numerics = numerics,
+        runtime = config.runtime)
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_runtime`.
+"""
+function with_runtime(config::TERRAConfig; kwargs...)
+    return to_legacy_config(with_runtime(to_config(config); kwargs...))
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_case_path`.
+"""
+function with_case_path(config::TERRAConfig, case_path::AbstractString)
+    return to_legacy_config(with_case_path(to_config(config), case_path))
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_time`.
+"""
+function with_time(config::TERRAConfig;
+        dt::Real = config.time_params.dt,
+        dtm::Real = config.time_params.dtm,
+        tlim::Real = config.time_params.tlim,
+        nstep::Integer = config.time_params.nstep,
+        method::Integer = config.time_params.method)
+    nested = with_time(to_config(config);
+        dt = dt,
+        dt_output = dtm,
+        duration = tlim,
+        nstep = nstep,
+        method = method)
+    return to_legacy_config(nested)
+end
+
+"""
+$(SIGNATURES)
+
+Results container for TERRA simulations.
+
+# Fields
+- `time::Vector{Float64}`: Time points
+- `species_densities::Matrix{Float64}`: Species densities over time
+- `temperatures::NamedTuple`: Temperature evolution
+- `total_energy::Vector{Float64}`: Total energy evolution
+- `source_terms::Union{NamedTuple, Nothing}`: Source terms (if requested)
+- `success::Bool`: Simulation success flag
+- `message::String`: Status message
+"""
+struct TERRAResults
+    time::Vector{Float64}
+    species_densities::Matrix{Float64}
+    temperatures::NamedTuple
+    total_energy::Vector{Float64}
+    source_terms::Union{NamedTuple, Nothing}
+    success::Bool
+    message::String
+end
