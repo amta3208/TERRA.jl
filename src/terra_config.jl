@@ -682,6 +682,111 @@ end
 """
 $(SIGNATURES)
 
+Return a copy of `config` with an updated runtime block.
+"""
+function with_runtime(config::Config;
+        database_path::AbstractString = config.runtime.database_path,
+        case_path::AbstractString = config.runtime.case_path,
+        unit_system::Symbol = config.runtime.unit_system,
+        validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
+        print_source_terms::Bool = config.runtime.print_source_terms,
+        write_native_outputs::Bool = config.runtime.write_native_outputs,
+        print_integration_output::Bool = config.runtime.print_integration_output)
+    runtime = RuntimeConfig(;
+        database_path = String(database_path),
+        case_path = String(case_path),
+        unit_system = unit_system,
+        validate_species_against_terra = validate_species_against_terra,
+        print_source_terms = print_source_terms,
+        write_native_outputs = write_native_outputs,
+        print_integration_output = print_integration_output)
+
+    return Config(;
+        reactor = config.reactor,
+        models = config.models,
+        numerics = config.numerics,
+        runtime = runtime)
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `config` with an updated case path.
+"""
+function with_case_path(config::Config, case_path::AbstractString)
+    return with_runtime(config; case_path = case_path)
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `config` with updated time-integration controls.
+"""
+function with_time(config::Config;
+        dt::Real = config.numerics.time.dt,
+        dt_output::Real = config.numerics.time.dt_output,
+        duration::Real = config.numerics.time.duration,
+        nstep::Integer = config.numerics.time.nstep,
+        method::Integer = config.numerics.time.method)
+    time = TimeConfig(;
+        dt = dt,
+        dt_output = dt_output,
+        duration = duration,
+        nstep = nstep,
+        method = method)
+    numerics = NumericsConfig(;
+        time = time,
+        solver = config.numerics.solver,
+        space = config.numerics.space,
+        residence_time = config.numerics.residence_time)
+    return Config(;
+        reactor = config.reactor,
+        models = config.models,
+        numerics = numerics,
+        runtime = config.runtime)
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_runtime`.
+"""
+function with_runtime(config::TERRAConfig; kwargs...)
+    return to_legacy_config(with_runtime(to_config(config); kwargs...))
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_case_path`.
+"""
+function with_case_path(config::TERRAConfig, case_path::AbstractString)
+    return to_legacy_config(with_case_path(to_config(config), case_path))
+end
+
+"""
+$(SIGNATURES)
+
+Legacy wrapper for `with_time`.
+"""
+function with_time(config::TERRAConfig;
+        dt::Real = config.time_params.dt,
+        dtm::Real = config.time_params.dtm,
+        tlim::Real = config.time_params.tlim,
+        nstep::Integer = config.time_params.nstep,
+        method::Integer = config.time_params.method)
+    nested = with_time(to_config(config);
+        dt = dt,
+        dt_output = dtm,
+        duration = tlim,
+        nstep = nstep,
+        method = method)
+    return to_legacy_config(nested)
+end
+
+"""
+$(SIGNATURES)
+
 Results container for TERRA simulations.
 
 # Fields

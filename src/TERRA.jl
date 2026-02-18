@@ -19,6 +19,7 @@ export TERRAConfig, TERRAResults
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig, NumericsConfig, RuntimeConfig
 export ResidenceTimeConfig, to_config, to_legacy_config
+export with_case_path, with_time, with_runtime
 export solve_terra_0d, nitrogen_10ev_example
 
 end

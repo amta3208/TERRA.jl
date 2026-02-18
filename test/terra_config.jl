@@ -314,6 +314,69 @@
         @test nested_with_rt.numerics.residence_time === rt
     end
 
+    @testset "Config Modifiers (Phase 3)" begin
+        legacy = terra.TERRAConfig(
+            species = ["N", "N2", "E-"],
+            mole_fractions = [0.1, 0.8, 0.1],
+            total_number_density = 1e13,
+            temperatures = terra.TemperatureConfig(;
+                Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0),
+            time_params = terra.TimeIntegrationConfig(;
+                dt = 1e-6, dtm = 1e-4, tlim = 1e-3, nstep = 1234, method = 2),
+            database_path = ".",
+            case_path = pwd(),
+            unit_system = :CGS,
+            validate_species_against_terra = false,
+            print_source_terms = false,
+            write_native_outputs = false,
+            print_integration_output = false
+        )
+        nested = terra.to_config(legacy)
+
+        temp_case = mktempdir()
+        nested_case = terra.with_case_path(nested, temp_case)
+        @test nested_case.runtime.case_path == temp_case
+        @test nested_case.reactor == nested.reactor
+        @test nested.runtime.case_path == pwd()
+
+        nested_time = terra.with_time(nested; dt = 2e-6, duration = 2e-3, method = 1)
+        @test nested_time.numerics.time.dt == 2e-6
+        @test nested_time.numerics.time.duration == 2e-3
+        @test nested_time.numerics.time.dt_output == nested.numerics.time.dt_output
+        @test nested_time.numerics.time.method == 1
+        @test nested.numerics.time.dt == 1e-6
+
+        nested_runtime = terra.with_runtime(nested;
+            unit_system = :SI,
+            print_source_terms = true,
+            write_native_outputs = true)
+        @test nested_runtime.runtime.unit_system == :SI
+        @test nested_runtime.runtime.print_source_terms == true
+        @test nested_runtime.runtime.write_native_outputs == true
+        @test nested_runtime.runtime.case_path == nested.runtime.case_path
+
+        legacy_case = terra.with_case_path(legacy, temp_case)
+        @test legacy_case.case_path == temp_case
+        @test legacy_case.time_params == legacy.time_params
+
+        legacy_time = terra.with_time(legacy; dt = 3e-6, tlim = 4e-3, nstep = 999)
+        @test legacy_time.time_params.dt == 3e-6
+        @test legacy_time.time_params.tlim == 4e-3
+        @test legacy_time.time_params.nstep == 999
+        @test legacy_time.case_path == legacy.case_path
+
+        legacy_runtime = terra.with_runtime(legacy;
+            unit_system = :SI,
+            print_source_terms = true,
+            write_native_outputs = true)
+        @test legacy_runtime.unit_system == :SI
+        @test legacy_runtime.print_source_terms == true
+        @test legacy_runtime.write_native_outputs == true
+
+        @test_throws ArgumentError terra.with_case_path(nested, joinpath(temp_case, "missing"))
+        @test_throws ArgumentError terra.with_time(nested; method = 9)
+    end
+
     @testset "ResidenceTimeConfig (Phase 1)" begin
         rt_default = terra.ResidenceTimeConfig(1.0, 1.0, 1.0)
         @test rt_default.enabled == true
