@@ -501,3 +501,29 @@ end
         @test xe_recovered≈xe_fractions rtol=1e-12
     end
 end
+
+@testset "get_molecular_weights" begin
+    @testset "Known Species" begin
+        # Test nitrogen species
+        weights = terra.get_molecular_weights(["N", "N2", "N+", "N2+", "E-"])
+        @test weights[1] ≈ 14.007  # N
+        @test weights[2] ≈ 28.014  # N2
+        @test weights[3] ≈ 14.007  # N+
+        @test weights[4] ≈ 28.014  # N2+
+        @test weights[5] ≈ 5.485799e-4  # E-
+
+        # Test noble gas species
+        weights_ar = terra.get_molecular_weights(["Ar", "Ar+"])
+        @test weights_ar[1] ≈ 39.948  # Ar
+        @test weights_ar[2] ≈ 39.948  # Ar+
+
+        weights_xe = terra.get_molecular_weights(["Xe", "Xe+"])
+        @test weights_xe[1] ≈ 131.293  # Xe
+        @test weights_xe[2] ≈ 131.293  # Xe+
+    end
+
+    @testset "Unknown Species" begin
+        @test_throws ErrorException terra.get_molecular_weights(["UNKNOWN"])
+        @test_throws ErrorException terra.get_molecular_weights(["N", "UNKNOWN", "E-"])
+    end
+end
