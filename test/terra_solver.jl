@@ -105,6 +105,158 @@ end
     @test_nowarn terra.terra_ode_system!(du, y0, p, 0.0)
     @test all(isfinite, du)
     @test length(du) == length(y0)
+
+    # If the solver probes intermediate states with small negative components,
+    # the wrapper should still compute a meaningful RHS by clamping the state
+    # passed to Fortran and applying a Shampine-style positivity rule.
+    density_indices = Int[]
+    append!(density_indices, collect(layout.vib_range))
+    append!(density_indices, collect(layout.elec_range))
+    append!(density_indices, collect(layout.sp_range))
+    unique!(density_indices)
+    @test !isempty(density_indices)
+    idx = first(density_indices)
+
+    y_neg = copy(y0)
+    y_neg[idx] = -abs(y0[idx]) - 1.0e-30
+
+    density_stop = layout.mom_range.start - 1
+    @test density_stop >= 1
+    rho_target = sum(@view y_neg[1:density_stop])
+
+    y_proj = copy(y_neg)
+    @test y_proj[idx] < 0.0
+    y_proj[idx] = 0.0
+    rho_clamped = sum(@view y_proj[1:density_stop])
+    @test rho_target > 0.0
+    @test rho_clamped > 0.0
+    scale = rho_target / rho_clamped
+    @test scale > 0.0
+    @inbounds y_proj[1:density_stop] .*= scale
+
+    du_proj = zeros(length(y0))
+    @test_nowarn terra.terra_ode_system!(du_proj, y_proj, p, 0.0)
+    @test all(isfinite, du_proj)
+
+    du_neg = zeros(length(y0))
+    @test_nowarn terra.terra_ode_system!(du_neg, y_neg, p, 0.0)
+    @test all(isfinite, du_neg)
+    @test du_neg[idx] >= 0.0
+
+    du_expected = copy(du_proj)
+    du_expected[idx] = max(du_expected[idx], 0.0)
+    @test du_neg == du_expected
+end
+
+@testset "RHS (rhs_api) with residence time terms" begin
+    test_case_path = joinpath(@__DIR__, "test_case")
+    @test_nowarn reset_and_init!(test_case_path)
+
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+
+    u_in = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    rt_cfg = terra.ResidenceTimeConfig(; L = 1.0, U_neutral = 1.0, U_ion = 2.0)
+    rt = terra._prepare_residence_time_data(layout, config, u_in, rt_cfg)
+
+    @test !isempty(rt.neutral_indices)
+    @test !isempty(rt.ion_indices)
+    @test !isempty(rt.energy_indices)
+
+    rho_n = sum(rt.u_in[rt.neutral_indices])
+    rho_i = sum(rt.u_in[rt.ion_indices])
+    expected_inv_tau_energy = (rho_n * rt_cfg.U_neutral + rho_i * rt_cfg.U_ion) / (rho_n + rho_i)
+    @test rt.inv_tau_energy ≈ expected_inv_tau_energy
+
+    u = copy(u_in)
+    i_neu = rt.neutral_indices[argmax(u_in[rt.neutral_indices])]
+    i_ion = rt.ion_indices[argmax(u_in[rt.ion_indices])]
+    i_E = rt.energy_indices[1]
+
+    u[i_neu] *= 0.5
+    u[i_ion] *= 2.0
+    u[i_E] += 1.0
+
+    du_base = zeros(length(u))
+    du_rt = zeros(length(u))
+
+    p_base = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.temperatures.Te, layout.nsp)
+    )
+    p_rt = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        residence_time = rt
+    )
+
+    @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
+    @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
+
+    diff = du_rt .- du_base
+
+    @test diff[i_neu] ≈ (rt.u_in[i_neu] - u[i_neu]) * rt.inv_tau_neutral
+    @test diff[i_ion] ≈ (rt.u_in[i_ion] - u[i_ion]) * rt.inv_tau_ion
+    @test diff[i_E] ≈ (rt.u_in[i_E] - u[i_E]) * rt.inv_tau_energy
+end
+
+@testset "Isothermal Teex: residence time skips rho_eeex" begin
+    config = terra.nitrogen_10ev_config(; isothermal = true)
+    @test_nowarn reset_and_init!(tempname(); config = config)
+
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+
+    @test layout.eex_noneq == true
+    @test layout.idx_eeex != 0
+
+    u_in = terra.pack_state_vector(layout, state.rho_sp, state.rho_rem;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    rt_cfg = terra.ResidenceTimeConfig(; L = 1.0, U_neutral = 1.0, U_ion = 2.0)
+    rt = terra._prepare_residence_time_data(layout, config, u_in, rt_cfg)
+
+    @test !(layout.idx_eeex in rt.energy_indices)
+
+    u = copy(u_in)
+    u[layout.idx_eeex] += 123.0
+
+    du_base = zeros(length(u))
+    du_rt = zeros(length(u))
+
+    p_base = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.temperatures.Te, layout.nsp)
+    )
+    p_rt = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        residence_time = rt
+    )
+
+    @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
+    @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
+
+    diff = du_rt .- du_base
+    @test diff[layout.idx_eeex] == 0.0
+    @test du_rt[layout.idx_eeex] == 0.0
 end
 
 @testset "Native Output Generation" begin

@@ -28,13 +28,26 @@ Resolve the TERRA shared library path from the `$(TERRA_ENV_VAR_NAME)` environme
 - `ErrorException`: If the environment variable is unset or points to a missing file
 """
 function resolve_terra_library_path()
-    path = String(strip(get(ENV, TERRA_ENV_VAR_NAME, "")))
+    path_raw = String(strip(get(ENV, TERRA_ENV_VAR_NAME, "")))
+    path = expanduser(path_raw)
     if isempty(path)
         error("TERRA library path not provided. Set $(TERRA_ENV_VAR_NAME) in the environment before running TERRA.")
     elseif !isfile(path)
-        error("TERRA library file not found: $path
-" *
-              "Set $(TERRA_ENV_VAR_NAME) to the full path of the TERRA shared library.")
+        # If a relative path is provided, interpret it relative to the package root.
+        # This makes `TERRA_LIB_PATH=terra/source/libterra.so` work under `Pkg.test`,
+        # where the working directory is a temporary environment directory.
+        candidate = if isabspath(path) || isempty(PACKAGE_ROOT)
+            ""
+        else
+            abspath(joinpath(PACKAGE_ROOT, path))
+        end
+        if !isempty(candidate) && isfile(candidate)
+            path = candidate
+        else
+            error("TERRA library file not found: $path\n" *
+                  (isempty(candidate) ? "" : "Also tried: $candidate\n") *
+                  "Set $(TERRA_ENV_VAR_NAME) to the full path of the TERRA shared library.")
+        end
     end
     return path
 end

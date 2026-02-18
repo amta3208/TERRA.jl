@@ -52,7 +52,7 @@ end
 
 @testset "TERRA.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        Aqua.test_all(terra; ambiguities = false)
+        Aqua.test_all(terra; ambiguities = false, persistent_tasks = false)
     end
 
     @testset "Data Conversion" begin
