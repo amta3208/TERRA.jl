@@ -6,12 +6,10 @@ from Julia, hiding the complexity of the Fortran interface and providing
 a clean, Julia-native API.
 """
 
-include("solver/layout.jl")
-include("solver/lifecycle.jl")
+include("solver/api_layout.jl")
 include("solver/initial_state.jl")
 include("solver/state_vector.jl")
-include("solver/residence_time_and_callbacks.jl")
-include("solver/thermo_and_reconstruction.jl")
-include("solver/rhs_and_output.jl")
+include("solver/residence_time.jl")
+include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
-include("solver/driver_and_utils.jl")
+include("solver/driver.jl")

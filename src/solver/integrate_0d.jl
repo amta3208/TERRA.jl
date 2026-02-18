@@ -12,6 +12,97 @@ Notes:
   the working `y` passed to Fortran is reconstructed each call.
 - Optional residence-time (CSTR) terms can be enabled via `residence_time`.
 """
+mutable struct NativeRampLimiter{T <: Real}
+    base_dt::T
+    understep_dt::T
+    history_steps::Int
+end
+
+"""
+$(SIGNATURES)
+
+Apply the native TERRA ramp limiter update to the integrator.
+
+# Arguments
+- `integrator`: DifferentialEquations.jl integrator being stepped
+
+# Returns
+- `Nothing`
+"""
+function (lim::NativeRampLimiter)(integrator)
+    if lim.history_steps <= 0
+        return u_modified!(integrator, false)
+    end
+
+    steps_done = integrator.stats.naccept
+
+    if steps_done < lim.history_steps
+        set_proposed_dt!(integrator, lim.understep_dt)
+    elseif steps_done == lim.history_steps && integrator.dt < lim.base_dt
+        set_proposed_dt!(integrator, lim.base_dt)
+    end
+
+    u_modified!(integrator, false)
+end
+
+"""
+$(SIGNATURES)
+
+Condition function for the native ramp callback (always triggers).
+
+# Arguments
+- `u`: Current state vector (unused)
+- `t`: Current simulation time (unused)
+- `integrator`: DifferentialEquations.jl integrator (unused)
+
+# Returns
+- `true`
+"""
+native_ramp_condition(u, t, integrator) = true
+
+"""
+$(SIGNATURES)
+
+Initializer for the native ramp callback.
+
+# Arguments
+- `cb`: Callback instance containing the ramp limiter
+- `u`: Current state vector (unused)
+- `t`: Current simulation time (unused)
+- `integrator`: DifferentialEquations.jl integrator instance
+
+# Returns
+- `Nothing`
+"""
+function native_ramp_initialize(cb, u, t, integrator)
+    if cb.affect!.history_steps > 0
+        set_proposed_dt!(integrator, cb.affect!.understep_dt)
+    end
+    u_modified!(integrator, false)
+end
+
+"""
+$(SIGNATURES)
+
+Create the native TERRA step-size ramp callback.
+
+# Arguments
+- `initial_dt`: Baseline time step used after the ramp is complete
+- `understep_ratio`: Optional ratio controlling the initial under-stepping
+- `history_steps`: Optional number of accepted steps to maintain the ramp
+
+# Returns
+- `DiscreteCallback`: Callback implementing the ramp behaviour
+"""
+function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_steps = 5)
+    understep_ratio <= 0 && error("understep_ratio must be positive")
+    understep_dt = min(initial_dt, initial_dt * understep_ratio)
+    affect! = NativeRampLimiter(initial_dt, understep_dt, history_steps)
+    DiscreteCallback(native_ramp_condition, affect!;
+        initialize = native_ramp_initialize,
+        save_positions = (false, false))
+end
+
 function integrate_0d_system(config::Config, initial_state;
         residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
         use_residence_time::Union{Nothing, Bool} = nothing)
