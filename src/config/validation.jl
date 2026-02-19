@@ -18,7 +18,7 @@ for available species and validates the configuration species against it.
 function validate_species_against_terra_database(config::Config)
     if config.runtime.validate_species_against_terra
         try
-            # Load fortran_wrapper functions - they should be available since terra_config.jl is included in TERRA.jl
+            # fortran_wrapper symbols are available once the TERRA module is loaded
             if is_terra_loaded()
                 terra_species = get_species_names_wrapper()
                 composition = config.reactor.composition
