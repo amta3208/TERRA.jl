@@ -221,54 +221,7 @@ end
     end
 end
 
-@testset "Data Validation and Preparation" begin
-    @testset "Array Preparation for Fortran" begin
-        # Test with various array types
-        julia_array = [1.0, 2.0, 3.0]
-        scalar_val = 5.0
-        nothing_val = nothing
-
-        prepared = terra.prepare_arrays_for_fortran(julia_array, scalar_val, nothing_val)
-
-        @test prepared[1] isa Array{Float64}
-        @test prepared[1] == [1.0, 2.0, 3.0]
-        @test prepared[2] isa Float64
-        @test prepared[2] == 5.0
-        @test prepared[3] === nothing
-
-        # Test with integer arrays (should convert to Float64)
-        int_array = [1, 2, 3]
-        prepared_int = terra.prepare_arrays_for_fortran(int_array)
-        @test prepared_int[1] isa Array{Float64}
-        @test prepared_int[1] == [1.0, 2.0, 3.0]
-
-        # Test with 2D arrays
-        matrix = [1.0 2.0; 3.0 4.0]
-        prepared_matrix = terra.prepare_arrays_for_fortran(matrix)
-        @test prepared_matrix[1] isa Array{Float64}
-        @test size(prepared_matrix[1]) == (2, 2)
-        # No copy if already Array{Float64}
-        @test prepared_matrix[1] === matrix
-
-        # Test with empty arrays
-        empty_array = Float64[]
-        prepared_empty = terra.prepare_arrays_for_fortran(empty_array)
-        @test prepared_empty[1] isa Array{Float64}
-        @test length(prepared_empty[1]) == 0
-        @test prepared_empty[1] === empty_array
-
-        # Test with multiple arrays
-        arr1 = [1.0, 2.0]
-        arr2 = [3.0, 4.0, 5.0]
-        scalar = 10.0
-        prepared_multi = terra.prepare_arrays_for_fortran(arr1, arr2, scalar)
-
-        @test length(prepared_multi) == 3
-        @test prepared_multi[1] == [1.0, 2.0]
-        @test prepared_multi[2] == [3.0, 4.0, 5.0]
-        @test prepared_multi[3] == 10.0
-    end
-
+@testset "Data Validation and Species Utilities" begin
     @testset "Species Data Validation" begin
         # Test valid species data
         species_names = ["N2", "N", "N+", "N2+", "E-"]

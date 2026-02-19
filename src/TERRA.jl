@@ -9,7 +9,8 @@ using Printf
 const PACKAGE_ROOT = joinpath(splitpath(@__DIR__)[1:(end - 1)]...)
 const TEST_DIR = joinpath(PACKAGE_ROOT, "test")
 
-include("data_conversion.jl")
+include("conversion/units.jl")
+include("conversion/species.jl")
 
 include("interop/state.jl")
 include("interop/library.jl")
