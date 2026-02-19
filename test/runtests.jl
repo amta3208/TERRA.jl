@@ -10,11 +10,15 @@ include("helpers/shared.jl")
     end
 
     @testset "Data Conversion" begin
-        include("data_conversion.jl")
+        include("conversion/units.jl")
+        include("conversion/species.jl")
     end
 
     @testset "Fortran Wrapper" begin
-        include("fortran_wrapper.jl")
+        include("interop/library.jl")
+        include("interop/lifecycle.jl")
+        include("interop/metadata.jl")
+        include("interop/thermo.jl")
     end
 
     @testset "Config" begin
