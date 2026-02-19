@@ -3,10 +3,6 @@ $(SIGNATURES)
 
 Generate prob_setup.inp file from configuration.
 """
-function generate_prob_setup_file(config::TERRAConfig, filepath::String)
-    return generate_prob_setup_file(to_config(config), filepath)
-end
-
 function generate_prob_setup_file(config::Config, filepath::String)
     runtime = config.runtime
     composition = config.reactor.composition

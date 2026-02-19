@@ -8,77 +8,6 @@ including parameter validation, default values, and input file generation.
 """
 $(SIGNATURES)
 
-Temperature configuration for TERRA simulation.
-
-# Fields
-- `Tt::Float64`: Translational temperature (K)
-- `Tv::Float64`: Vibrational temperature (K)
-- `Tee::Float64`: Electron-electronic temperature (K)
-- `Te::Float64`: Electron temperature (K)
-"""
-struct TemperatureConfig
-    Tt::Float64
-    Tv::Float64
-    Tee::Float64
-    Te::Float64
-
-    function TemperatureConfig(Tt, Tv, Tee, Te)
-        if any([Tt, Tv, Tee, Te] .<= 0)
-            error("All temperatures must be positive")
-        end
-        new(Float64(Tt), Float64(Tv), Float64(Tee), Float64(Te))
-    end
-end
-
-# Preferred keyword constructor
-TemperatureConfig(; Tt, Tv, Tee, Te) = TemperatureConfig(Tt, Tv, Tee, Te)
-
-"""
-$(SIGNATURES)
-
-Time integration configuration for TERRA simulation.
-
-All time values are in seconds within the TERRA.jl wrapper. When writing
-Fortran input files, these values are converted to microseconds to match
-the TERRA input format requirements.
-
-# Fields
-- `dt::Float64`: Time step (seconds)
-- `dtm::Float64`: Native-output time step (seconds)
-- `tlim::Float64`: Final time (seconds)
-- `nstep::Int`: Maximum number of time steps
-- `method::Int`: Integration method (0=forward Euler, 1=high order explicit, 2=implicit)
-"""
-struct TimeIntegrationConfig
-    dt::Float64
-    dtm::Float64
-    tlim::Float64
-    nstep::Int
-    method::Int
-
-    function TimeIntegrationConfig(dt, dtm, tlim, nstep = 500000, method = 2)
-        if dt <= 0 || dtm <= 0 || tlim <= 0
-            error("Time parameters must be positive")
-        end
-        if nstep <= 0
-            error("Number of steps must be positive")
-        end
-        if !(method in [0, 1, 2])
-            error("Integration method must be 0, 1, or 2")
-        end
-        new(Float64(dt), Float64(dtm), Float64(tlim), Int(nstep), Int(method))
-    end
-end
-
-# Preferred keyword constructor
-function TimeIntegrationConfig(;
-        dt, dtm, tlim, nstep::Integer = 500000, method::Integer = 2)
-    TimeIntegrationConfig(dt, dtm, tlim, nstep, method)
-end
-
-"""
-$(SIGNATURES)
-
 Physics modeling configuration for TERRA simulation.
 
 # Fields
@@ -160,73 +89,6 @@ struct ProcessConfig
     )
         new(consider_elec_bbe, consider_elec_bfe, consider_elec_bbh,
             consider_elec_bfh, consider_rad, consider_rdr, consider_chem)
-    end
-end
-
-"""
-$(SIGNATURES)
-
-Main configuration struct for TERRA simulations.
-
-# Fields
-- `species::Vector{String}`: Species names
-- `mole_fractions::Vector{Float64}`: Initial mole fractions
-- `total_number_density::Float64`: Total number density (1/cm³)
-- `temperatures::TemperatureConfig`: Temperature configuration
-- `time_params::TimeIntegrationConfig`: Time integration parameters
-- `physics::PhysicsConfig`: Physics modeling options
-- `processes::ProcessConfig`: Process flags
-- `database_path::String`: Path to chemistry database
-- `case_path::String`: Working directory for TERRA simulation
-- `unit_system::Symbol`: Unit system (:SI or :CGS)
-- `validate_species_against_terra::Bool`: Validate species against TERRA database
-- `print_source_terms::Bool`: Print source terms flag
-- `write_native_outputs::Bool`: Mirror native TERRA Tecplot outputs when running via the Julia wrapper
-- `print_integration_output::Bool`: Print per-save-point integration status output
-
-"""
-struct TERRAConfig
-    species::Vector{String}
-    mole_fractions::Vector{Float64}
-    total_number_density::Float64
-    temperatures::TemperatureConfig
-    time_params::TimeIntegrationConfig
-    physics::PhysicsConfig
-    processes::ProcessConfig
-    database_path::String
-    case_path::String
-    unit_system::Symbol
-    validate_species_against_terra::Bool
-    print_source_terms::Bool
-    write_native_outputs::Bool
-    print_integration_output::Bool
-
-    function TERRAConfig(;
-            species::Vector{String},
-            mole_fractions::Vector{Float64},
-            total_number_density::Float64,
-            temperatures::TemperatureConfig,
-            time_params::TimeIntegrationConfig,
-            physics::PhysicsConfig = PhysicsConfig(),
-            processes::ProcessConfig = ProcessConfig(),
-            database_path::String = "../../databases/n2/elec_sts_expanded_electron_fits",
-            case_path::String = pwd(),
-            unit_system::Symbol = :CGS,
-            validate_species_against_terra::Bool = false,
-            print_source_terms::Bool = true,
-            write_native_outputs::Bool = false,
-            print_integration_output::Bool = true
-    )
-
-        # Validate inputs
-        validate_config(
-            species, mole_fractions, total_number_density,
-            temperatures, time_params, case_path, unit_system)
-
-        new(species, mole_fractions, total_number_density, temperatures,
-            time_params, physics, processes, database_path, case_path, unit_system,
-            validate_species_against_terra, print_source_terms, write_native_outputs,
-            print_integration_output)
     end
 end
 
@@ -506,19 +368,8 @@ function _coerce_residence_time_inlet_reactor(inlet)
         return nothing
     elseif inlet isa ReactorConfig
         return inlet
-    elseif inlet isa TERRAConfig
-        return ReactorConfig(;
-            composition = ReactorComposition(;
-                species = inlet.species,
-                mole_fractions = inlet.mole_fractions,
-                total_number_density = inlet.total_number_density),
-            thermal = ReactorThermalState(;
-                Tt = inlet.temperatures.Tt,
-                Tv = inlet.temperatures.Tv,
-                Tee = inlet.temperatures.Tee,
-                Te = inlet.temperatures.Te))
     else
-        throw(ArgumentError("ResidenceTimeConfig: inlet_reactor/inlet_config must be `ReactorConfig`, `Config`, `TERRAConfig`, or `nothing`."))
+        throw(ArgumentError("ResidenceTimeConfig: inlet_reactor/inlet_config must be `ReactorConfig`, `Config`, or `nothing`."))
     end
 end
 

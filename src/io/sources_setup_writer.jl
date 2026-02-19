@@ -3,10 +3,6 @@ $(SIGNATURES)
 
 Generate sources_setup.inp file from configuration.
 """
-function generate_sources_setup_file(config::TERRAConfig, filepath::String)
-    return generate_sources_setup_file(to_config(config), filepath)
-end
-
 function generate_sources_setup_file(config::Config, filepath::String)
     species_names = config.reactor.composition.species
 

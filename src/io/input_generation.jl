@@ -10,8 +10,8 @@ This function creates the directory structure required by the Fortran wrapper:
 - case_path/output/states/   (state outputs)
 
 # Arguments
-- `config::TERRAConfig`: TERRA configuration
-- `case_path::String`: Case directory path (default: config.case_path)
+- `config::Config`: TERRA configuration
+- `case_path::String`: Case directory path (default: `config.runtime.case_path`)
 
 # Returns
 - `true` if files generated successfully
@@ -19,10 +19,6 @@ This function creates the directory structure required by the Fortran wrapper:
 # Throws
 - `ErrorException` if file generation fails
 """
-function generate_input_files(config::TERRAConfig, case_path::String = config.case_path)
-    return generate_input_files(to_config(config), case_path)
-end
-
 function generate_input_files(config::Config, case_path::String = config.runtime.case_path)
     try
         # Create required directory structure as expected by fortran_wrapper

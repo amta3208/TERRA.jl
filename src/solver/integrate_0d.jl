@@ -399,13 +399,3 @@ function integrate_0d_system(config::Config, initial_state;
         end
     end
 end
-
-function integrate_0d_system(config::TERRAConfig, initial_state;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing,
-        use_residence_time::Union{Nothing, Bool} = nothing)
-    return integrate_0d_system(
-        to_config(config),
-        initial_state;
-        residence_time = residence_time,
-        use_residence_time = use_residence_time)
-end

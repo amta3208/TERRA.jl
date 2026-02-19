@@ -173,11 +173,6 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
     )
 end
 
-function _prepare_residence_time_data(layout::ApiLayout, config::TERRAConfig,
-        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
-    return _prepare_residence_time_data(layout, to_config(config), u0, rt_cfg)
-end
-
 @inline function _resolve_residence_time(
         residence_time::Union{Nothing, ResidenceTimeConfig},
         use_residence_time::Union{Nothing, Bool})

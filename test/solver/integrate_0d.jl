@@ -5,21 +5,13 @@
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     # Shorten integration to keep tests fast
-    config = terra.TERRAConfig(
-        species = config.species,
-        mole_fractions = config.mole_fractions,
-        total_number_density = config.total_number_density,
-        temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
-        physics = config.physics,
-        processes = config.processes,
-        database_path = config.database_path,
-        case_path = temp_case_path,
-        unit_system = config.unit_system,
+    config = terra.with_case_path(config, temp_case_path)
+    config = terra.with_time(config;
+        dt = 5e-12, dt_output = 1e-6, duration = 1e-6, nstep = 500000, method = 2)
+    config = terra.with_runtime(config;
         validate_species_against_terra = false,
         print_source_terms = false,
-        print_integration_output = false
-    )
+        print_integration_output = false)
 
     # Initialize the Fortran API using a temporary case generated from this config
     @test_nowarn reset_and_init!(temp_case_path; config = config)
@@ -27,7 +19,7 @@
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
     @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.species)
+    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, results.temperatures.tt)
     @test all(isfinite, results.temperatures.te)
     @test all(isfinite, results.temperatures.tv)
@@ -36,21 +28,13 @@ end
 @testset "Integrate 0D (isothermal)" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
-    config = terra.TERRAConfig(
-        species = config.species,
-        mole_fractions = config.mole_fractions,
-        total_number_density = config.total_number_density,
-        temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-6, 500000, 2),
-        physics = config.physics,
-        processes = config.processes,
-        database_path = config.database_path,
-        case_path = temp_case_path,
-        unit_system = config.unit_system,
+    config = terra.with_case_path(config, temp_case_path)
+    config = terra.with_time(config;
+        dt = 5e-12, dt_output = 1e-6, duration = 1e-6, nstep = 500000, method = 2)
+    config = terra.with_runtime(config;
         validate_species_against_terra = false,
         print_source_terms = false,
-        print_integration_output = false
-    )
+        print_integration_output = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
@@ -58,31 +42,23 @@ end
     results = @time terra.integrate_0d_system(config, initial_state)
 
     @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.species)
+    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, results.temperatures.tt)
     @test all(isfinite, results.temperatures.te)
-    @test maximum(abs.(results.temperatures.te .- config.temperatures.Te)) <= 1e-6
+    @test maximum(abs.(results.temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
     @test all(isfinite, results.temperatures.tv)
 end
 
 @testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
-    config = terra.TERRAConfig(
-        species = config.species,
-        mole_fractions = config.mole_fractions,
-        total_number_density = config.total_number_density,
-        temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 1e-3, 500000, 2),
-        physics = config.physics,
-        processes = config.processes,
-        database_path = config.database_path,
-        case_path = temp_case_path,
-        unit_system = config.unit_system,
+    config = terra.with_case_path(config, temp_case_path)
+    config = terra.with_time(config;
+        dt = 5e-12, dt_output = 1e-6, duration = 1e-3, nstep = 500000, method = 2)
+    config = terra.with_runtime(config;
         validate_species_against_terra = false,
         print_source_terms = false,
-        print_integration_output = false
-    )
+        print_integration_output = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
@@ -113,21 +89,13 @@ end
 @testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
-    config = terra.TERRAConfig(
-        species = config.species,
-        mole_fractions = config.mole_fractions,
-        total_number_density = config.total_number_density,
-        temperatures = config.temperatures,
-        time_params = terra.TimeIntegrationConfig(5e-12, 1e-6, 5e-5, 500000, 2),
-        physics = config.physics,
-        processes = config.processes,
-        database_path = config.database_path,
-        case_path = temp_case_path,
-        unit_system = config.unit_system,
+    config = terra.with_case_path(config, temp_case_path)
+    config = terra.with_time(config;
+        dt = 5e-12, dt_output = 1e-6, duration = 5e-5, nstep = 500000, method = 2)
+    config = terra.with_runtime(config;
         validate_species_against_terra = false,
         print_source_terms = false,
-        print_integration_output = false
-    )
+        print_integration_output = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
@@ -135,10 +103,10 @@ end
     results = @time terra.integrate_0d_system(config, initial_state)
 
     @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.species)
+    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, results.temperatures.tt)
     @test all(isfinite, results.temperatures.te)
-    @test maximum(abs.(results.temperatures.te .- config.temperatures.Te)) <= 1e-6
+    @test maximum(abs.(results.temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
     @test all(isfinite, results.temperatures.tv)
     @test all(isfinite, results.total_energy)
 

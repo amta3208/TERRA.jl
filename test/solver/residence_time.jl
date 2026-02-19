@@ -40,13 +40,13 @@
         layout = layout,
         config = config,
         teex_const = state.teex_const,
-        teex_const_vec = fill(config.temperatures.Te, layout.nsp)
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp)
     )
     p_rt = (
         layout = layout,
         config = config,
         teex_const = state.teex_const,
-        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
         residence_time = rt
     )
 
@@ -91,13 +91,13 @@ end
         layout = layout,
         config = config,
         teex_const = state.teex_const,
-        teex_const_vec = fill(config.temperatures.Te, layout.nsp)
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp)
     )
     p_rt = (
         layout = layout,
         config = config,
         teex_const = state.teex_const,
-        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
         residence_time = rt
     )
 
@@ -120,7 +120,7 @@ end
 end
 
 @testset "Residence-time inlet_reactor support" begin
-    config = terra.to_config(terra.nitrogen_10ev_config(; isothermal = false))
+    config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
     state = terra.config_to_initial_state(config)

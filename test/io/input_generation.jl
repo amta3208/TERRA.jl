@@ -24,13 +24,12 @@
         end
     end
 
-    @testset "Nested Config Input Generation" begin
+    @testset "Config Input Generation" begin
         temp_dir = mktempdir()
         try
-            legacy = terra.nitrogen_10ev_config()
-            nested = terra.to_config(legacy)
+            config = terra.nitrogen_10ev_config()
 
-            @test terra.generate_input_files(nested, temp_dir) == true
+            @test terra.generate_input_files(config, temp_dir) == true
             @test isfile(joinpath(temp_dir, "input", "prob_setup.inp"))
             @test isfile(joinpath(temp_dir, "input", "sources_setup.inp"))
             @test isfile(joinpath(temp_dir, "input", "tau_scaling.inp"))
@@ -100,7 +99,7 @@
             @test occursin("END SPECIES SOURCES", sources_content)
             @test occursin("BEGIN EXCITED STATE SOURCES", sources_content)
             @test occursin("END EXCITED STATE SOURCES", sources_content)
-            for species in config.species
+            for species in config.reactor.composition.species
                 @test occursin(species, sources_content)
             end
 

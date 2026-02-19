@@ -9,23 +9,14 @@ prepares the system for simulation. The TERRA shared library is obtained from
 the `TERRA_LIB_PATH` environment variable when it is not already loaded.
 
 # Arguments
-- `config::TERRAConfig`: Configuration for initialization
-- `case_path::String`: Case directory path (optional, defaults to config.case_path)
+- `config::Config`: Configuration for initialization
+- `case_path::String`: Case directory path (optional, defaults to `config.runtime.case_path`)
 
 # Returns
 - `true` if initialization successful
 
 # Throws
 - `ErrorException` if initialization fails
-"""
-function initialize_terra(config::TERRAConfig, case_path::String = config.case_path)
-    return initialize_terra(to_config(config), case_path)
-end
-
-"""
-$(SIGNATURES)
-
-Initialize TERRA using nested `Config`.
 """
 function initialize_terra(config::Config, case_path::String = config.runtime.case_path)
     try
@@ -136,27 +127,13 @@ It handles all the complexity of data conversion, Fortran interfacing,
 and result processing.
 
 # Arguments
-- `config::TERRAConfig`: Configuration for the simulation
+- `config::Config`: Configuration for the simulation
 
 # Returns
 - `TERRAResults`: Results of the simulation
 
 # Throws
 - `ErrorException` if TERRA not initialized or simulation fails
-"""
-function solve_terra_0d(config::TERRAConfig;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = nothing,
-        use_residence_time::Union{Nothing, Bool} = nothing)
-    return solve_terra_0d(
-        to_config(config);
-        residence_time = residence_time,
-        use_residence_time = use_residence_time)
-end
-
-"""
-$(SIGNATURES)
-
-Solve a 0D TERRA simulation using nested `Config`.
 """
 function solve_terra_0d(config::Config;
         residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
@@ -193,7 +170,7 @@ $(SIGNATURES)
 Create a default configuration for the 0D Nitrogen Te=10eV example.
 
 # Returns
-- `TERRAConfig`: Configuration matching the example case
+- `Config`: Configuration matching the example case
 
 # Throws
 - `ErrorException` if `$(TERRA_ENV_VAR_NAME)` is unset/invalid or if required database paths do not exist
@@ -203,8 +180,15 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     mole_fractions = [1.0e-20, 0.9998, 1.0e-20, 0.0001, 0.0001]
     total_number_density = 1.0e13  # 1/cm³
 
-    temperatures = TemperatureConfig(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
+    composition = ReactorComposition(;
+        species = species,
+        mole_fractions = mole_fractions,
+        total_number_density = total_number_density)
+    thermal = ReactorThermalState(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
+    reactor = ReactorConfig(; composition = composition, thermal = thermal)
+
     physics = PhysicsConfig(; is_isothermal_teex = isothermal)
+    models = ModelConfig(; physics = physics)
 
     # Time parameters are specified in seconds within the wrapper.
     # The TERRA input file expects microseconds; conversion is handled
@@ -212,8 +196,8 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     #   dt   = 0.5e-5 microseconds  -> 5e-12 seconds
     #   dtm  = 5.0   microseconds   -> 5e-6  seconds
     #   tlim = 1.0e3 microseconds   -> 1e-3  seconds
-    time_params = TimeIntegrationConfig(;
-        dt = 5e-12, dtm = 5e-6, tlim = 1e-3, nstep = 500000, method = 2)
+    time = TimeConfig(;
+        dt = 5e-12, dt_output = 5e-6, duration = 1e-3, nstep = 500000, method = 2)
 
     # Resolve database path relative to package root for portability.
     # This file lives in src/solver, so package root is two levels up.
@@ -236,15 +220,14 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
               "Please ensure the database is complete.")
     end
 
-    return TERRAConfig(
-        species = species,
-        mole_fractions = mole_fractions,
-        total_number_density = total_number_density,
-        temperatures = temperatures,
-        time_params = time_params,
-        physics = physics,
-        database_path = database_path
-    )
+    numerics = NumericsConfig(; time = time, residence_time = nothing)
+    runtime = RuntimeConfig(; database_path = database_path)
+
+    return Config(;
+        reactor = reactor,
+        models = models,
+        numerics = numerics,
+        runtime = runtime)
 end
 
 """
@@ -273,27 +256,12 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
     config = nitrogen_10ev_config(; isothermal = isothermal)
 
     # Update config with case path
-    config_with_path = TERRAConfig(
-        species = config.species,
-        mole_fractions = config.mole_fractions,
-        total_number_density = config.total_number_density,
-        temperatures = config.temperatures,
-        time_params = config.time_params,
-        physics = config.physics,
-        processes = config.processes,
-        database_path = config.database_path,
-        case_path = case_path,
-        unit_system = config.unit_system,
-        validate_species_against_terra = config.validate_species_against_terra,
-        print_source_terms = config.print_source_terms,
-        write_native_outputs = config.write_native_outputs,
-        print_integration_output = config.print_integration_output
-    )
+    config_with_path = with_case_path(config, case_path)
 
     @info "Running 0D Nitrogen Te=10eV example case"
-    @info "Configuration" species=config_with_path.species mole_fractions=config_with_path.mole_fractions
-    @info "Temperatures" Tt=config_with_path.temperatures.Tt Te=config_with_path.temperatures.Te
-    @info "Time parameters" dt=config_with_path.time_params.dt tlim=config_with_path.time_params.tlim
+    @info "Configuration" species=config_with_path.reactor.composition.species mole_fractions=config_with_path.reactor.composition.mole_fractions
+    @info "Temperatures" Tt=config_with_path.reactor.thermal.Tt Te=config_with_path.reactor.thermal.Te
+    @info "Time parameters" dt=config_with_path.numerics.time.dt tlim=config_with_path.numerics.time.duration
     @info "Case path" case_path=case_path
 
     try
@@ -308,9 +276,9 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
             @info "Final conditions" time=results.time[end]
 
             # Print final species densities
-            for (i, species) in enumerate(config_with_path.species)
+            for (i, species) in enumerate(config_with_path.reactor.composition.species)
                 final_density = results.species_densities[i, end]
-                unit_str = config_with_path.unit_system == :SI ? "kg/m³" : "g/cm³"
+                unit_str = config_with_path.runtime.unit_system == :SI ? "kg/m³" : "g/cm³"
                 @info "Final density" species=species density=final_density unit=unit_str
             end
 

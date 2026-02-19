@@ -347,9 +347,7 @@ end
     return layout.spwt[esp] * s
 end
 
-@inline _config_electron_temperature(config::TERRAConfig) = config.temperatures.Te
 @inline _config_electron_temperature(config::Config) = config.reactor.thermal.Te
-@inline _config_is_isothermal_teex(config::TERRAConfig) = config.physics.is_isothermal_teex
 @inline _config_is_isothermal_teex(config::Config) = config.models.physics.is_isothermal_teex
 
 function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
@@ -414,7 +412,7 @@ $(SIGNATURES)
 ODE system that calls the Fortran `rhs_api` directly (via `calculate_rhs_api`).
 
 Assumptions about the state `u`:
-- Non-isothermal (`config.physics.is_isothermal_teex == false`): `u` matches the Fortran `rhs_api` `y` layout and
+- Non-isothermal (`config.models.physics.is_isothermal_teex == false`): `u` matches the Fortran `rhs_api` `y` layout and
   stores total energy density at `layout.idx_etot`.
 - Isothermal Teex (`== true`): `u[layout.idx_etot]` stores the remainder energy
   `rho_rem = rho_h - rho_eeex - rho_e * R_e * Teex`. The `rho_eeex` slot is treated

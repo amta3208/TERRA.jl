@@ -1,15 +1,6 @@
 """
 $(SIGNATURES)
 
-Convert TERRAConfig to initial state vectors for TERRA.
-"""
-function config_to_initial_state(config::TERRAConfig)
-    return config_to_initial_state(to_config(config))
-end
-
-"""
-$(SIGNATURES)
-
 Convert nested `Config` to initial state vectors for TERRA.
 """
 function config_to_initial_state(config::Config)

@@ -17,7 +17,7 @@
         layout = layout,
         config = config,
         teex_const = state.teex_const,
-        teex_const_vec = fill(config.temperatures.Te, layout.nsp),
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
         work_y = similar(y0),
         work_dy = similar(y0),
         work_rho_sp = zeros(Float64, layout.nsp),
