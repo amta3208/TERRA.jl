@@ -240,13 +240,13 @@ end
         inlet_config = inlet_config)
 end
 
-@testset "TERRAResults" begin
+@testset "SimulationResult" begin
     time = [0.0, 1.0, 2.0]
     species_densities = [1e-3 1e-3 1e-3; 1e-6 1e-6 1e-6]
     temperatures = (tt = [300.0, 310.0, 320.0], te = [10000.0, 11000.0, 12000.0])
     total_energy = [1e4, 1.1e4, 1.2e4]
 
-    results = terra.TERRAResults(
+    results = terra.SimulationResult(
         time, species_densities, temperatures, total_energy,
         nothing, true, "Success"
     )

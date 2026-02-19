@@ -365,7 +365,7 @@ function integrate_0d_system(config::Config, initial_state;
         message = success ? "ODE integration completed successfully" :
                   "ODE integration terminated: $(rc)"
 
-        return TERRAResults(
+        return SimulationResult(
             time_points,
             species_densities_si,
             temperatures,
@@ -377,7 +377,7 @@ function integrate_0d_system(config::Config, initial_state;
 
     catch e
         @error "ODE integration failed" exception=e
-        return TERRAResults(
+        return SimulationResult(
             [0.0],
             reshape(initial_state.rho_sp, :, 1),
             (tt = [config.reactor.thermal.Tt], te = [config.reactor.thermal.Te],

@@ -130,7 +130,7 @@ and result processing.
 - `config::Config`: Configuration for the simulation
 
 # Returns
-- `TERRAResults`: Results of the simulation
+- `SimulationResult`: Results of the simulation
 
 # Throws
 - `ErrorException` if TERRA not initialized or simulation fails
@@ -157,7 +157,7 @@ function solve_terra_0d(config::Config;
 
     catch e
         @error "TERRA simulation failed" exception=e
-        return TERRAResults(
+        return SimulationResult(
             Float64[], zeros(0, 0), (;), Float64[], nothing, false,
             "Simulation failed: $(string(e))"
         )
@@ -243,7 +243,7 @@ Requires the `TERRA_LIB_PATH` environment variable to point to the TERRA shared 
 - `case_path::String`: Case directory path (optional, creates temp directory if not provided)
 
 # Returns
-- `TERRAResults`: Results of the simulation
+- `SimulationResult`: Results of the simulation
 
 # Example
 ```julia
@@ -305,12 +305,12 @@ $(SIGNATURES)
 Validate simulation results for physical consistency.
 
 # Arguments
-- `results::TERRAResults`: Simulation results to validate
+- `results::SimulationResult`: Simulation results to validate
 
 # Returns
 - `true` if results pass validation, `false` otherwise
 """
-function validate_results(results::TERRAResults)
+function validate_results(results::SimulationResult)
     if !results.success
         @warn "Simulation was not successful"
         return false
@@ -354,13 +354,13 @@ $(SIGNATURES)
 Save TERRA results to file.
 
 # Arguments
-- `results::TERRAResults`: Results to save
+- `results::SimulationResult`: Results to save
 - `filename::String`: Output filename (CSV format)
 
 # Returns
 - `true` if save successful
 """
-function save_results(results::TERRAResults, filename::String)
+function save_results(results::SimulationResult, filename::String)
     try
         # Prepare data for CSV output
         n_times = length(results.time)

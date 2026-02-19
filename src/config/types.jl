@@ -463,7 +463,7 @@ Results container for TERRA simulations.
 - `success::Bool`: Simulation success flag
 - `message::String`: Status message
 """
-struct TERRAResults
+struct SimulationResult
     time::Vector{Float64}
     species_densities::Matrix{Float64}
     temperatures::NamedTuple
