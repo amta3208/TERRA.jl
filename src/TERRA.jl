@@ -10,7 +10,13 @@ const PACKAGE_ROOT = joinpath(splitpath(@__DIR__)[1:(end - 1)]...)
 const TEST_DIR = joinpath(PACKAGE_ROOT, "test")
 
 include("data_conversion.jl")
-include("fortran_wrapper.jl")
+
+include("interop/state.jl")
+include("interop/library.jl")
+include("interop/metadata.jl")
+include("interop/lifecycle.jl")
+include("interop/thermo.jl")
+include("interop/rhs_api.jl")
 
 include("config/types.jl")
 include("config/validation.jl")
