@@ -1,6 +1,6 @@
 name = "TERRA"
 uuid = "8a405caf-3569-4c97-876d-2cf871ca8799"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Amin Taziny"]
 
 [deps]
