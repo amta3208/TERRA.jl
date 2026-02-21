@@ -9,7 +9,8 @@
 
 **TERRA (Toolkit for Excitation, Reactions, and Radiation with Applications)** is a general-purpose master-equation solver that can compute the evolution of a reacting ionized gas in thermodynamic and chemical nonequilibrium. It was developed in the Nonequilibrium Gas and Plasma Dynamics Laboratory at the University of Colorado Boulder and is currently maintained by Tim Aiken (timothy.aiken@colorado.edu). The native Fortran implementation can simulate either 0-D isochoric reactors or 1-D post-normal-shock flows. Users can choose between mode-level (multi-temperature) modeling and detailed state-to-state treatments for electronic and vibrational populations in arbitrary mixtures of atoms, molecules, ions, and electrons.
 
-**TERRA.jl** is the Julia wrapper that interfaces with the TERRA Fortran API and is developed and maintained by Amin Taziny (amin.taziny@colorado.edu). It automates input generation, manages the Fortran runtime, exposes high-level Julia functions for integration and analysis, and optionally mirrors the native TERRA output layout to keep the established MATLAB/Tecplot tooling in play. Currently, only simulations of 0-D isochoric reactors are supported.
+**TERRA.jl** is the Julia wrapper that interfaces with the TERRA Fortran API and is developed and maintained by Amin Taziny (amin.taziny@colorado.edu). It automates input generation, manages the Fortran runtime, exposes high-level Julia functions for integration and analysis, and optionally mirrors the native TERRA output layout to keep the established MATLAB/Tecplot tooling in play.
+Within its current 0-D scope, it supports both closed-reactor integrations and open-flow 0-D reactors through a continuously stirred tank reactor (CSTR) model via an integrated convective term.
 
 ## Requirements
 
@@ -32,45 +33,51 @@ import Pkg
 Pkg.add(url="https://github.com/amta3208/TERRA.jl")
 ```
 
-## Quick Start – Molcular Nitrogen Example
+## Quick Start – Molecular Nitrogen Example
 
-The wrapper ships with a helper that reproduces a canonical nitrogen test case. This example case runs an electronically-state resolved simulation of $N_2$ plasma in a 0-D isochoric and adiabatic reactor.
-The initial conditions include an electron temperature of $T_e=10$ eV, electron mole fraction of $[e^-]=0.01$, and a total number density of $n_{tot}=10^{13}\;\text{cm}^{-3}$. This case can be ran simply via:
+The wrapper ships with a helper that reproduces a canonical nitrogen test case. This case runs an electronically-state-resolved simulation of $N_2$ plasma in a 0-D isochoric and adiabatic reactor with electron temperature $T_e=10$ eV, electron mole fraction $[e^-]=0.01$, and total number density $n_{tot}=10^{13}\;\text{cm}^{-3}$.
+
+The example below uses the refactored nested config architecture with only required constructor inputs, relying on defaults for all optional settings:
+
+```julia
+using TERRA
+
+composition = ReactorComposition(;
+    species = ["N", "N2", "N+", "N2+", "E-"],
+    mole_fractions = [1.0e-20, 0.9998, 1.0e-20, 0.0001, 0.0001],
+    total_number_density = 1.0e13,  # 1/cm^3
+)
+
+thermal = ReactorThermalState(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
+reactor = ReactorConfig(; composition = composition, thermal = thermal)
+
+# Time inputs are in seconds in the Julia wrapper
+time = TimeConfig(; dt = 5e-12, dt_output = 5e-6, duration = 1e-3)
+numerics = NumericsConfig(; time = time)
+
+config = Config(; reactor = reactor, numerics = numerics)
+config = with_case_path(config, mktempdir())
+
+initialize_terra(config)
+try
+    # Use closed-reactor behavior for this run
+    results = solve_terra_0d(config; use_residence_time = false)
+    @info "Final translational temperature (K)" results.temperatures.tt[end]
+finally
+    finalize_terra()
+end
+```
+
+For convenience, this same case is also available out of the box:
 
 ```julia
 using TERRA
 
 results = nitrogen_10ev_example()
-@info "Final translational temperature" results.temperatures.tt[end]
+@info "Final translational temperature (K)" results.temperatures.tt[end]
 ```
 
-To run the example in a specific case directory and mirror the native TERRA Tecplot outputs:
-
-```julia
-using TERRA
-
-case_path = mktempdir()
-config = nitrogen_10ev_config()
-
-config = TERRAConfig(
-    species = config.species,
-    mole_fractions = config.mole_fractions,
-    total_number_density = config.total_number_density,
-    temperatures = config.temperatures,
-    time_params = config.time_params,
-    physics = config.physics,
-    processes = config.processes,
-    database_path = config.database_path,
-    case_path = case_path,
-    write_native_outputs = true,  # enable Tecplot-style outputs
-)
-
-initialize_terra(config)
-results = solve_terra_0d(config)
-finalize_terra()
-```
-
-The returned `TERRAResults` object contains the full time history of species densities, temperatures, and energy modes. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
+The returned `SimulationResult` object contains the full time history of species densities, temperatures, and energy modes. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
 
 ## Tools & MATLAB Post-Processing
 
@@ -81,7 +88,7 @@ The original TERRA toolchain is bundled under `tools/` and remains fully compati
 - `tools/run_terra.sh` – Convenience script for running the native executable (helpful for debugging outside of Julia).
 
 
-Running the MATLAB post-processor requires the location of your MATLAB root directiry to be added to your system `$PATH` variable, where  `MATLAB_ROOT_DIR` can be found by executing `matlabroot` into the Command Window in a session of the MATLAB application. Once located, the path can be appended in the bash configuration file by executing the following command in your shell:
+Running the MATLAB post-processor requires adding your MATLAB root directory to your system `$PATH` variable. `MATLAB_ROOT_DIR` can be found by running `matlabroot` in the MATLAB Command Window. Once located, append it in your shell configuration:
 
 ```bash
 export PATH="<MATLAB_ROOT_DIR>/bin:$PATH"
@@ -95,8 +102,8 @@ bash configure_matlab_path.sh
 
 Once completed, MATLAB-ready results can be generated from a Julia run by:
 
-1. Set `write_native_outputs = true` in your `TERRAConfig` so the wrapper mirrors the native Tecplot files under `output/`.
-2. Run your simulation via `integrate_0d_system`, `solve_terra_0d`, or a custom driver.
+1. Set native mirroring in runtime settings, for example with `config = with_runtime(config; write_native_outputs = true)`.
+2. Run your simulation via `solve_terra_0d` (or `nitrogen_10ev_example` for the packaged reference case).
 3. Execute the post-processing script, pointing it to the case directory:
 
    ```bash
