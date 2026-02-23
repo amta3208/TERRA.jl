@@ -2,20 +2,46 @@ module TERRA
 
 using DocStringExtensions
 using Libdl
-using DifferentialEquations
-using DiffEqBase: DiscreteCallback, set_proposed_dt!, u_modified!
+using OrdinaryDiffEq
+using SciMLBase: ODEProblem, solve, DiscreteCallback, set_proposed_dt!, u_modified!
 using Printf
 
 const PACKAGE_ROOT = joinpath(splitpath(@__DIR__)[1:(end - 1)]...)
 const TEST_DIR = joinpath(PACKAGE_ROOT, "test")
 
-include("data_conversion.jl")
-include("fortran_wrapper.jl")
-include("terra_config.jl")
-include("terra_solver.jl")
+include("conversion/units.jl")
+include("conversion/species.jl")
+
+include("interop/state.jl")
+include("interop/library.jl")
+include("interop/metadata.jl")
+include("interop/lifecycle.jl")
+include("interop/thermo.jl")
+include("interop/rhs_api.jl")
+
+include("config/types.jl")
+include("config/validation.jl")
+include("config/conversions.jl")
+
+include("io/prob_setup_writer.jl")
+include("io/sources_setup_writer.jl")
+include("io/tau_scaling_writer.jl")
+include("io/input_generation.jl")
+
+include("solver/api_layout.jl")
+include("solver/initial_state.jl")
+include("solver/state_vector.jl")
+include("solver/residence_time.jl")
+include("solver/rhs.jl")
+include("solver/integrate_0d.jl")
+include("solver/driver.jl")
 
 export initialize_terra, finalize_terra
-export TERRAConfig, TERRAResults
+export Config, ReactorConfig, ReactorComposition, ReactorThermalState
+export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
+export NumericsConfig, RuntimeConfig, ResidenceTimeConfig
+export with_case_path, with_time, with_runtime
+export SimulationResult
 export solve_terra_0d, nitrogen_10ev_example
 
 end

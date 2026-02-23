@@ -1,44 +1,7 @@
-
-@testset "Library Management" begin
-    @testset "Library Loading and Status" begin
-        # Test initial state - no library loaded
-        @test !terra.is_terra_loaded()
-    end
-
-    @testset "Library Path Setting" begin
-        # Test setting library path with non-existent file
-        fake_path = "/nonexistent/path/libterra.so"
-        @test_throws ErrorException terra.load_terra_library!(fake_path)
-
-        # Test error message for non-existent file
-        try
-            terra.load_terra_library!(fake_path)
-            @test false  # Should not reach here
-        catch e
-            @test occursin("TERRA library file not found", e.msg)
-            @test occursin(fake_path, e.msg)
-        end
-
-        # Test that library is still not loaded after failed attempt
-        @test !terra.is_terra_loaded()
-    end
-
-    @testset "Library Cleanup" begin
-        # Test closing library when none is loaded (should be safe)
-        @test_nowarn terra.close_terra_library()
-        @test !terra.is_terra_loaded()
-
-        # Test multiple calls to close (should be safe)
-        @test_nowarn terra.close_terra_library()
-        @test_nowarn terra.close_terra_library()
-        @test !terra.is_terra_loaded()
-    end
-end
-
 @testset "Vibrational Temperature Wrapper" begin
     @testset "Round-trip Evib ↔ Tvib" begin
         # Initialize a consistent state
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         # Species mass densities [g/cm^3]
@@ -78,310 +41,6 @@ end
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         @test_throws ErrorException terra.calculate_vibrational_temperature_wrapper(
             1.0, rho_sp)
-    end
-end
-
-@testset "Initialization" begin
-    # Ensure library path is set
-    test_case_path = joinpath(@__DIR__, "test_case")
-
-    # Test basic initialization (Fortran determines species count from input files)
-    result = @test_nowarn reset_and_init!(test_case_path)
-
-    # Check that result contains the expected fields
-    if result !== nothing
-        @test result isa NamedTuple
-        @test haskey(result, :num_species)
-        @test haskey(result, :num_dimensions)
-        @test result.num_species isa Int32
-        @test result.num_dimensions isa Int32
-        @test result.num_species > 0
-        @test result.num_dimensions >= 0
-    end
-end
-
-@testset "Input/Directory Handling" begin
-    @testset "Initialization Input Validation" begin
-        # Ensure library is loaded and Fortran not initialized
-        terra.close_terra_library()
-        terra.load_terra_library!()
-
-        # Test with non-existent case path
-        @test_throws ErrorException terra.initialize_api_wrapper(case_path = "/nonexistent/path")
-
-        # Test error message for non-existent case path
-        try
-            terra.initialize_api_wrapper(case_path = "/nonexistent/path")
-            @test false  # Should not reach here
-        catch e
-            @test occursin("Case path does not exist", e.msg)
-        end
-
-        # Test with case path missing input directory
-        temp_dir = mktempdir()
-        try
-            @test_throws ErrorException terra.initialize_api_wrapper(case_path = temp_dir)
-        finally
-            rm(temp_dir; recursive = true)
-        end
-
-        # Test error message for missing input file
-        temp_dir = mktempdir()
-        try
-            terra.initialize_api_wrapper(case_path = temp_dir)
-            @test false  # Should not reach here
-        catch e
-            @test occursin("Required input file not found", e.msg)
-            @test occursin("prob_setup.inp", e.msg)
-        finally
-            rm(temp_dir; recursive = true)
-        end
-    end
-
-    @testset "Directory Management" begin
-        terra.load_terra_library!()
-
-        # Store original directory
-        original_dir = pwd()
-        test_case_path = joinpath(@__DIR__, "test_case")
-
-        # Test that directory is restored after successful call
-        terra.initialize_api_wrapper(case_path = test_case_path)
-        @test pwd() == original_dir
-
-        # Test that directory is restored even after failed call
-        temp_dir = mktempdir()
-        try
-            terra.initialize_api_wrapper(case_path = temp_dir)
-        catch
-            # Expected to fail
-        end
-        @test pwd() == original_dir
-        rm(temp_dir; recursive = true)
-    end
-
-    @testset "Output Directory Creation" begin
-        # Fresh state for this test
-        terra.close_terra_library()
-        terra.load_terra_library!()
-
-        # Create a temporary test case directory with input
-        temp_case_dir = mktempdir()
-        try
-            # Create input directory and file
-            input_dir = joinpath(temp_case_dir, "input")
-            mkpath(input_dir)
-            touch(joinpath(input_dir, "prob_setup.inp"))
-
-            # Verify output directories don't exist initially
-            output_dir = joinpath(temp_case_dir, "output")
-            sources_dir = joinpath(output_dir, "sources")
-            states_dir = joinpath(output_dir, "states")
-
-            @test !isdir(output_dir)
-            @test !isdir(sources_dir)
-            @test !isdir(states_dir)
-
-            # Initialize - should create output directories
-            terra.initialize_api_wrapper(case_path = temp_case_dir)
-
-            # Verify output directories were created
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-
-            # Test that calling again doesn't cause errors (directories already exist)
-            result2 = terra.initialize_api_wrapper(case_path = temp_case_dir)
-            @test result2 isa NamedTuple
-
-            # Verify directories still exist
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-
-        finally
-            rm(temp_case_dir; recursive = true)
-        end
-    end
-
-    @testset "Output Directory Creation with Existing Directories" begin
-        # Fresh state for this test
-        terra.close_terra_library()
-        terra.load_terra_library!()
-
-        # Create a temporary test case directory with input and partial output structure
-        temp_case_dir = mktempdir()
-        try
-            # Create input directory and file
-            input_dir = joinpath(temp_case_dir, "input")
-            mkpath(input_dir)
-            touch(joinpath(input_dir, "prob_setup.inp"))
-
-            # Create output directory but not subdirectories
-            output_dir = joinpath(temp_case_dir, "output")
-            mkpath(output_dir)
-
-            # Create a test file in output to verify it's preserved
-            test_file = joinpath(output_dir, "test_file.txt")
-            write(test_file, "test content")
-
-            sources_dir = joinpath(output_dir, "sources")
-            states_dir = joinpath(output_dir, "states")
-
-            @test isdir(output_dir)
-            @test !isdir(sources_dir)
-            @test !isdir(states_dir)
-            @test isfile(test_file)
-
-            # Initialize - should create missing subdirectories
-            terra.initialize_api_wrapper(case_path = temp_case_dir)
-
-            # Verify all directories exist and existing content is preserved
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-            @test isfile(test_file)
-            @test read(test_file, String) == "test content"
-
-        finally
-            rm(temp_case_dir; recursive = true)
-        end
-    end
-end
-
-@testset "Utility Functions" begin
-    @testset "C API Accessors" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
-        reset_and_init!(test_case_path)
-
-        max_species = terra.get_max_number_of_species_wrapper()
-        active_species = terra.get_number_of_active_species_wrapper()
-        species_names = terra.get_species_names_wrapper()
-
-        @test max_species isa Int32 && max_species > 0
-        @test active_species isa Int32 && 0 < active_species <= max_species
-        @test species_names isa Vector{String}
-        @test length(species_names) == active_species
-        @test all(!isempty, species_names)
-    end
-    @testset "Maximum Species Count" begin
-        # Ensure library path is set
-        terra.load_terra_library!()
-
-        # Test error when library not loaded
-        terra.close_terra_library()
-        @test_throws ErrorException terra.get_max_number_of_species_wrapper()
-
-        # Test error message content
-        try
-            terra.get_max_number_of_species_wrapper()
-            @test false  # Should not reach here
-        catch e
-            @test occursin("TERRA library not loaded", e.msg)
-            @test occursin("load_terra_library!", e.msg)
-        end
-
-        # Reload library for actual test
-        terra.load_terra_library!()
-
-        max_species = terra.get_max_number_of_species_wrapper()
-        println("Max species: ", max_species)
-
-        # Check return type
-        @test max_species isa Int32
-
-        # Check that it's positive and reasonable
-        @test max_species > 0
-        @test max_species <= 100  # Reasonable upper bound
-    end
-
-    @testset "Species Names" begin
-        # Ensure library is loaded
-        terra.load_terra_library!()
-
-        # Test error when library not loaded
-        terra.close_terra_library()
-        @test_throws ErrorException terra.get_species_names_wrapper()
-
-        # Test error message content
-        try
-            terra.get_species_names_wrapper()
-            @test false  # Should not reach here
-        catch e
-            @test occursin("TERRA library not loaded", e.msg)
-            @test occursin("load_terra_library!", e.msg)
-        end
-
-        # Reload library for actual test
-        test_case_path = joinpath(@__DIR__, "test_case")
-        reset_and_init!(test_case_path)
-
-        # Check species composition and counts
-        species_names = terra.get_species_names_wrapper()
-        active_species = terra.get_number_of_active_species_wrapper()
-        allowed_species = ["N", "N2", "N+", "N2+", "E-"]
-        for name in species_names
-            @test name in allowed_species
-        end
-
-        # Check return type
-        @test species_names isa Vector{String}
-
-        # Check that all names are non-empty strings
-        @test all(length(name) > 0 for name in species_names)
-
-        # Check that number of species is reasonable
-        @test length(species_names) == active_species
-
-        # Check that species names contain only valid characters
-        isalnum(c) = isletter(c) || isdigit(c)
-        for name in species_names
-            @test all(c -> isascii(c) && (isalnum(c) || c in ['+', '-', '_']), name)
-        end
-
-        # Check that species names are unique
-        @test length(species_names) == length(unique(species_names))
-    end
-
-    @testset "Electronic States Parameters" begin
-        # Ensure library is loaded
-        terra.load_terra_library!()
-
-        # Test error when library not loaded
-        terra.close_terra_library()
-        @test_throws ErrorException terra.get_max_number_of_atomic_electronic_states_wrapper()
-        @test_throws ErrorException terra.get_max_number_of_molecular_electronic_states_wrapper()
-
-        # Test error message content
-        try
-            terra.get_max_number_of_atomic_electronic_states_wrapper()
-            @test false  # Should not reach here
-        catch e
-            @test occursin("TERRA library not loaded", e.msg)
-            @test occursin("load_terra_library!", e.msg)
-        end
-
-        # Reload library for actual test
-        terra.load_terra_library!()
-
-        # Test atomic electronic states
-        max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()
-        println("Max atomic electronic states: ", max_atomic_states)
-
-        @test max_atomic_states isa Int32
-        @test max_atomic_states > 0
-        @test max_atomic_states <= 50  # Reasonable upper bound
-
-        # Test molecular electronic states
-        max_molecular_states = terra.get_max_number_of_molecular_electronic_states_wrapper()
-        println("Max molecular electronic states: ", max_molecular_states)
-
-        @test max_molecular_states isa Int32
-        @test max_molecular_states > 0
-        @test max_molecular_states <= 50  # Reasonable upper bound
-
-        # Test that values are reasonable relative to each other
-        @test max_molecular_states <= max_atomic_states
     end
 end
 
@@ -425,7 +84,7 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -486,7 +145,7 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         tvib = 1000.0
@@ -534,7 +193,7 @@ end
     end
 
     @testset "Input Validation and Edge Cases" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -586,7 +245,7 @@ end
     end
 
     @testset "Input Validation" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         tvib = 2000.0
@@ -614,7 +273,7 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         teex = 10000.0
@@ -653,7 +312,7 @@ end
     end
 
     @testset "Input Validation" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -689,7 +348,7 @@ end
 
     @testset "Function Signature and Return Structure" begin
         terra.load_terra_library!()
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         terra.initialize_api_wrapper(case_path = test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -713,7 +372,7 @@ end
 
     @testset "Temperature Variations" begin
         terra.load_terra_library!()
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         terra.initialize_api_wrapper(case_path = test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -740,7 +399,7 @@ end
 end
 
 @testset "Dimension Validations" begin
-    test_case_path = joinpath(@__DIR__, "test_case")
+    test_case_path = TEST_CASE_PATH
     reset_and_init!(test_case_path)
 
     max_species = terra.get_max_number_of_species_wrapper()
@@ -791,7 +450,7 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         tt = 1000.0
@@ -844,7 +503,7 @@ end
 
     @testset "Function Signature and Return Structure" begin
         # Initialize a consistent state
-        test_case_path = joinpath(@__DIR__, "test_case")
+        test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
