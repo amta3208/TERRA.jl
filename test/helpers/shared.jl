@@ -1,4 +1,11 @@
-const TEST_CASE_PATH = normpath(joinpath(@__DIR__, "..", "test_case"))
+const TEST_CASES_ROOT = normpath(joinpath(@__DIR__, "..", "cases"))
+const TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH = normpath(joinpath(
+    TEST_CASES_ROOT, "terra_fortran", "reference_case"))
+const TEST_CASE_PATH = TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH
+const TEST_HET_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
+    TEST_CASES_ROOT, "hallthruster_jl", "chain_interface_case"))
+const TEST_TERRA_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
+    TEST_CASES_ROOT, "terra_jl", "chain_interface_case"))
 
 """
 Reset the TERRA state (Fortran + Julia) and initialize from scratch.
@@ -35,9 +42,16 @@ function reset_and_init!(case_path::AbstractString;
     end
 
     if config === nothing
+        if !isdir(case_path)
+            throw(ArgumentError("Test case directory does not exist: $case_path"))
+        end
+        prob_setup_path = joinpath(case_path, "input", "prob_setup.inp")
+        if !isfile(prob_setup_path)
+            throw(ArgumentError("Test case is missing required input file: $prob_setup_path"))
+        end
         return terra.initialize_api_wrapper(case_path = case_path)
     else
-        # Use a temporary case directory so we don't touch the shared test_case
+        # Use a temporary case directory so we don't touch the shared reference fixture
         mktempdir() do tmp
             # Generate inputs in the temp directory based on the provided config
             terra.generate_input_files(config, tmp)
