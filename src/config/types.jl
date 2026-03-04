@@ -472,3 +472,114 @@ struct SimulationResult
     success::Bool
     message::String
 end
+
+"""
+$(SIGNATURES)
+
+Normalized axial chain profile used by the TERRA chain-of-CSTR interface.
+
+# Fields
+- `z_m::Vector{Float64}`: Axial coordinate points (m), strictly increasing
+- `dx_m::Vector{Float64}`: Point-aligned control-volume lengths (m), strictly positive
+- `te_K::Vector{Float64}`: Electron temperature profile (K), strictly positive
+- `u_neutral_m_s::Vector{Float64}`: Neutral velocity profile (m/s), strictly positive
+- `u_ion_m_s::Vector{Float64}`: Ion velocity profile (m/s), strictly positive
+- `diagnostics::Dict{String, Vector{Float64}}`: Optional diagnostics arrays
+- `generator::Dict{String, Any}`: Generator metadata from interchange artifact
+- `selection::Dict{String, Any}`: Selection metadata from interchange artifact
+- `schema_version::String`: Interchange schema version
+- `source_snapshot::Union{Nothing, Dict{String, Any}}`: Optional source provenance snapshot
+"""
+struct AxialChainProfile
+    z_m::Vector{Float64}
+    dx_m::Vector{Float64}
+    te_K::Vector{Float64}
+    u_neutral_m_s::Vector{Float64}
+    u_ion_m_s::Vector{Float64}
+    diagnostics::Dict{String, Vector{Float64}}
+    generator::Dict{String, Any}
+    selection::Dict{String, Any}
+    schema_version::String
+    source_snapshot::Union{Nothing, Dict{String, Any}}
+
+    function AxialChainProfile(;
+            z_m,
+            dx_m,
+            te_K,
+            u_neutral_m_s,
+            u_ion_m_s,
+            diagnostics::AbstractDict = Dict{String, Vector{Float64}}(),
+            generator::AbstractDict = Dict{String, Any}(),
+            selection::AbstractDict = Dict{String, Any}(),
+            schema_version::AbstractString = "terra_chain_profile_v1",
+            source_snapshot::Union{Nothing, AbstractDict} = nothing)
+        z_m_vec = Float64.(z_m)
+        dx_m_vec = Float64.(dx_m)
+        te_K_vec = Float64.(te_K)
+        u_neutral_vec = Float64.(u_neutral_m_s)
+        u_ion_vec = Float64.(u_ion_m_s)
+
+        n = length(z_m_vec)
+        if n == 0
+            throw(ArgumentError("AxialChainProfile: profile arrays must be non-empty."))
+        end
+        if length(dx_m_vec) != n || length(te_K_vec) != n ||
+           length(u_neutral_vec) != n || length(u_ion_vec) != n
+            throw(ArgumentError("AxialChainProfile: all required profile arrays must have identical lengths."))
+        end
+
+        for (i, value) in pairs(z_m_vec)
+            isfinite(value) || throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
+        end
+        for i in 2:n
+            z_m_vec[i] > z_m_vec[i - 1] || throw(ArgumentError(
+                "AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."
+            ))
+        end
+
+        for (name, values) in (
+            ("dx_m", dx_m_vec),
+            ("te_K", te_K_vec),
+            ("u_neutral_m_s", u_neutral_vec),
+            ("u_ion_m_s", u_ion_vec),
+        )
+            for (i, value) in pairs(values)
+                isfinite(value) || throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
+                value > 0.0 || throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
+            end
+        end
+
+        diagnostics_dict = Dict{String, Vector{Float64}}()
+        for (key, values) in pairs(diagnostics)
+            key_str = String(key)
+            values_vec = Float64.(values)
+            if length(values_vec) != n
+                throw(ArgumentError(
+                    "AxialChainProfile: diagnostic `$(key_str)` length $(length(values_vec)) does not match required profile length $n."
+                ))
+            end
+            for (i, value) in pairs(values_vec)
+                isfinite(value) || throw(ArgumentError("AxialChainProfile: diagnostic `$(key_str)[$i]` must be finite."))
+            end
+            diagnostics_dict[key_str] = values_vec
+        end
+
+        generator_dict = Dict{String, Any}(String(k) => v for (k, v) in pairs(generator))
+        selection_dict = Dict{String, Any}(String(k) => v for (k, v) in pairs(selection))
+        source_snapshot_dict = source_snapshot === nothing ? nothing :
+                               Dict{String, Any}(String(k) => v for (k, v) in pairs(source_snapshot))
+
+        return new(
+            z_m_vec,
+            dx_m_vec,
+            te_K_vec,
+            u_neutral_vec,
+            u_ion_vec,
+            diagnostics_dict,
+            generator_dict,
+            selection_dict,
+            String(schema_version),
+            source_snapshot_dict
+        )
+    end
+end

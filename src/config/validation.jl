@@ -156,3 +156,66 @@ function validate_species_in_database(config::Config)
 
     return true
 end
+
+"""
+$(SIGNATURES)
+
+Validate an `AxialChainProfile` against the chain-profile contract.
+
+# Arguments
+- `profile::AxialChainProfile`: Profile to validate
+
+# Returns
+- `true` if validation passes
+
+# Throws
+- `ArgumentError` if the profile is invalid
+"""
+function validate_axial_chain_profile(profile::AxialChainProfile)
+    n = length(profile.z_m)
+    if n == 0
+        throw(ArgumentError("AxialChainProfile must contain at least one axial point."))
+    end
+    if length(profile.dx_m) != n || length(profile.te_K) != n ||
+       length(profile.u_neutral_m_s) != n || length(profile.u_ion_m_s) != n
+        throw(ArgumentError("AxialChainProfile required arrays must have identical lengths."))
+    end
+
+    for (i, value) in pairs(profile.z_m)
+        isfinite(value) ||
+            throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
+    end
+    for i in 2:n
+        profile.z_m[i] > profile.z_m[i - 1] || throw(ArgumentError(
+            "AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."
+        ))
+    end
+
+    for (name, values) in (
+        ("dx_m", profile.dx_m),
+        ("te_K", profile.te_K),
+        ("u_neutral_m_s", profile.u_neutral_m_s),
+        ("u_ion_m_s", profile.u_ion_m_s)
+    )
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
+            value > 0.0 ||
+                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
+        end
+    end
+
+    for (name, values) in pairs(profile.diagnostics)
+        if length(values) != n
+            throw(ArgumentError(
+                "AxialChainProfile diagnostic `$name` length $(length(values)) does not match required profile length $n."
+            ))
+        end
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: diagnostic `$name[$i]` must be finite."))
+        end
+    end
+
+    return true
+end
