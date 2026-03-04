@@ -277,7 +277,7 @@ function validate_profile!(
     nonpositive_ion_count = count_nonpositive(u_ion_m_s)
     if nonpositive_ion_count > 0
         throw(ArgumentError(
-            "`u_ion_m_s` must be strictly positive for the Phase 1 contract. Found $(nonpositive_ion_count) non-positive values; minimum = $(minimum(u_ion_m_s))."
+            "`u_ion_m_s` must be strictly positive for the contract. Found $(nonpositive_ion_count) non-positive values; minimum = $(minimum(u_ion_m_s))."
         ))
     end
 end

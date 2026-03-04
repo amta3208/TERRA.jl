@@ -26,4 +26,4 @@ Notes:
 2. The HallThruster source file must already contain `output.average`.
 3. For JSON inputs, `--average_start_time` is recorded as metadata only; the script does not recompute the average.
 4. Default ion handling is `trim_to_first_positive` with `u_ion_floor=0.0` and `min_consecutive_positive=3`.
-5. The exporter trims leading axial points until the first sustained positive ion-velocity region, then enforces the Phase 1 positivity contract on the exported profile.
+5. The exporter trims leading axial points until the first sustained positive ion-velocity region, then enforces the positivity contract on the exported profile.
