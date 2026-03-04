@@ -29,6 +29,7 @@ include("helpers/shared.jl")
 
     @testset "IO" begin
         include("io/input_generation.jl")
+        include("io/chain_profile_loader.jl")
     end
 
     @testset "Solver" begin
