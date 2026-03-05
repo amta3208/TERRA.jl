@@ -29,6 +29,7 @@ include("io/sources_setup_writer.jl")
 include("io/tau_scaling_writer.jl")
 include("io/input_generation.jl")
 include("io/chain_profile_loader.jl")
+include("io/results.jl")
 
 include("solver/api_layout.jl")
 include("solver/initial_state.jl")
@@ -47,7 +48,7 @@ export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata
 export ChainSimulationResult, load_chain_profile
 export with_case_path, with_time, with_runtime
-export solve_terra_0d, nitrogen_10ev_example
+export solve_terra_0d, nitrogen_10ev_example, save_results, load_results_chain
 export solve_terra_chain_steady
 
 end
