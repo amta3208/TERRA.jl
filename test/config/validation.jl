@@ -46,3 +46,11 @@
         end
     end
 end
+
+@testset "Chain marching validation" begin
+    @test terra.validate_axial_marching_config(terra.AxialMarchingConfig()) == true
+    @test_throws ArgumentError terra.validate_axial_marching_config(
+        terra.AxialMarchingConfig(; handoff_mode = :full_state))
+    @test_throws ArgumentError terra.validate_axial_marching_config(
+        terra.AxialMarchingConfig(; termination_mode = :steady_state))
+end

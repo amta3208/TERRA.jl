@@ -259,3 +259,71 @@ end
     @test results.success == true
     @test results.message == "Success"
 end
+
+@testset "AxialMarchingConfig" begin
+    marching = terra.AxialMarchingConfig()
+    @test marching.handoff_mode == :reinitialize
+    @test marching.termination_mode == :final_time
+    @test marching.store_segment_histories == false
+    @test marching.tee_policy == :match_te
+    @test marching.override_tt_K === nothing
+    @test marching.override_tv_K === nothing
+
+    custom = terra.AxialMarchingConfig(;
+        handoff_mode = :full_state,
+        termination_mode = :steady_state,
+        store_segment_histories = true,
+        tee_policy = :from_inlet,
+        override_tt_K = 900.0,
+        override_tv_K = 800.0)
+    @test custom.handoff_mode == :full_state
+    @test custom.termination_mode == :steady_state
+    @test custom.store_segment_histories == true
+    @test custom.tee_policy == :from_inlet
+    @test custom.override_tt_K == 900.0
+    @test custom.override_tv_K == 800.0
+
+    @test_throws ArgumentError terra.AxialMarchingConfig(; handoff_mode = :bad_mode)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; termination_mode = :bad_mode)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; tee_policy = :bad_mode)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; override_tt_K = 0.0)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; override_tv_K = -10.0)
+end
+
+@testset "ChainSimulationResult" begin
+    reactor = terra.ReactorConfig(;
+        composition = terra.ReactorComposition(;
+            species = ["N", "N2", "E-"],
+            mole_fractions = [0.1, 0.8, 0.1],
+            total_number_density = 1e13),
+        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0, Te = 10000.0))
+    sim = terra.SimulationResult(
+        [0.0, 1.0],
+        [1e-3 1e-3; 1e-6 1e-6; 1e-8 1e-8],
+        (tt = [300.0, 301.0], te = [10000.0, 10000.0], tv = [310.0, 311.0]),
+        [1e4, 1.1e4],
+        nothing,
+        true,
+        "ok")
+
+    chain = terra.ChainSimulationResult(
+        [0.0],
+        [0.01],
+        [10000.0],
+        [100.0],
+        [1000.0],
+        [reactor],
+        [true],
+        ["ok"],
+        [sim],
+        Dict{String, Any}("note" => "test"),
+        true,
+        nothing,
+        "done")
+
+    @test chain.success == true
+    @test chain.failed_segment === nothing
+    @test length(chain.segment_end_reactors) == 1
+    @test chain.segment_results !== nothing
+    @test chain.segment_results[1] == sim
+end

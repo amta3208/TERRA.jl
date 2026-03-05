@@ -37,14 +37,17 @@ include("solver/residence_time.jl")
 include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
 include("solver/driver.jl")
+include("solver/chain_cstr.jl")
 
 export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
 export NumericsConfig, RuntimeConfig, ResidenceTimeConfig
-export AxialChainProfile, load_chain_profile
+export AxialChainProfile, AxialMarchingConfig
+export ChainSimulationResult, load_chain_profile
 export with_case_path, with_time, with_runtime
 export SimulationResult
 export solve_terra_0d, nitrogen_10ev_example
+export solve_terra_chain_steady
 
 end

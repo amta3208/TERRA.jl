@@ -38,5 +38,6 @@ include("helpers/shared.jl")
         include("solver/residence_time.jl")
         include("solver/driver.jl")
         include("solver/integrate_0d.jl")
+        include("solver/chain_cstr.jl")
     end
 end

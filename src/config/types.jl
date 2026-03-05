@@ -583,3 +583,94 @@ struct AxialChainProfile
         )
     end
 end
+
+"""
+$(SIGNATURES)
+
+Controls for the axial-marching chain-of-CSTR solver.
+
+# Fields
+- `handoff_mode::Symbol`: Segment handoff mode (`:reinitialize` or `:full_state`)
+- `termination_mode::Symbol`: Segment termination mode (`:final_time` or `:steady_state`)
+- `store_segment_histories::Bool`: Store per-segment `SimulationResult` histories
+- `tee_policy::Symbol`: Electron-electronic handoff policy (`:match_te` or `:from_inlet`)
+- `override_tt_K::Union{Nothing, Float64}`: Optional translational temperature override (K)
+- `override_tv_K::Union{Nothing, Float64}`: Optional vibrational temperature override (K)
+"""
+struct AxialMarchingConfig
+    handoff_mode::Symbol
+    termination_mode::Symbol
+    store_segment_histories::Bool
+    tee_policy::Symbol
+    override_tt_K::Union{Nothing, Float64}
+    override_tv_K::Union{Nothing, Float64}
+
+    function AxialMarchingConfig(;
+            handoff_mode::Symbol = :reinitialize,
+            termination_mode::Symbol = :final_time,
+            store_segment_histories::Bool = false,
+            tee_policy::Symbol = :match_te,
+            override_tt_K::Union{Nothing, Real} = nothing,
+            override_tv_K::Union{Nothing, Real} = nothing)
+        handoff_mode in (:reinitialize, :full_state) || throw(ArgumentError(
+            "AxialMarchingConfig: handoff_mode must be :reinitialize or :full_state."
+        ))
+        termination_mode in (:final_time, :steady_state) || throw(ArgumentError(
+            "AxialMarchingConfig: termination_mode must be :final_time or :steady_state."
+        ))
+        tee_policy in (:match_te, :from_inlet) || throw(ArgumentError(
+            "AxialMarchingConfig: tee_policy must be :match_te or :from_inlet."
+        ))
+        if override_tt_K !== nothing && (!isfinite(override_tt_K) || override_tt_K <= 0.0)
+            throw(ArgumentError("AxialMarchingConfig: override_tt_K must be finite and positive when provided."))
+        end
+        if override_tv_K !== nothing && (!isfinite(override_tv_K) || override_tv_K <= 0.0)
+            throw(ArgumentError("AxialMarchingConfig: override_tv_K must be finite and positive when provided."))
+        end
+
+        return new(
+            handoff_mode,
+            termination_mode,
+            store_segment_histories,
+            tee_policy,
+            override_tt_K === nothing ? nothing : Float64(override_tt_K),
+            override_tv_K === nothing ? nothing : Float64(override_tv_K)
+        )
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Results container for axial-marching chain-of-CSTR simulations.
+
+# Fields
+- `z_m::Vector{Float64}`: Axial coordinates used by the chain
+- `dx_m::Vector{Float64}`: Segment lengths used by residence-time model
+- `te_K::Vector{Float64}`: Applied electron-temperature profile
+- `u_neutral_m_s::Vector{Float64}`: Applied neutral-velocity profile
+- `u_ion_m_s::Vector{Float64}`: Applied ion-velocity profile
+- `segment_end_reactors::Vector{ReactorConfig}`: Segment endpoint reactor states
+- `segment_success::Vector{Bool}`: Per-segment success flags
+- `segment_messages::Vector{String}`: Per-segment solver messages
+- `segment_results::Union{Nothing, Vector{SimulationResult}}`: Optional full segment histories
+- `diagnostics::Dict{String, Any}`: Chain-level diagnostics and metadata
+- `success::Bool`: Overall chain success flag
+- `failed_segment::Union{Nothing, Int}`: First failing segment index, if any
+- `message::String`: Overall status message
+"""
+struct ChainSimulationResult
+    z_m::Vector{Float64}
+    dx_m::Vector{Float64}
+    te_K::Vector{Float64}
+    u_neutral_m_s::Vector{Float64}
+    u_ion_m_s::Vector{Float64}
+    segment_end_reactors::Vector{ReactorConfig}
+    segment_success::Vector{Bool}
+    segment_messages::Vector{String}
+    segment_results::Union{Nothing, Vector{SimulationResult}}
+    diagnostics::Dict{String, Any}
+    success::Bool
+    failed_segment::Union{Nothing, Int}
+    message::String
+end
