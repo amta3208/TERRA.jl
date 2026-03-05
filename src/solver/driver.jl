@@ -130,7 +130,7 @@ and result processing.
 - `config::Config`: Configuration for the simulation
 
 # Returns
-- `SimulationResult`: Results of the simulation
+- `ReactorResult`: Results of the simulation
 
 # Throws
 - `ErrorException` if TERRA not initialized or simulation fails
@@ -157,9 +157,12 @@ function solve_terra_0d(config::Config;
 
     catch e
         @error "TERRA simulation failed" exception=e
-        return SimulationResult(
-            Float64[], zeros(0, 0), (;), Float64[], nothing, false,
-            "Simulation failed: $(string(e))"
+        return ReactorResult(;
+            t = Float64[],
+            frames = ReactorFrame[],
+            source_terms = nothing,
+            success = false,
+            message = "Simulation failed: $(string(e))"
         )
     end
 end
@@ -243,7 +246,7 @@ Requires the `TERRA_LIB_PATH` environment variable to point to the TERRA shared 
 - `case_path::String`: Case directory path (optional, creates temp directory if not provided)
 
 # Returns
-- `SimulationResult`: Results of the simulation
+- `ReactorResult`: Results of the simulation
 
 # Example
 ```julia
@@ -273,16 +276,17 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
 
         if results.success
             @info "Example simulation completed successfully"
-            @info "Final conditions" time=results.time[end]
+            @info "Final conditions" time=results.t[end]
+            final_frame = results.frames[end]
 
             # Print final species densities
             for (i, species) in enumerate(config_with_path.reactor.composition.species)
-                final_density = results.species_densities[i, end]
+                final_density = final_frame.species_densities[i]
                 unit_str = config_with_path.runtime.unit_system == :SI ? "kg/m³" : "g/cm³"
                 @info "Final density" species=species density=final_density unit=unit_str
             end
 
-            @info "Final temperatures" Tt=results.temperatures.tt[end] Tv=results.temperatures.tv[end] Te=results.temperatures.te[end]
+            @info "Final temperatures" Tt=final_frame.temperatures.tt Tv=final_frame.temperatures.tv Te=final_frame.temperatures.te
         else
             @error "Example simulation failed" message=results.message
         end
@@ -299,47 +303,88 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
     end
 end
 
+function _result_species_density_matrix(results::ReactorResult)
+    n_times = length(results.frames)
+    if n_times == 0
+        return zeros(0, 0)
+    end
+
+    n_species = length(results.frames[1].species_densities)
+    densities = Matrix{Float64}(undef, n_species, n_times)
+    for i in 1:n_times
+        frame = results.frames[i]
+        length(frame.species_densities) == n_species || throw(ArgumentError(
+            "ReactorResult frame $i has inconsistent species_densities length."
+        ))
+        densities[:, i] = frame.species_densities
+    end
+    return densities
+end
+
+function _result_temperature_history(results::ReactorResult)
+    n_times = length(results.frames)
+    tt = Vector{Float64}(undef, n_times)
+    te = Vector{Float64}(undef, n_times)
+    tv = Vector{Float64}(undef, n_times)
+
+    for i in 1:n_times
+        temperatures = results.frames[i].temperatures
+        tt[i] = temperatures.tt
+        te[i] = temperatures.te
+        tv[i] = temperatures.tv
+    end
+
+    return (tt = tt, te = te, tv = tv)
+end
+
+function _result_total_energy_history(results::ReactorResult)
+    return Float64[frame.total_energy for frame in results.frames]
+end
+
 """
 $(SIGNATURES)
 
 Validate simulation results for physical consistency.
 
 # Arguments
-- `results::SimulationResult`: Simulation results to validate
+- `results::ReactorResult`: Simulation results to validate
 
 # Returns
 - `true` if results pass validation, `false` otherwise
 """
-function validate_results(results::SimulationResult)
+function validate_results(results::ReactorResult)
     if !results.success
         @warn "Simulation was not successful"
         return false
     end
 
+    species_densities = _result_species_density_matrix(results)
+    temperatures = _result_temperature_history(results)
+
     # Check for negative densities
-    if any(results.species_densities .< 0)
+    if any(species_densities .< 0)
         @warn "Negative species densities found"
         return false
     end
 
     # Check for NaN or Inf values
-    if any(isnan.(results.species_densities)) || any(isinf.(results.species_densities))
+    if any(isnan.(species_densities)) || any(isinf.(species_densities))
         @warn "NaN or Inf values found in species densities"
         return false
     end
 
-    if any(isnan.(results.temperatures.tt)) || any(isinf.(results.temperatures.tt))
+    if any(isnan.(temperatures.tt)) || any(isinf.(temperatures.tt))
         @warn "NaN or Inf values found in temperatures"
         return false
     end
 
     # Check temperature ranges (should be positive and reasonable)
-    if any(results.temperatures.tt .<= 0) || any(results.temperatures.tt .> 1e6)
+    if any(temperatures.tt .<= 0) || any(temperatures.tt .> 1e6)
         @warn "Unreasonable translational temperatures found"
         return false
     end
 
-    if any(results.temperatures.te .<= 0) || any(results.temperatures.te .> 1e6)
+    if any(temperatures.te .<= 0) || any(temperatures.te .> 1e6)
         @warn "Unreasonable electron temperatures found"
         return false
     end
@@ -354,17 +399,21 @@ $(SIGNATURES)
 Save TERRA results to file.
 
 # Arguments
-- `results::SimulationResult`: Results to save
+- `results::ReactorResult`: Results to save
 - `filename::String`: Output filename (CSV format)
 
 # Returns
 - `true` if save successful
 """
-function save_results(results::SimulationResult, filename::String)
+function save_results(results::ReactorResult, filename::String)
     try
+        species_densities = _result_species_density_matrix(results)
+        temperatures = _result_temperature_history(results)
+        total_energy = _result_total_energy_history(results)
+
         # Prepare data for CSV output
-        n_times = length(results.time)
-        n_species = size(results.species_densities, 1)
+        n_times = length(results.t)
+        n_species = size(species_densities, 1)
 
         # Create header
         header = ["time", "total_energy", "T_trans", "T_electron", "T_vib"]
@@ -374,14 +423,14 @@ function save_results(results::SimulationResult, filename::String)
 
         # Create data matrix
         data = zeros(n_times, length(header))
-        data[:, 1] = results.time
-        data[:, 2] = results.total_energy
-        data[:, 3] = results.temperatures.tt
-        data[:, 4] = results.temperatures.te
-        data[:, 5] = results.temperatures.tv
+        data[:, 1] = results.t
+        data[:, 2] = total_energy
+        data[:, 3] = temperatures.tt
+        data[:, 4] = temperatures.te
+        data[:, 5] = temperatures.tv
 
         for i in 1:n_species
-            data[:, 5 + i] = results.species_densities[i, :]
+            data[:, 5 + i] = species_densities[i, :]
         end
 
         # Write to file

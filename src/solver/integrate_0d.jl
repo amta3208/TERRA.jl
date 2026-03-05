@@ -357,36 +357,57 @@ function integrate_0d_system(config::Config, initial_state;
             total_energies_si = total_energies
         end
 
-        temperatures = (tt = temperatures_tt, te = temperatures_te, tv = temperatures_tv)
-
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
         message = success ? "ODE integration completed successfully" :
                   "ODE integration terminated: $(rc)"
+        frames = Vector{ReactorFrame}(undef, n_times)
+        for i in 1:n_times
+            frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i], tv = temperatures_tv[i])
+            frames[i] = ReactorFrame(;
+                t = time_points[i],
+                species_densities = species_densities_si[:, i],
+                temperatures = frame_temps,
+                total_energy = total_energies_si[i],
+                source_terms = nothing
+            )
+        end
 
-        return SimulationResult(
-            time_points,
-            species_densities_si,
-            temperatures,
-            total_energies_si,
-            nothing,
-            success,
-            message
+        return ReactorResult(;
+            t = time_points,
+            frames = frames,
+            source_terms = nothing,
+            success = success,
+            message = message
         )
 
     catch e
         @error "ODE integration failed" exception=e
-        return SimulationResult(
-            [0.0],
-            reshape(initial_state.rho_sp, :, 1),
-            (tt = [config.reactor.thermal.Tt], te = [config.reactor.thermal.Te],
-                tv = [config.reactor.thermal.Tv],
-                tee = [config.reactor.thermal.Te]),
-            [initial_state.rho_energy],
-            nothing,
-            false,
-            "ODE integration failed: $(string(e))"
+        fallback_species = config.runtime.unit_system == :SI ?
+                           convert_density_cgs_to_si(initial_state.rho_sp) :
+                           copy(initial_state.rho_sp)
+        fallback_energy = config.runtime.unit_system == :SI ?
+                          convert_energy_density_cgs_to_si(initial_state.rho_energy) :
+                          initial_state.rho_energy
+        fallback_frame = ReactorFrame(;
+            t = 0.0,
+            species_densities = fallback_species,
+            temperatures = (
+                tt = config.reactor.thermal.Tt,
+                te = config.reactor.thermal.Te,
+                tv = config.reactor.thermal.Tv,
+                tee = config.reactor.thermal.Te,
+            ),
+            total_energy = fallback_energy,
+            source_terms = nothing
+        )
+        return ReactorResult(;
+            t = [0.0],
+            frames = [fallback_frame],
+            source_terms = nothing,
+            success = false,
+            message = "ODE integration failed: $(string(e))"
         )
     finally
         if outputs_opened

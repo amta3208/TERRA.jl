@@ -44,9 +44,9 @@ export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
 export NumericsConfig, RuntimeConfig, ResidenceTimeConfig
 export AxialChainProfile, AxialMarchingConfig
+export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata
 export ChainSimulationResult, load_chain_profile
 export with_case_path, with_time, with_runtime
-export SimulationResult
 export solve_terra_0d, nitrogen_10ev_example
 export solve_terra_chain_steady
 

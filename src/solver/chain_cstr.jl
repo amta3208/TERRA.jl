@@ -6,14 +6,150 @@ function _segment_case_path(base_case_path::AbstractString, segment_index::Integ
 end
 
 function _failed_simulation_result(message::AbstractString)
-    return SimulationResult(
-        Float64[],
-        zeros(0, 0),
-        (tt = Float64[], te = Float64[], tv = Float64[]),
-        Float64[],
-        nothing,
-        false,
-        String(message)
+    return ReactorResult(;
+        t = Float64[],
+        frames = ReactorFrame[],
+        source_terms = nothing,
+        success = false,
+        message = String(message)
+    )
+end
+
+function _coerce_positive_int(value)::Union{Nothing, Int}
+    if value isa Integer
+        int_value = Int(value)
+        return int_value >= 1 ? int_value : nothing
+    end
+    if value isa Real && isfinite(value) && value >= 1 && isinteger(value)
+        return Int(round(value))
+    end
+    return nothing
+end
+
+function _coerce_nonnegative_int(value)::Union{Nothing, Int}
+    if value isa Integer
+        int_value = Int(value)
+        return int_value >= 0 ? int_value : nothing
+    end
+    if value isa Real && isfinite(value) && value >= 0 && isinteger(value)
+        return Int(round(value))
+    end
+    return nothing
+end
+
+function _selection_index_vector(selection::AbstractDict,
+        key::AbstractString,
+        expected_length::Integer)::Union{Nothing, Vector{Int}}
+    haskey(selection, key) || return nothing
+    values = selection[key]
+    values isa AbstractVector || return nothing
+    length(values) == expected_length || return nothing
+
+    indices = Vector{Int}(undef, expected_length)
+    for i in eachindex(values)
+        index = _coerce_positive_int(values[i])
+        index === nothing && return nothing
+        indices[i] = index
+    end
+    return indices
+end
+
+function _resolve_compact_to_source_index(profile::AxialChainProfile)
+    n_segments = length(profile.z_m)
+    selection = profile.selection
+
+    for key in ("compact_to_source_index", "source_cell_indices")
+        source_indices = _selection_index_vector(selection, key, n_segments)
+        source_indices === nothing || return source_indices
+    end
+
+    trim_start = haskey(selection, "trim_start_index") ?
+                 _coerce_positive_int(selection["trim_start_index"]) : nothing
+    if trim_start === nothing && haskey(selection, "trimmed_point_count")
+        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
+        trim_start = trimmed_points === nothing ? nothing : (trimmed_points + 1)
+    end
+    if trim_start !== nothing
+        return collect(trim_start:(trim_start + n_segments - 1))
+    end
+
+    return collect(1:n_segments)
+end
+
+function _resolve_original_point_count(profile::AxialChainProfile)::Union{Nothing, Int}
+    retained_points = length(profile.z_m)
+    selection = profile.selection
+
+    if haskey(selection, "original_point_count")
+        original_points = _coerce_positive_int(selection["original_point_count"])
+        if original_points !== nothing && original_points >= retained_points
+            return original_points
+        end
+    end
+
+    if haskey(selection, "trimmed_point_count")
+        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
+        trimmed_points === nothing || return retained_points + trimmed_points
+    end
+
+    return nothing
+end
+
+function _build_chain_cells(profile::AxialChainProfile,
+        compact_to_source_index::AbstractVector{<:Integer},
+        segment_end_reactors::AbstractVector{<:ReactorConfig},
+        segment_success::AbstractVector{Bool},
+        segment_messages::AbstractVector{<:AbstractString},
+        segment_results::AbstractVector{<:ReactorResult})
+    n_segments = length(profile.z_m)
+
+    length(compact_to_source_index) == n_segments || throw(ArgumentError(
+        "Chain cell/source mapping length must match profile segment count."
+    ))
+    length(segment_end_reactors) == n_segments || throw(ArgumentError(
+        "Segment endpoint reactor count must match profile segment count."
+    ))
+    length(segment_success) == n_segments || throw(ArgumentError(
+        "Segment success count must match profile segment count."
+    ))
+    length(segment_messages) == n_segments || throw(ArgumentError(
+        "Segment message count must match profile segment count."
+    ))
+    length(segment_results) == n_segments || throw(ArgumentError(
+        "Segment result count must match profile segment count."
+    ))
+
+    cells = Vector{ChainCellResult}(undef, n_segments)
+    for k in 1:n_segments
+        cells[k] = ChainCellResult(;
+            compact_cell_index = k,
+            source_cell_index = compact_to_source_index[k],
+            z_m = profile.z_m[k],
+            dx_m = profile.dx_m[k],
+            te_K = profile.te_K[k],
+            u_neutral_m_s = profile.u_neutral_m_s[k],
+            u_ion_m_s = profile.u_ion_m_s[k],
+            reactor = segment_results[k],
+            endpoint_reactor = segment_end_reactors[k],
+            success = segment_success[k],
+            message = segment_messages[k],
+        )
+    end
+    return cells
+end
+
+function _build_chain_metadata(profile::AxialChainProfile,
+        diagnostics::AbstractDict,
+        compact_to_source_index::AbstractVector{<:Integer})
+    return ChainMetadata(;
+        schema_version = profile.schema_version,
+        generator = profile.generator,
+        selection = profile.selection,
+        source_snapshot = profile.source_snapshot,
+        diagnostics = diagnostics,
+        compact_to_source_index = compact_to_source_index,
+        original_point_count = _resolve_original_point_count(profile),
+        retained_point_count = length(profile.z_m),
     )
 end
 
@@ -125,18 +261,19 @@ function _total_number_density_from_cgs_density(rho_cgs::Vector{Float64}, molecu
 end
 
 function _extract_segment_endpoint_reactor(base_config::Config,
-        segment_result::SimulationResult)
+        segment_result::ReactorResult)
     if !segment_result.success
         throw(ArgumentError("Cannot extract endpoint reactor from an unsuccessful segment result."))
     end
-    if isempty(segment_result.time)
+    if isempty(segment_result.t)
         throw(ArgumentError("Cannot extract endpoint reactor: segment result contains no time samples."))
     end
+    endpoint_frame = segment_result.frames[end]
 
     species = base_config.reactor.composition.species
     molecular_weights = get_molecular_weights(species)
 
-    rho_endpoint = segment_result.species_densities[:, end]
+    rho_endpoint = endpoint_frame.species_densities
     rho_endpoint_cgs = _to_cgs_density(rho_endpoint, base_config.runtime.unit_system)
     mole_fractions = mass_densities_to_mole_fractions(rho_endpoint_cgs, molecular_weights)
 
@@ -144,9 +281,9 @@ function _extract_segment_endpoint_reactor(base_config::Config,
     n_total = base_config.runtime.unit_system == :SI ?
               convert_number_density_cgs_to_si(n_total_cgs) : n_total_cgs
 
-    tt = segment_result.temperatures.tt[end]
-    tv = segment_result.temperatures.tv[end]
-    te = segment_result.temperatures.te[end]
+    tt = endpoint_frame.temperatures.tt
+    tv = endpoint_frame.temperatures.tv
+    te = endpoint_frame.temperatures.te
 
     return ReactorConfig(
         composition = ReactorComposition(
@@ -229,12 +366,11 @@ function solve_terra_chain_steady(config::Config,
     end
 
     n_segments = length(profile.z_m)
+    compact_to_source_index = _resolve_compact_to_source_index(profile)
     segment_end_reactors = [config.reactor for _ in 1:n_segments]
     segment_success = fill(false, n_segments)
     segment_messages = fill("Not executed.", n_segments)
-    segment_results = marching.store_segment_histories ?
-                      [_failed_simulation_result("Not executed.") for _ in 1:n_segments] :
-                      nothing
+    segment_results = [_failed_simulation_result("Not executed.") for _ in 1:n_segments]
 
     inlet_reactor = config.reactor
 
@@ -248,47 +384,35 @@ function solve_terra_chain_steady(config::Config,
                 use_residence_time = true)
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"
+            segment_results[k] = _failed_simulation_result(segment_messages[k])
             diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
-            return ChainSimulationResult(
-                copy(profile.z_m),
-                copy(profile.dx_m),
-                copy(profile.te_K),
-                copy(profile.u_neutral_m_s),
-                copy(profile.u_ion_m_s),
-                segment_end_reactors,
-                segment_success,
-                segment_messages,
-                segment_results,
-                diagnostics,
-                false,
-                k,
-                "Chain failed at segment $k during setup/integration.",
+            cells = _build_chain_cells(profile, compact_to_source_index,
+                segment_end_reactors, segment_success, segment_messages, segment_results)
+            metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
+            return ChainSimulationResult(;
+                cells = cells,
+                metadata = metadata,
+                success = false,
+                failed_cell = k,
+                message = "Chain failed at segment $k during setup/integration.",
             )
         end
 
-        if segment_results !== nothing
-            segment_results[k] = local_result
-        end
-
+        segment_results[k] = local_result
         segment_success[k] = local_result.success
         segment_messages[k] = local_result.message
 
         if !local_result.success
             diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
-            return ChainSimulationResult(
-                copy(profile.z_m),
-                copy(profile.dx_m),
-                copy(profile.te_K),
-                copy(profile.u_neutral_m_s),
-                copy(profile.u_ion_m_s),
-                segment_end_reactors,
-                segment_success,
-                segment_messages,
-                segment_results,
-                diagnostics,
-                false,
-                k,
-                "Chain failed at segment $k: $(local_result.message)",
+            cells = _build_chain_cells(profile, compact_to_source_index,
+                segment_end_reactors, segment_success, segment_messages, segment_results)
+            metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
+            return ChainSimulationResult(;
+                cells = cells,
+                metadata = metadata,
+                success = false,
+                failed_cell = k,
+                message = "Chain failed at segment $k: $(local_result.message)",
             )
         end
 
@@ -298,20 +422,15 @@ function solve_terra_chain_steady(config::Config,
     end
 
     diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
-    return ChainSimulationResult(
-        copy(profile.z_m),
-        copy(profile.dx_m),
-        copy(profile.te_K),
-        copy(profile.u_neutral_m_s),
-        copy(profile.u_ion_m_s),
-        segment_end_reactors,
-        segment_success,
-        segment_messages,
-        segment_results,
-        diagnostics,
-        true,
-        nothing,
-        "Chain integration completed successfully.",
+    cells = _build_chain_cells(profile, compact_to_source_index,
+        segment_end_reactors, segment_success, segment_messages, segment_results)
+    metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
+    return ChainSimulationResult(;
+        cells = cells,
+        metadata = metadata,
+        success = true,
+        failed_cell = nothing,
+        message = "Chain integration completed successfully.",
     )
 end
 

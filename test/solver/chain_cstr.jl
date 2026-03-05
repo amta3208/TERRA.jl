@@ -38,20 +38,18 @@
             u_neutral_m_s = [200.0],
             u_ion_m_s = [18000.0],
         )
-        marching = terra.AxialMarchingConfig(; store_segment_histories = true)
+        marching = terra.AxialMarchingConfig()
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
 
         @test chain.success == true
-        @test chain.failed_segment === nothing
-        @test length(chain.segment_end_reactors) == 1
-        @test chain.segment_success == [true]
-        @test chain.segment_results !== nothing
-        @test chain.segment_results[1].success == true
+        @test chain.failed_cell === nothing
+        @test length(chain.cells) == 1
+        @test chain.cells[1].reactor.success == true
 
-        segment_result = chain.segment_results[1]
-        @test !isempty(segment_result.time)
-        @test maximum(abs.(segment_result.temperatures.te .- profile.te_K[1])) <= 1e-6
+        segment_result = chain.cells[1].reactor
+        @test !isempty(segment_result.t)
+        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in segment_result.frames)
 
         cleanup_terra!()
     end
@@ -65,26 +63,77 @@
             u_neutral_m_s = [200.0, 200.0],
             u_ion_m_s = [18000.0, 22000.0],
         )
-        marching = terra.AxialMarchingConfig(; store_segment_histories = true)
+        marching = terra.AxialMarchingConfig()
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
 
         @test chain.success == true
-        @test chain.segment_success == [true, true]
-        @test chain.segment_results !== nothing
+        @test all(cell.success for cell in chain.cells)
 
-        first_result = chain.segment_results[1]
-        second_result = chain.segment_results[2]
+        first_result = chain.cells[1].reactor
+        second_result = chain.cells[2].reactor
+        first_endpoint = chain.cells[1].endpoint_reactor
         @test first_result.success == true
         @test second_result.success == true
-        @test maximum(abs.(first_result.temperatures.te .- profile.te_K[1])) <= 1e-6
-        @test maximum(abs.(second_result.temperatures.te .- profile.te_K[2])) <= 1e-6
+        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in first_result.frames)
+        @test all(abs(frame.temperatures.te - profile.te_K[2]) <= 1e-6 for frame in second_result.frames)
 
         # In reinitialize mode without thermal overrides, segment 2 starts from
         # segment 1 endpoint Tt/Tv while Te is overwritten by the profile.
-        @test second_result.temperatures.tt[1] ≈ chain.segment_end_reactors[1].thermal.Tt
-        @test second_result.temperatures.tv[1] ≈ chain.segment_end_reactors[1].thermal.Tv
-        @test second_result.temperatures.te[1] ≈ profile.te_K[2]
+        @test first_endpoint !== nothing
+        @test second_result.frames[1].temperatures.tt ≈ first_endpoint.thermal.Tt
+        @test second_result.frames[1].temperatures.tv ≈ first_endpoint.thermal.Tv
+        @test second_result.frames[1].temperatures.te ≈ profile.te_K[2]
+
+        cleanup_terra!()
+    end
+
+    @testset "Metadata propagation and compact/source mapping" begin
+        config = build_chain_test_config()
+        profile = terra.AxialChainProfile(
+            z_m = [0.0, 0.01],
+            dx_m = [0.01, 0.01],
+            te_K = [115000.0, 90000.0],
+            u_neutral_m_s = [200.0, 200.0],
+            u_ion_m_s = [18000.0, 22000.0],
+            generator = Dict(
+                "tool" => "unit-test",
+                "tool_version" => "1.0.0",
+                "created_utc" => "2026-03-05T00:00:00Z",
+            ),
+            selection = Dict(
+                "neutral_species" => "N2",
+                "ion_species" => "N2",
+                "ion_charge_state" => 1,
+                "average_start_time_s" => 5e-4,
+                "trim_start_index" => 13,
+                "trimmed_point_count" => 12,
+                "original_point_count" => 102,
+            ),
+            schema_version = "terra_chain_profile_v1",
+            source_snapshot = Dict(
+                "enabled" => true,
+                "source_type" => "unit-test",
+            ),
+        )
+
+        chain = terra.solve_terra_chain_steady(config, profile)
+
+        @test chain.success == true
+        @test chain.metadata.schema_version == "terra_chain_profile_v1"
+        @test chain.metadata.generator["tool"] == "unit-test"
+        @test chain.metadata.selection["trim_start_index"] == 13
+        @test chain.metadata.source_snapshot !== nothing
+        @test chain.metadata.source_snapshot["source_type"] == "unit-test"
+        @test chain.metadata.compact_to_source_index == [13, 14]
+        @test chain.metadata.original_point_count == 102
+        @test chain.metadata.retained_point_count == 2
+        @test chain.cells[1].compact_cell_index == 1
+        @test chain.cells[2].compact_cell_index == 2
+        @test chain.cells[1].source_cell_index == 13
+        @test chain.cells[2].source_cell_index == 14
+        @test !isempty(chain.cells[1].reactor.t)
+        @test !isempty(chain.cells[2].reactor.t)
 
         cleanup_terra!()
     end
