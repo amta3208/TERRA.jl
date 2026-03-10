@@ -42,15 +42,9 @@ function build_case_config(;
         thruster = thruster,
         domain = (0.0u"cm", domain_length),
         discharge_voltage = discharge_voltage,
-        propellants = [
-            het.Propellant(
-                het.MolecularNitrogen,
-                flow_rate_kg_s = flow_rate,
-                temperature_K = temperature_K,
-                ion_temperature_K = temperature_K,
-                max_charge = max_charge,
-            ),
-        ],
+        reaction_rate_directories = ["./propellant"],
+        propellant_config = "./propellant/N_N2_50_50.toml",
+        propellants = nothing,
     )
 end
 

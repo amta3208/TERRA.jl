@@ -26,16 +26,16 @@ function configure_theme!()
         fonts = (
             regular = "Latin Modern Roman",
             bold = "Latin Modern Roman",
-            italic = "Latin Modern Roman"
+            italic = "Latin Modern Roman",
         ),
         Axis = (
             xlabelsize = 20,
             ylabelsize = 20,
             xticklabelsize = 18,
             yticklabelsize = 18,
-            titlesize = 28
+            titlesize = 28,
         ),
-        Legend = (labelsize = 20,)
+        Legend = (labelsize = 20,),
     ))
     return nothing
 end
@@ -48,9 +48,28 @@ function average_solution(sol; average_start_time = DEFAULT_AVERAGE_START_TIME)
     return het.time_average(sol, average_start_time)
 end
 
+function neutral_species_frame(frame, species::Symbol)
+    haskey(frame.neutrals, species) || throw(ArgumentError(
+        "Neutral species `$(species)` not found in averaged HallThruster frame."
+    ))
+    return frame.neutrals[species]
+end
+
+function ion_species_frame(frame, species::Symbol; charge_state::Integer = 1)
+    haskey(frame.ions, species) || throw(ArgumentError(
+        "Ion species `$(species)` not found in averaged HallThruster frame."
+    ))
+
+    ion_states = frame.ions[species]
+    1 <= charge_state <= length(ion_states) || throw(ArgumentError(
+        "Requested charge_state=$charge_state for ion species `$(species)`, but only $(length(ion_states)) states are available."
+    ))
+    return ion_states[charge_state]
+end
+
 function collect_profile_data(
-        avg;
-        channel_length = avg.config.thruster.geometry.channel_length
+    avg;
+    channel_length = avg.config.thruster.geometry.channel_length,
 )
     z_m = if hasproperty(avg.grid, :cell_centers)
         avg.grid.cell_centers
@@ -63,34 +82,49 @@ function collect_profile_data(
     z_cm = z_m .* 100.0
     channel_len_cm = channel_length .* 100.0
     frame = only(avg.frames)
-    u_neutral = frame.neutrals[:N2].u
-    n_neutral = frame.neutrals[:N2].n
-    u_ion = frame.ions[:N2][1].u
+    neutral_n = neutral_species_frame(frame, :N)
+    neutral_n2 = neutral_species_frame(frame, :N2)
+    ion_n_plus = ion_species_frame(frame, :N)
+    ion_n2_plus = ion_species_frame(frame, :N2)
+
+    u_neutral = neutral_n2.u
+    n_neutral = neutral_n2.n
+    u_atomic_neutral = neutral_n.u
+    n_atomic_neutral = neutral_n.n
+    u_ion = ion_n2_plus.u
+    u_atomic_ion = ion_n_plus.u
     dx_m = (z_cm[2] - z_cm[1]) / 100.0
     du_ion = diff1d_uniform(u_ion; dx = dx_m)
-    n_ion = frame.ions[:N2][1].n
+    du_atomic_ion = diff1d_uniform(u_atomic_ion; dx = dx_m)
+    n_ion = ion_n2_plus.n
+    n_atomic_ion = ion_n_plus.n
 
     return (
         z_cm = z_cm,
         channel_len_cm = channel_len_cm,
         u_neutral = u_neutral,
         n_neutral = n_neutral,
+        u_atomic_neutral = u_atomic_neutral,
+        n_atomic_neutral = n_atomic_neutral,
         u_ion = u_ion,
         du_ion = du_ion,
         n_ion = n_ion,
+        u_atomic_ion = u_atomic_ion,
+        du_atomic_ion = du_atomic_ion,
+        n_atomic_ion = n_atomic_ion,
         ne = frame.ne,
         Te = frame.Tev,
         pe = frame.pe,
         potential = frame.potential,
         electric_field = frame.E,
-        channel_area = frame.channel_area
+        channel_area = frame.channel_area,
     )
 end
 
 function selected_state_report(
-        data;
-        target_axial_position_cm::Real = 1.5,
-        translational_temperature_K::Real = 750.0
+    data;
+    target_axial_position_cm::Real = 1.5,
+    translational_temperature_K::Real = 750.0,
 )
     idx = find_closest_index(data.z_cm, target_axial_position_cm)
     z_to_L = target_axial_position_cm / data.channel_len_cm
@@ -101,12 +135,20 @@ function selected_state_report(
     target_electron_temp = data.Te[idx]
     target_electron_pressure = data.pe[idx]
 
-    target_neutral_num_density = data.n_neutral[idx]
-    target_ion_num_density = data.n_ion[idx]
-    target_electron_num_density = target_electron_pressure / 8.617e-5 /
-                                  target_electron_temp / 11604.0
-    target_total_num_density = target_neutral_num_density + target_ion_num_density +
-                               target_electron_num_density
+    target_n2_neutral_num_density = data.n_neutral[idx]
+    target_n_neutral_num_density = data.n_atomic_neutral[idx]
+    target_n2_plus_num_density = data.n_ion[idx]
+    target_n_plus_num_density = data.n_atomic_ion[idx]
+    target_n_plus_velocity = data.u_atomic_ion[idx]
+    target_n_plus_acceleration = data.du_atomic_ion[idx]
+    target_electron_num_density =
+        target_electron_pressure / 8.617e-5 /
+        target_electron_temp / 11604.0
+    target_total_num_density =
+        target_n2_neutral_num_density +
+        target_n_neutral_num_density +
+        target_n2_plus_num_density + target_n_plus_num_density +
+        target_electron_num_density
 
     return (
         z_to_L = z_to_L,
@@ -114,46 +156,64 @@ function selected_state_report(
         target_neutral_velocity = target_neutral_velocity,
         target_ion_velocity = target_ion_velocity,
         target_ion_acceleration = target_ion_acceleration,
+        target_n_plus_velocity = target_n_plus_velocity,
+        target_n_plus_acceleration = target_n_plus_acceleration,
         target_electron_temp_K = target_electron_temp * 11604.0,
-        target_neutral_num_density = target_neutral_num_density,
-        target_ion_num_density = target_ion_num_density,
+        target_n_neutral_num_density = target_n_neutral_num_density,
+        target_n2_neutral_num_density = target_n2_neutral_num_density,
+        target_n_plus_num_density = target_n_plus_num_density,
+        target_n2_plus_num_density = target_n2_plus_num_density,
         target_electron_num_density = target_electron_num_density,
         target_total_num_density = target_total_num_density,
-        neutral_mole_fraction = target_neutral_num_density / target_total_num_density,
-        ion_mole_fraction = target_ion_num_density / target_total_num_density,
+        neutral_n_mole_fraction = target_n_neutral_num_density / target_total_num_density,
+        neutral_n2_mole_fraction = target_n2_neutral_num_density / target_total_num_density,
+        ion_n_plus_mole_fraction = target_n_plus_num_density / target_total_num_density,
+        ion_n2_plus_mole_fraction = target_n2_plus_num_density / target_total_num_density,
         electron_mole_fraction = target_electron_num_density / target_total_num_density,
         ion_channel_timescale_us = (data.channel_len_cm / 100.0) / target_ion_velocity *
                                    1e6,
-        translational_temperature_K = translational_temperature_K
+        n_plus_channel_timescale_us = (data.channel_len_cm / 100.0) /
+                                      target_n_plus_velocity *
+                                      1e6,
+        translational_temperature_K = translational_temperature_K,
     )
 end
 
 function print_selected_state(report)
     println()
     println("================ Plasma State @ z/L=", report.z_to_L, " ================")
-    println("Ion Number Density (1/cm^3)      : ", report.target_ion_num_density / 1e6)
+    println("N+ Number Density (1/cm^3)       : ", report.target_n_plus_num_density / 1e6)
+    println("N2+ Number Density (1/cm^3)      : ", report.target_n2_plus_num_density / 1e6)
     println("Electron Number Density (1/cm^3) : ", report.target_electron_num_density / 1e6)
-    println("Neutral Number Density (1/cm^3)  : ", report.target_neutral_num_density / 1e6)
+    println(
+        "N Number Density (1/cm^3)        : ", report.target_n_neutral_num_density / 1e6)
+    println(
+        "N2 Number Density (1/cm^3)       : ", report.target_n2_neutral_num_density / 1e6)
     println("Total Number Density (1/cm^3)    : ", report.target_total_num_density / 1e6)
     println()
-    println("N2  Mole Fraction                : ", report.neutral_mole_fraction)
-    println("N2+ Mole Fraction                : ", report.ion_mole_fraction)
+    println("N   Mole Fraction                : ", report.neutral_n_mole_fraction)
+    println("N2  Mole Fraction                : ", report.neutral_n2_mole_fraction)
+    println("N+  Mole Fraction                : ", report.ion_n_plus_mole_fraction)
+    println("N2+ Mole Fraction                : ", report.ion_n2_plus_mole_fraction)
     println("E-  Mole Fraction                : ", report.electron_mole_fraction)
     println()
     println("Translational Temperature (K)    : ", report.translational_temperature_K)
     println("Electron Temperature (K)         : ", report.target_electron_temp_K)
     println()
     println("N2  Velocity (m/s)               : ", report.target_neutral_velocity)
+    println("N+  Velocity (m/s)               : ", report.target_n_plus_velocity)
     println("N2+ Velocity (m/s)               : ", report.target_ion_velocity)
+    println("N+  Acceleration (m/s^2)         : ", report.target_n_plus_acceleration)
     println("N2+ Acceleration (m/s^2)         : ", report.target_ion_acceleration)
+    println("N+  Channel Timescale (us)       : ", report.n_plus_channel_timescale_us)
     println("N2+ Channel Timescale (us)       : ", report.ion_channel_timescale_us)
     println(repeat("=", 57))
     return nothing
 end
 
 function build_diagnostic_figures(
-        data;
-        target_axial_position_cm::Real = 1.5
+    data;
+    target_axial_position_cm::Real = 1.5,
 )
     configure_theme!()
     norm_ticks = collect(0:0.5:(maximum(data.z_cm) / data.channel_len_cm))
@@ -211,6 +271,30 @@ function build_diagnostic_figures(
         halign = :right, valign = :top,
         margin = (10, 10, 10, 10))
     figures[:species_density] = f2
+
+    f2b = mk.Figure()
+    ax2b_1 = mk.Axis(f2b[1, 1],
+        xlabel = "Axial coordinate [cm]",
+        ylabel = "Atomic Neutral Number Density [1/m^3]",
+        ylabelcolor = mk.wong_colors()[1],
+        xgridvisible = false,
+        ygridvisible = false)
+    ax2b_2 = mk.Axis(f2b[1, 1],
+        yaxisposition = :right,
+        ylabel = "Atomic Ion Number Density [1/m^3]",
+        ylabelcolor = mk.wong_colors()[2],
+        xlabelvisible = false,
+        xticklabelsvisible = false,
+        xgridvisible = false,
+        ygridvisible = false)
+    lna_1 = mk.lines!(ax2b_1, data.z_cm, data.n_atomic_neutral, label = "N")
+    lna_2 = mk.lines!(
+        ax2b_2, data.z_cm, data.n_atomic_ion, label = "N+", color = mk.Cycled(2))
+    mk.Legend(f2b[1, 1], [lna_1, lna_2], ["N", "N+"],
+        tellwidth = false, tellheight = false,
+        halign = :right, valign = :top,
+        margin = (10, 10, 10, 10))
+    figures[:species_density_atomic] = f2b
 
     f3 = mk.Figure()
     ax3_1 = mk.Axis(f3[1, 1],
@@ -304,11 +388,14 @@ function build_diagnostic_figures(
     mk.lines!(ax5_1, data.z_cm, data.potential, color = mk.wong_colors()[1])
     mk.lines!(ax5_2, data.z_cm, data.Te, color = mk.wong_colors()[2])
     mk.vlines!(
-        ax5_1, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2)
+        ax5_1, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2,
+    )
     mk.vlines!(
-        ax5_2, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2)
+        ax5_2, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2,
+    )
     mk.vlines!(
-        ax5_3, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2)
+        ax5_3, [target_axial_position_cm], color = :black, linestyle = :dash, linewidth = 2,
+    )
     figures[:potential_and_temperature] = f5
 
     return figures
@@ -323,16 +410,16 @@ function save_figures(figures; plot_dir::AbstractString = DEFAULT_PLOT_DIR)
 end
 
 function run_diagnostics(;
-        average_start_time = DEFAULT_AVERAGE_START_TIME,
-        save_time_resolved::Bool = false,
-        write_output::Bool = true,
-        display_plots::Bool = true,
-        save_plots::Bool = false,
-        return_results::Bool = false,
-        plot_dir::AbstractString = DEFAULT_PLOT_DIR,
-        target_axial_position_cm::Real = 1.5,
-        config_kwargs = NamedTuple(),
-        simparam_kwargs = NamedTuple()
+    average_start_time = DEFAULT_AVERAGE_START_TIME,
+    save_time_resolved::Bool = false,
+    write_output::Bool = true,
+    display_plots::Bool = true,
+    save_plots::Bool = false,
+    return_results::Bool = false,
+    plot_dir::AbstractString = DEFAULT_PLOT_DIR,
+    target_axial_position_cm::Real = 1.5,
+    config_kwargs = NamedTuple(),
+    simparam_kwargs = NamedTuple(),
 )
     sol = main(
         average_start_time = average_start_time,
@@ -340,7 +427,7 @@ function run_diagnostics(;
         write_output = write_output,
         return_solution = true,
         config_kwargs = config_kwargs,
-        simparam_kwargs = simparam_kwargs
+        simparam_kwargs = simparam_kwargs,
     )
 
     avg = average_solution(sol; average_start_time = average_start_time)
@@ -349,7 +436,7 @@ function run_diagnostics(;
         data;
         target_axial_position_cm = target_axial_position_cm,
         translational_temperature_K = haskey(config_kwargs, :temperature_K) ?
-                                      config_kwargs.temperature_K : 750.0
+                                      config_kwargs.temperature_K : 750.0,
     )
     figures = build_diagnostic_figures(
         data; target_axial_position_cm = target_axial_position_cm)
@@ -373,7 +460,7 @@ function run_diagnostics(;
             data = data,
             report = report,
             figures = figures,
-            plot_dir = saved_plot_dir
+            plot_dir = saved_plot_dir,
         )
     end
 
