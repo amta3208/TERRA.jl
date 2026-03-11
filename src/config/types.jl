@@ -313,21 +313,27 @@ Residence-time (CSTR / flow-through) model controls.
 struct ResidenceTimeConfig
     enabled::Bool
     L::Float64
-    U_neutral::Float64
-    U_ion::Float64
+    U_species::Dict{String, Float64}
     U_energy::Union{Nothing, Float64}
     inlet_reactor::Union{Nothing, ReactorConfig}
 
-    function ResidenceTimeConfig(enabled::Bool, L, U_neutral, U_ion,
+    function ResidenceTimeConfig(enabled::Bool, L, U_species,
             U_energy = nothing, inlet_reactor = nothing)
         if !isfinite(L) || L <= 0
             throw(ArgumentError("ResidenceTimeConfig: L must be finite and positive (got $L)."))
         end
-        if !isfinite(U_neutral) || U_neutral <= 0
-            throw(ArgumentError("ResidenceTimeConfig: U_neutral must be finite and positive (got $U_neutral)."))
-        end
-        if !isfinite(U_ion) || U_ion <= 0
-            throw(ArgumentError("ResidenceTimeConfig: U_ion must be finite and positive (got $U_ion)."))
+        u_species_dict = Dict{String, Float64}()
+        for (name, value) in pairs(U_species)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "ResidenceTimeConfig: species keys in U_species must be non-empty."
+            ))
+            if !isfinite(value) || value <= 0
+                throw(ArgumentError(
+                    "ResidenceTimeConfig: U_species[$name_str] must be finite and positive (got $value)."
+                ))
+            end
+            u_species_dict[name_str] = Float64(value)
         end
         if U_energy !== nothing && (!isfinite(U_energy) || U_energy <= 0)
             throw(ArgumentError("ResidenceTimeConfig: U_energy must be finite and positive (got $U_energy)."))
@@ -337,22 +343,19 @@ struct ResidenceTimeConfig
         return new(
             enabled,
             Float64(L),
-            Float64(U_neutral),
-            Float64(U_ion),
+            u_species_dict,
             U_energy === nothing ? nothing : Float64(U_energy),
             inlet_reactor_val)
     end
 end
 
-# Backward-compatible positional constructor (enabled defaults to true)
-ResidenceTimeConfig(L, U_neutral, U_ion, U_energy = nothing, inlet_config = nothing) =
-    ResidenceTimeConfig(true, L, U_neutral, U_ion, U_energy, inlet_config)
+ResidenceTimeConfig(L, U_species, U_energy = nothing, inlet_config = nothing) =
+    ResidenceTimeConfig(true, L, U_species, U_energy, inlet_config)
 
 function ResidenceTimeConfig(;
         enabled::Bool = true,
         L::Real = 1.0,
-        U_neutral::Real = 1.0,
-        U_ion::Real = 1.0,
+        U_species::AbstractDict = Dict{String, Float64}(),
         U_energy::Union{Nothing, Real} = nothing,
         inlet_reactor = nothing,
         inlet_config = nothing)
@@ -360,7 +363,7 @@ function ResidenceTimeConfig(;
         throw(ArgumentError("ResidenceTimeConfig: provide only one of `inlet_reactor` or legacy `inlet_config`."))
     end
     inlet_value = inlet_reactor === nothing ? inlet_config : inlet_reactor
-    return ResidenceTimeConfig(enabled, L, U_neutral, U_ion, U_energy, inlet_value)
+    return ResidenceTimeConfig(enabled, L, U_species, U_energy, inlet_value)
 end
 
 function _coerce_residence_time_inlet_reactor(inlet)
@@ -368,6 +371,8 @@ function _coerce_residence_time_inlet_reactor(inlet)
         return nothing
     elseif inlet isa ReactorConfig
         return inlet
+    elseif inlet isa Config
+        return inlet.reactor
     else
         throw(ArgumentError("ResidenceTimeConfig: inlet_reactor/inlet_config must be `ReactorConfig`, `Config`, or `nothing`."))
     end
@@ -388,7 +393,7 @@ struct NumericsConfig
             time::TimeConfig,
             solver::ODESolverConfig = ODESolverConfig(),
             space::SpaceConfig = SpaceConfig(),
-            residence_time::Union{Nothing, ResidenceTimeConfig} = ResidenceTimeConfig())
+            residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
         return new(time, solver, space, residence_time)
     end
 end
@@ -582,7 +587,7 @@ struct ChainMetadata
     retained_point_count::Int
 
     function ChainMetadata(;
-            schema_version::AbstractString = "terra_chain_profile_v1",
+            schema_version::AbstractString = "terra_chain_profile_v2",
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
             source_snapshot::Union{Nothing, AbstractDict} = nothing,
@@ -636,8 +641,7 @@ struct ChainCellResult
     z_m::Float64
     dx_m::Float64
     te_K::Float64
-    u_neutral_m_s::Float64
-    u_ion_m_s::Float64
+    species_u_m_s::Dict{String, Float64}
     reactor::ReactorResult
     endpoint_reactor::Union{Nothing, ReactorConfig}
     success::Bool
@@ -649,8 +653,7 @@ struct ChainCellResult
             z_m::Real,
             dx_m::Real,
             te_K::Real,
-            u_neutral_m_s::Real,
-            u_ion_m_s::Real,
+            species_u_m_s::AbstractDict,
             reactor::ReactorResult,
             endpoint_reactor::Union{Nothing, ReactorConfig} = nothing,
             success::Bool = reactor.success,
@@ -663,14 +666,25 @@ struct ChainCellResult
         z_val = Float64(z_m)
         dx_val = Float64(dx_m)
         te_val = Float64(te_K)
-        un_val = Float64(u_neutral_m_s)
-        ui_val = Float64(u_ion_m_s)
+        species_u_dict = Dict{String, Float64}()
+        for (name, value) in pairs(species_u_m_s)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "ChainCellResult: species_u_m_s keys must be non-empty."
+            ))
+            value_f64 = Float64(value)
+            isfinite(value_f64) && value_f64 > 0 || throw(ArgumentError(
+                "ChainCellResult: species_u_m_s[$name_str] must be finite and positive."
+            ))
+            species_u_dict[name_str] = value_f64
+        end
 
         isfinite(z_val) || throw(ArgumentError("ChainCellResult: z_m must be finite."))
         isfinite(dx_val) && dx_val > 0 || throw(ArgumentError("ChainCellResult: dx_m must be finite and positive."))
         isfinite(te_val) && te_val > 0 || throw(ArgumentError("ChainCellResult: te_K must be finite and positive."))
-        isfinite(un_val) && un_val > 0 || throw(ArgumentError("ChainCellResult: u_neutral_m_s must be finite and positive."))
-        isfinite(ui_val) && ui_val > 0 || throw(ArgumentError("ChainCellResult: u_ion_m_s must be finite and positive."))
+        isempty(species_u_dict) && throw(ArgumentError(
+            "ChainCellResult: species_u_m_s must contain at least one species."
+        ))
 
         return new(
             compact_idx,
@@ -678,8 +692,7 @@ struct ChainCellResult
             z_val,
             dx_val,
             te_val,
-            un_val,
-            ui_val,
+            species_u_dict,
             reactor,
             endpoint_reactor,
             success,
@@ -697,8 +710,7 @@ Normalized axial chain profile used by the TERRA chain-of-CSTR interface.
 - `z_m::Vector{Float64}`: Axial coordinate points (m), strictly increasing
 - `dx_m::Vector{Float64}`: Point-aligned control-volume lengths (m), strictly positive
 - `te_K::Vector{Float64}`: Electron temperature profile (K), strictly positive
-- `u_neutral_m_s::Vector{Float64}`: Neutral velocity profile (m/s), strictly positive
-- `u_ion_m_s::Vector{Float64}`: Ion velocity profile (m/s), strictly positive
+- `species_u_m_s::Dict{String, Vector{Float64}}`: Per-species convective velocities (m/s), strictly positive
 - `diagnostics::Dict{String, Vector{Float64}}`: Optional diagnostics arrays
 - `generator::Dict{String, Any}`: Generator metadata from interchange artifact
 - `selection::Dict{String, Any}`: Selection metadata from interchange artifact
@@ -709,8 +721,7 @@ struct AxialChainProfile
     z_m::Vector{Float64}
     dx_m::Vector{Float64}
     te_K::Vector{Float64}
-    u_neutral_m_s::Vector{Float64}
-    u_ion_m_s::Vector{Float64}
+    species_u_m_s::Dict{String, Vector{Float64}}
     diagnostics::Dict{String, Vector{Float64}}
     generator::Dict{String, Any}
     selection::Dict{String, Any}
@@ -721,25 +732,21 @@ struct AxialChainProfile
             z_m,
             dx_m,
             te_K,
-            u_neutral_m_s,
-            u_ion_m_s,
+            species_u_m_s,
             diagnostics::AbstractDict = Dict{String, Vector{Float64}}(),
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
-            schema_version::AbstractString = "terra_chain_profile_v1",
+            schema_version::AbstractString = "terra_chain_profile_v2",
             source_snapshot::Union{Nothing, AbstractDict} = nothing)
         z_m_vec = Float64.(z_m)
         dx_m_vec = Float64.(dx_m)
         te_K_vec = Float64.(te_K)
-        u_neutral_vec = Float64.(u_neutral_m_s)
-        u_ion_vec = Float64.(u_ion_m_s)
 
         n = length(z_m_vec)
         if n == 0
             throw(ArgumentError("AxialChainProfile: profile arrays must be non-empty."))
         end
-        if length(dx_m_vec) != n || length(te_K_vec) != n ||
-           length(u_neutral_vec) != n || length(u_ion_vec) != n
+        if length(dx_m_vec) != n || length(te_K_vec) != n
             throw(ArgumentError("AxialChainProfile: all required profile arrays must have identical lengths."))
         end
 
@@ -755,14 +762,38 @@ struct AxialChainProfile
         for (name, values) in (
             ("dx_m", dx_m_vec),
             ("te_K", te_K_vec),
-            ("u_neutral_m_s", u_neutral_vec),
-            ("u_ion_m_s", u_ion_vec),
         )
             for (i, value) in pairs(values)
                 isfinite(value) || throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
                 value > 0.0 || throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
             end
         end
+
+        species_u_dict = Dict{String, Vector{Float64}}()
+        for (name, values) in pairs(species_u_m_s)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "AxialChainProfile: species_u_m_s keys must be non-empty."
+            ))
+            values_vec = Float64.(values)
+            if length(values_vec) != n
+                throw(ArgumentError(
+                    "AxialChainProfile: species_u_m_s[$name_str] length $(length(values_vec)) does not match required profile length $n."
+                ))
+            end
+            for (i, value) in pairs(values_vec)
+                isfinite(value) || throw(ArgumentError(
+                    "AxialChainProfile: species_u_m_s[$name_str][$i] must be finite."
+                ))
+                value > 0.0 || throw(ArgumentError(
+                    "AxialChainProfile: species_u_m_s[$name_str][$i] must be strictly positive."
+                ))
+            end
+            species_u_dict[name_str] = values_vec
+        end
+        isempty(species_u_dict) && throw(ArgumentError(
+            "AxialChainProfile: species_u_m_s must contain at least one species."
+        ))
 
         diagnostics_dict = Dict{String, Vector{Float64}}()
         for (key, values) in pairs(diagnostics)
@@ -788,8 +819,7 @@ struct AxialChainProfile
             z_m_vec,
             dx_m_vec,
             te_K_vec,
-            u_neutral_vec,
-            u_ion_vec,
+            species_u_dict,
             diagnostics_dict,
             generator_dict,
             selection_dict,

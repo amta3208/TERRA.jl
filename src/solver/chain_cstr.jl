@@ -95,6 +95,39 @@ function _resolve_original_point_count(profile::AxialChainProfile)::Union{Nothin
     return nothing
 end
 
+function _profile_species_velocity_at_segment(profile::AxialChainProfile, segment_index::Integer)
+    species_u = Dict{String, Float64}()
+    for (name, values) in pairs(profile.species_u_m_s)
+        species_u[name] = values[segment_index]
+    end
+    return species_u
+end
+
+function _non_electron_species_names(config::Config)
+    species = config.reactor.composition.species
+    molecular_weights = get_molecular_weights(species)
+    return String[
+        species[i] for i in eachindex(species)
+        if !_is_electron_species(species[i], molecular_weights[i])
+    ]
+end
+
+function _validate_profile_species(profile::AxialChainProfile, config::Config)
+    expected_species = _non_electron_species_names(config)
+    profile_species = sort!(collect(keys(profile.species_u_m_s)))
+    expected_sorted = sort!(copy(expected_species))
+
+    if profile_species != expected_sorted
+        missing_species = [name for name in expected_sorted if !(name in profile_species)]
+        extra_species = [name for name in profile_species if !(name in expected_sorted)]
+        throw(ArgumentError(
+            "AxialChainProfile species_u_m_s keys must match the non-electron reactor species. " *
+            "Missing: $(isempty(missing_species) ? "none" : join(missing_species, ", ")); " *
+            "Extra: $(isempty(extra_species) ? "none" : join(extra_species, ", "))."
+        ))
+    end
+end
+
 function _build_chain_cells(profile::AxialChainProfile,
         compact_to_source_index::AbstractVector{<:Integer},
         segment_end_reactors::AbstractVector{<:ReactorConfig},
@@ -127,8 +160,7 @@ function _build_chain_cells(profile::AxialChainProfile,
             z_m = profile.z_m[k],
             dx_m = profile.dx_m[k],
             te_K = profile.te_K[k],
-            u_neutral_m_s = profile.u_neutral_m_s[k],
-            u_ion_m_s = profile.u_ion_m_s[k],
+            species_u_m_s = _profile_species_velocity_at_segment(profile, k),
             reactor = segment_results[k],
             endpoint_reactor = segment_end_reactors[k],
             success = segment_success[k],
@@ -197,12 +229,12 @@ function _build_segment_residence_time(base_config::Config,
         inlet_reactor::ReactorConfig)
     base_rt = base_config.numerics.residence_time
     u_energy = base_rt === nothing ? nothing : base_rt.U_energy
+    species_u = _profile_species_velocity_at_segment(profile, segment_index)
 
     return ResidenceTimeConfig(
         enabled = true,
         L = profile.dx_m[segment_index],
-        U_neutral = profile.u_neutral_m_s[segment_index],
-        U_ion = profile.u_ion_m_s[segment_index],
+        U_species = species_u,
         U_energy = u_energy,
         inlet_reactor = inlet_reactor,
     )
@@ -353,6 +385,7 @@ function solve_terra_chain_steady(config::Config,
         marching::AxialMarchingConfig = AxialMarchingConfig())
     validate_axial_chain_profile(profile)
     validate_axial_marching_config(marching)
+    _validate_profile_species(profile, config)
 
     # Chain marching repeatedly reinitializes the Fortran API; keep MPI
     # finalization disabled to avoid shutting down MPI mid-process.

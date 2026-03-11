@@ -176,8 +176,7 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
     if n == 0
         throw(ArgumentError("AxialChainProfile must contain at least one axial point."))
     end
-    if length(profile.dx_m) != n || length(profile.te_K) != n ||
-       length(profile.u_neutral_m_s) != n || length(profile.u_ion_m_s) != n
+    if length(profile.dx_m) != n || length(profile.te_K) != n
         throw(ArgumentError("AxialChainProfile required arrays must have identical lengths."))
     end
 
@@ -194,14 +193,29 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
     for (name, values) in (
         ("dx_m", profile.dx_m),
         ("te_K", profile.te_K),
-        ("u_neutral_m_s", profile.u_neutral_m_s),
-        ("u_ion_m_s", profile.u_ion_m_s)
     )
         for (i, value) in pairs(values)
             isfinite(value) ||
                 throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
             value > 0.0 ||
                 throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
+        end
+    end
+
+    isempty(profile.species_u_m_s) && throw(ArgumentError(
+        "AxialChainProfile: species_u_m_s must contain at least one species."
+    ))
+    for (name, values) in pairs(profile.species_u_m_s)
+        if length(values) != n
+            throw(ArgumentError(
+                "AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."
+            ))
+        end
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be finite."))
+            value > 0.0 ||
+                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be strictly positive."))
         end
     end
 

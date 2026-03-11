@@ -44,8 +44,7 @@
         z_m = 0.0,
         dx_m = 0.01,
         te_K = 10000.0,
-        u_neutral_m_s = 150.0,
-        u_ion_m_s = 15000.0,
+        species_u_m_s = Dict("N" => 150.0, "N2" => 180.0, "N+" => 15000.0),
         reactor = reactor1,
         endpoint_reactor = endpoint,
         success = true,
@@ -71,8 +70,7 @@
         z_m = 0.01,
         dx_m = 0.01,
         te_K = 9200.0,
-        u_neutral_m_s = 140.0,
-        u_ion_m_s = 14000.0,
+        species_u_m_s = Dict("N" => 140.0, "N2" => 170.0, "N+" => 14000.0),
         reactor = reactor2,
         endpoint_reactor = nothing,
         success = false,
@@ -80,7 +78,7 @@
     )
 
     metadata = terra.ChainMetadata(;
-        schema_version = "terra_chain_profile_v1",
+        schema_version = "terra_chain_profile_v2",
         generator = Dict{String, Any}("tool" => "unit-test"),
         selection = Dict{String, Any}("trim_start_index" => 5),
         diagnostics = Dict{String, Any}(
@@ -116,6 +114,7 @@
     @test loaded.cells[1].endpoint_reactor !== nothing
     @test loaded.cells[1].endpoint_reactor.composition.species == ["N", "N2", "E-"]
     @test loaded.cells[1].reactor.frames[2].temperatures.te ≈ 9800.0
+    @test loaded.cells[1].species_u_m_s["N+"] == 15000.0
     @test loaded.cells[1].reactor.frames[1].source_terms !== nothing
     @test loaded.cells[1].reactor.frames[1].source_terms.production ≈ 1.0
     @test loaded.cells[1].reactor.source_terms !== nothing

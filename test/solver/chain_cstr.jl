@@ -29,14 +29,23 @@
         end
     end
 
+    function species_velocity_profile(; n_segments::Int, neutral_base::Float64, ion_base::Float64)
+        return Dict(
+            "N" => fill(neutral_base + 20.0, n_segments),
+            "N2" => fill(neutral_base, n_segments),
+            "N+" => collect(range(ion_base, step = 500.0, length = n_segments)),
+            "N2+" => collect(range(ion_base + 1000.0, step = 500.0, length = n_segments)),
+        )
+    end
+
     @testset "Single segment run" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(
             z_m = [0.0],
             dx_m = [0.01],
             te_K = [config.reactor.thermal.Te],
-            u_neutral_m_s = [200.0],
-            u_ion_m_s = [18000.0],
+            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
+                ion_base = 18000.0),
         )
         marching = terra.AxialMarchingConfig()
 
@@ -46,6 +55,7 @@
         @test chain.failed_cell === nothing
         @test length(chain.cells) == 1
         @test chain.cells[1].reactor.success == true
+        @test chain.cells[1].species_u_m_s["N+"] == 18000.0
 
         segment_result = chain.cells[1].reactor
         @test !isempty(segment_result.t)
@@ -60,8 +70,12 @@
             z_m = [0.0, 0.01],
             dx_m = [0.01, 0.01],
             te_K = [115000.0, 90000.0],
-            u_neutral_m_s = [200.0, 200.0],
-            u_ion_m_s = [18000.0, 22000.0],
+            species_u_m_s = Dict(
+                "N" => [220.0, 225.0],
+                "N2" => [200.0, 205.0],
+                "N+" => [18000.0, 22000.0],
+                "N2+" => [19000.0, 23000.0],
+            ),
         )
         marching = terra.AxialMarchingConfig()
 
@@ -78,12 +92,11 @@
         @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in first_result.frames)
         @test all(abs(frame.temperatures.te - profile.te_K[2]) <= 1e-6 for frame in second_result.frames)
 
-        # In reinitialize mode without thermal overrides, segment 2 starts from
-        # segment 1 endpoint Tt/Tv while Te is overwritten by the profile.
         @test first_endpoint !== nothing
         @test second_result.frames[1].temperatures.tt ≈ first_endpoint.thermal.Tt
         @test second_result.frames[1].temperatures.tv ≈ first_endpoint.thermal.Tv
         @test second_result.frames[1].temperatures.te ≈ profile.te_K[2]
+        @test chain.cells[2].species_u_m_s["N2+"] == 23000.0
 
         cleanup_terra!()
     end
@@ -94,23 +107,29 @@
             z_m = [0.0, 0.01],
             dx_m = [0.01, 0.01],
             te_K = [115000.0, 90000.0],
-            u_neutral_m_s = [200.0, 200.0],
-            u_ion_m_s = [18000.0, 22000.0],
+            species_u_m_s = Dict(
+                "N" => [220.0, 225.0],
+                "N2" => [200.0, 205.0],
+                "N+" => [18000.0, 22000.0],
+                "N2+" => [19000.0, 23000.0],
+            ),
             generator = Dict(
                 "tool" => "unit-test",
                 "tool_version" => "1.0.0",
                 "created_utc" => "2026-03-05T00:00:00Z",
             ),
             selection = Dict(
-                "neutral_species" => "N2",
-                "ion_species" => "N2",
-                "ion_charge_state" => 1,
                 "average_start_time_s" => 5e-4,
+                "exported_species" => ["N", "N2", "N+", "N2+"],
+                "ion_velocity_policy" => "trim_to_first_positive",
+                "u_ion_floor" => 0.0,
+                "min_consecutive_positive" => 3,
                 "trim_start_index" => 13,
+                "trim_start_z_m" => 0.0025,
                 "trimmed_point_count" => 12,
                 "original_point_count" => 102,
             ),
-            schema_version = "terra_chain_profile_v1",
+            schema_version = "terra_chain_profile_v2",
             source_snapshot = Dict(
                 "enabled" => true,
                 "source_type" => "unit-test",
@@ -120,7 +139,7 @@
         chain = terra.solve_terra_chain_steady(config, profile)
 
         @test chain.success == true
-        @test chain.metadata.schema_version == "terra_chain_profile_v1"
+        @test chain.metadata.schema_version == "terra_chain_profile_v2"
         @test chain.metadata.generator["tool"] == "unit-test"
         @test chain.metadata.selection["trim_start_index"] == 13
         @test chain.metadata.source_snapshot !== nothing
@@ -138,14 +157,46 @@
         cleanup_terra!()
     end
 
+    @testset "Rejects Missing or Extra Profile Species" begin
+        config = build_chain_test_config()
+
+        missing_profile = terra.AxialChainProfile(
+            z_m = [0.0],
+            dx_m = [0.01],
+            te_K = [115000.0],
+            species_u_m_s = Dict(
+                "N" => [220.0],
+                "N2" => [200.0],
+                "N+" => [18000.0],
+            ),
+        )
+        @test_throws ArgumentError terra.solve_terra_chain_steady(config, missing_profile)
+
+        extra_profile = terra.AxialChainProfile(
+            z_m = [0.0],
+            dx_m = [0.01],
+            te_K = [115000.0],
+            species_u_m_s = Dict(
+                "N" => [220.0],
+                "N2" => [200.0],
+                "N+" => [18000.0],
+                "N2+" => [19000.0],
+                "Ar" => [1000.0],
+            ),
+        )
+        @test_throws ArgumentError terra.solve_terra_chain_steady(config, extra_profile)
+
+        cleanup_terra!()
+    end
+
     @testset "Unsupported handoff/termination modes" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(
             z_m = [0.0],
             dx_m = [0.01],
             te_K = [115000.0],
-            u_neutral_m_s = [200.0],
-            u_ion_m_s = [18000.0],
+            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
+                ion_base = 18000.0),
         )
 
         @test_throws ArgumentError terra.solve_terra_chain_steady(

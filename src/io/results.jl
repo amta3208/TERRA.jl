@@ -150,7 +150,7 @@ function save_results(results::ReactorResult, filename::String)
     end
 end
 
-const CHAIN_RESULTS_SCHEMA_VERSION = "terra_chain_results_v1"
+const CHAIN_RESULTS_SCHEMA_VERSION = "terra_chain_results_v2"
 
 function _chain_results_json_value(value)
     if value === nothing
@@ -258,6 +258,19 @@ function _chain_results_float_array(
             "Expected numeric values in `$context.$key`; got $(typeof(value)) at index $i."
         ))
         push!(result, Float64(value))
+    end
+    return result
+end
+
+function _chain_results_float_dict(
+        container::AbstractDict, key::AbstractString, context::AbstractString)
+    raw = _chain_results_required_dict(container, key, context)
+    result = Dict{String, Float64}()
+    for (name, value) in pairs(raw)
+        value isa Real || throw(ArgumentError(
+            "Expected numeric values in `$context.$key`; got $(typeof(value)) for key $(name)."
+        ))
+        result[String(name)] = Float64(value)
     end
     return result
 end
@@ -514,8 +527,9 @@ function _chain_results_cell_to_dict(cell::ChainCellResult)
         "z_m" => cell.z_m,
         "dx_m" => cell.dx_m,
         "te_K" => cell.te_K,
-        "u_neutral_m_s" => cell.u_neutral_m_s,
-        "u_ion_m_s" => cell.u_ion_m_s,
+        "species_u_m_s" => Dict{String, Float64}(
+            name => velocity for (name, velocity) in pairs(cell.species_u_m_s)
+        ),
         "reactor" => _chain_results_reactor_result_to_dict(cell.reactor),
         "endpoint_reactor" => cell.endpoint_reactor === nothing ? nothing :
                               _chain_results_reactor_config_to_dict(cell.endpoint_reactor),
@@ -555,18 +569,7 @@ function _chain_results_cell_from_dict(raw::AbstractDict)
             throw(ArgumentError("Expected `te_K` in chain cell to be numeric."))
             Float64(te)
         end,
-        u_neutral_m_s = begin
-            un = get(raw, "u_neutral_m_s", nothing)
-            un isa Real ||
-            throw(ArgumentError("Expected `u_neutral_m_s` in chain cell to be numeric."))
-            Float64(un)
-        end,
-        u_ion_m_s = begin
-            ui = get(raw, "u_ion_m_s", nothing)
-            ui isa Real ||
-            throw(ArgumentError("Expected `u_ion_m_s` in chain cell to be numeric."))
-            Float64(ui)
-        end,
+        species_u_m_s = _chain_results_float_dict(raw, "species_u_m_s", "chain cell"),
         reactor = _chain_results_reactor_result_from_dict(
             _chain_results_required_dict(raw, "reactor", "chain cell")),
         endpoint_reactor = endpoint_reactor_raw === nothing ? nothing :

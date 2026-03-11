@@ -202,14 +202,15 @@ end
 end
 
 @testset "ResidenceTimeConfig" begin
-    rt_default = terra.ResidenceTimeConfig(1.0, 1.0, 1.0)
+    u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
+
+    rt_default = terra.ResidenceTimeConfig(1.0, u_species)
     @test rt_default.enabled == true
     @test rt_default.L == 1.0
-    @test rt_default.U_neutral == 1.0
-    @test rt_default.U_ion == 1.0
+    @test rt_default.U_species == u_species
 
-    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_neutral = 2.0,
-        U_ion = 2.5, U_energy = 3.0)
+    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_species = u_species,
+        U_energy = 3.0)
     @test rt_disabled.enabled == false
     @test rt_disabled.U_energy == 3.0
 
@@ -218,24 +219,21 @@ end
     rt_inlet_reactor = terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_reactor = inlet_config.reactor)
     @test rt_inlet_reactor.inlet_reactor == inlet_config.reactor
 
     rt_inlet_config_alias = terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_config = inlet_config)
     @test rt_inlet_config_alias.inlet_reactor == inlet_config.reactor
 
     @test_throws ArgumentError terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_reactor = inlet_config.reactor,
         inlet_config = inlet_config)
 end
@@ -332,8 +330,7 @@ end
         z_m = 0.0,
         dx_m = 0.01,
         te_K = 10000.0,
-        u_neutral_m_s = 100.0,
-        u_ion_m_s = 1000.0,
+        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
         reactor = reactor,
         endpoint_reactor = reactor_cfg,
     )
@@ -385,8 +382,7 @@ end
         z_m = 0.0,
         dx_m = 0.01,
         te_K = 10000.0,
-        u_neutral_m_s = 100.0,
-        u_ion_m_s = 1000.0,
+        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
         reactor = reactor
     )
     cell2 = terra.ChainCellResult(;
@@ -395,8 +391,7 @@ end
         z_m = 0.01,
         dx_m = 0.01,
         te_K = 9500.0,
-        u_neutral_m_s = 100.0,
-        u_ion_m_s = 1200.0,
+        species_u_m_s = Dict("N" => 105.0, "N2" => 125.0, "N+" => 1200.0),
         reactor = reactor
     )
 

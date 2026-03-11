@@ -1,21 +1,22 @@
 using Dates
 using JSON
 
-const SCHEMA_VERSION = "terra_chain_profile_v1"
-const SCRIPT_VERSION = "0.2.0"
+const SCHEMA_VERSION = "terra_chain_profile_v2"
+const SCRIPT_VERSION = "0.3.0"
 const EV_TO_K = 11604.518121550082
-const DEFAULT_OUTPUT_BASENAME = "chain_profile_v1.json"
+const DEFAULT_OUTPUT_BASENAME = "chain_profile_v2.json"
 
 function usage()
     return """
     Usage:
-      julia --project=tools/hallthruster_jl tools/hallthruster_jl/export_chain_profile.jl <hallthruster_input.json> <terra_case_path> --average_start_time=<seconds> --neutral_species=<symbol> --ion_species=<symbol> --ion_charge_state=<int> [--write_source_snapshot=<true|false>] [--ion_velocity_policy=<trim_to_first_positive|strict_positive>] [--u_ion_floor=<float>] [--min_consecutive_positive=<int>]
+      julia --project=tools/hallthruster_jl tools/hallthruster_jl/export_chain_profile.jl <hallthruster_input.json> <terra_case_path> --average_start_time=<seconds> [--write_source_snapshot=<true|false>] [--ion_velocity_policy=<trim_to_first_positive|strict_positive>] [--u_ion_floor=<float>] [--min_consecutive_positive=<int>]
 
     Notes:
       - The HallThruster JSON input must already contain an `output.average` block.
       - For JSON inputs, `--average_start_time` is recorded as metadata only; this script does not recompute the time average.
-      - The output is written to `<terra_case_path>/input/chain_profile_v1.json`.
+      - The output is written to `<terra_case_path>/input/chain_profile_v2.json`.
       - Default ion-velocity handling is `trim_to_first_positive` with `u_ion_floor=0.0` and `min_consecutive_positive=3`.
+      - All non-electron neutral and ion species present in HallThruster are exported.
     """
 end
 
@@ -50,17 +51,8 @@ function parse_options(args::Vector{String})
     end
 
     length(positionals) == 2 || throw(ArgumentError("Expected 2 positional arguments.\n\n" * usage()))
-
-    required_option_keys = (
-        "average_start_time",
-        "neutral_species",
-        "ion_species",
-        "ion_charge_state",
-    )
-
-    for key in required_option_keys
-        haskey(options, key) || throw(ArgumentError("Missing required option --$(key)=...\n\n" * usage()))
-    end
+    haskey(options, "average_start_time") ||
+        throw(ArgumentError("Missing required option --average_start_time=...\n\n" * usage()))
 
     write_source_snapshot = haskey(options, "write_source_snapshot") ?
         parse_bool(options["write_source_snapshot"]) : true
@@ -74,9 +66,6 @@ function parse_options(args::Vector{String})
         hallthruster_input = abspath(positionals[1]),
         terra_case_path = abspath(positionals[2]),
         average_start_time_s = parse(Float64, options["average_start_time"]),
-        neutral_species = options["neutral_species"],
-        ion_species = options["ion_species"],
-        ion_charge_state = parse(Int, options["ion_charge_state"]),
         write_source_snapshot = write_source_snapshot,
         ion_velocity_policy = ion_velocity_policy,
         u_ion_floor = u_ion_floor,
@@ -150,36 +139,36 @@ function sorted_joined_keys(dict::AbstractDict)
     return join(sort!(collect(keys(dict))), ", ")
 end
 
-function select_neutral_state(average::AbstractDict, neutral_species::AbstractString)
-    neutrals = require_dict(average, "neutrals", "output.average")
-    haskey(neutrals, neutral_species) || throw(ArgumentError(
-        "Neutral species `$(neutral_species)` not found. Available neutrals: $(sorted_joined_keys(neutrals))."
-    ))
-    state = neutrals[neutral_species]
-    isa(state, AbstractDict) || throw(ArgumentError("Expected `output.average.neutrals.$(neutral_species)` to be a JSON object."))
-    return state
+function coerce_charge_state(value, context::AbstractString)
+    if value isa Integer
+        charge_state = Int(value)
+    elseif value isa Real && isfinite(value) && isinteger(value)
+        charge_state = Int(round(value))
+    else
+        throw(ArgumentError("Expected integer charge state in $(context); got $(typeof(value))."))
+    end
+    charge_state >= 1 || throw(ArgumentError("Charge state in $(context) must be >= 1."))
+    return charge_state
 end
 
-function select_ion_state(average::AbstractDict, ion_species::AbstractString, ion_charge_state::Int)
-    ions = require_dict(average, "ions", "output.average")
-    haskey(ions, ion_species) || throw(ArgumentError(
-        "Ion species `$(ion_species)` not found. Available ion species: $(sorted_joined_keys(ions))."
-    ))
-    species_states = ions[ion_species]
-    isa(species_states, Vector) || throw(ArgumentError("Expected `output.average.ions.$(ion_species)` to be a JSON array."))
+function normalize_species_name(name::AbstractString)
+    species = strip(String(name))
+    lowercase(species) in ("e", "e-", "electron") && return "E-"
+    return species
+end
 
-    for state in species_states
-        isa(state, AbstractDict) || throw(ArgumentError("Ion state entries for `$(ion_species)` must be JSON objects."))
-        state_charge = get(state, "Z", nothing)
-        state_charge == ion_charge_state && return state
-    end
-
-    available_charge_states = sort!(Int[
-        Int(state["Z"]) for state in species_states if isa(state, AbstractDict) && haskey(state, "Z") && state["Z"] isa Real
-    ])
-    throw(ArgumentError(
-        "Charge state Z=$(ion_charge_state) not found for ion species `$(ion_species)`. Available charge states: $(join(available_charge_states, ", "))."
+function map_neutral_species_name(ht_species::AbstractString)
+    terra_name = normalize_species_name(ht_species)
+    terra_name == "E-" && throw(ArgumentError(
+        "Electron species must not be exported as a neutral convective species."
     ))
+    return terra_name
+end
+
+function map_ion_species_name(ht_species::AbstractString, charge_state::Integer)
+    base = map_neutral_species_name(ht_species)
+    charge_state == 1 && return "$(base)+"
+    return "$(base)$(charge_state)+"
 end
 
 function compute_point_aligned_dx(z_m::Vector{Float64})
@@ -193,14 +182,6 @@ function compute_point_aligned_dx(z_m::Vector{Float64})
     end
     dx_m[end] = z_m[end] - z_m[end - 1]
     return dx_m
-end
-
-function count_nonpositive(values::Vector{Float64}; floor::Float64 = 0.0)
-    count = 0
-    for value in values
-        value > floor || (count += 1)
-    end
-    return count
 end
 
 function find_first_consecutive_positive_index(
@@ -240,16 +221,10 @@ function validate_profile!(
     z_m::Vector{Float64},
     dx_m::Vector{Float64},
     te_K::Vector{Float64},
-    u_neutral_m_s::Vector{Float64},
-    u_ion_m_s::Vector{Float64},
+    species_u_m_s::Dict{String, Vector{Float64}},
 )
     n = length(z_m)
-    (
-        n == length(dx_m) &&
-        n == length(te_K) &&
-        n == length(u_neutral_m_s) &&
-        n == length(u_ion_m_s)
-    ) ||
+    (n == length(dx_m) && n == length(te_K)) ||
         throw(ArgumentError("Profile arrays must all have identical lengths."))
 
     for (i, value) in pairs(z_m)
@@ -259,26 +234,28 @@ function validate_profile!(
         z_m[i] > z_m[i - 1] || throw(ArgumentError("`z_m` must be strictly increasing; failed at indices $(i - 1) and $(i)."))
     end
 
-    for (name, values) in (
-        ("dx_m", dx_m),
-        ("te_K", te_K),
-        ("u_neutral_m_s", u_neutral_m_s),
-    )
+    for (name, values) in (("dx_m", dx_m), ("te_K", te_K))
         for (i, value) in pairs(values)
             isfinite(value) || throw(ArgumentError("`$(name)[$(i)]` must be finite."))
             value > 0.0 || throw(ArgumentError("`$(name)[$(i)]` must be strictly positive."))
         end
     end
 
-    for (i, value) in pairs(u_ion_m_s)
-        isfinite(value) || throw(ArgumentError("`u_ion_m_s[$(i)]` must be finite."))
-    end
-
-    nonpositive_ion_count = count_nonpositive(u_ion_m_s)
-    if nonpositive_ion_count > 0
-        throw(ArgumentError(
-            "`u_ion_m_s` must be strictly positive for the contract. Found $(nonpositive_ion_count) non-positive values; minimum = $(minimum(u_ion_m_s))."
+    isempty(species_u_m_s) && throw(ArgumentError(
+        "`species_u_m_s` must contain at least one exported species."
+    ))
+    for (species_name, velocities) in pairs(species_u_m_s)
+        length(velocities) == n || throw(ArgumentError(
+            "`species_u_m_s.$(species_name)` must have length $(n); got $(length(velocities))."
         ))
+        for (i, value) in pairs(velocities)
+            isfinite(value) || throw(ArgumentError(
+                "`species_u_m_s.$(species_name)[$(i)]` must be finite."
+            ))
+            value > 0.0 || throw(ArgumentError(
+                "`species_u_m_s.$(species_name)[$(i)]` must be strictly positive."
+            ))
+        end
     end
 end
 
@@ -322,6 +299,116 @@ function build_source_snapshot(
     return snapshot
 end
 
+function _insert_species_series!(
+    destination::Dict{String, Vector{Float64}},
+    species_name::AbstractString,
+    values::Vector{Float64},
+    context::AbstractString,
+)
+    haskey(destination, species_name) && throw(ArgumentError(
+        "Duplicate exported species `$(species_name)` while processing $(context)."
+    ))
+    destination[String(species_name)] = values
+    return nothing
+end
+
+function collect_neutral_species_data(average::AbstractDict)
+    neutrals = require_dict(average, "neutrals", "output.average")
+    velocities = Dict{String, Vector{Float64}}()
+    densities = Dict{String, Vector{Float64}}()
+
+    for (ht_species, state_raw) in pairs(neutrals)
+        state_raw isa AbstractDict || throw(ArgumentError(
+            "Expected `output.average.neutrals.$(ht_species)` to be a JSON object."
+        ))
+        species_name = map_neutral_species_name(String(ht_species))
+        state = state_raw::AbstractDict
+        _insert_species_series!(
+            velocities,
+            species_name,
+            require_number_array(state, "u", "output.average.neutrals.$(ht_species)"),
+            "neutral species `$(ht_species)`",
+        )
+        _insert_species_series!(
+            densities,
+            species_name,
+            require_number_array(state, "n", "output.average.neutrals.$(ht_species)"),
+            "neutral species `$(ht_species)` density",
+        )
+    end
+
+    return velocities, densities
+end
+
+function collect_ion_species_data(average::AbstractDict)
+    ions = require_dict(average, "ions", "output.average")
+    velocities = Dict{String, Vector{Float64}}()
+    densities = Dict{String, Vector{Float64}}()
+    ion_species = String[]
+
+    for (ht_species, species_states_raw) in pairs(ions)
+        species_states_raw isa Vector || throw(ArgumentError(
+            "Expected `output.average.ions.$(ht_species)` to be a JSON array."
+        ))
+        for (state_index, state_raw) in pairs(species_states_raw)
+            state_raw isa AbstractDict || throw(ArgumentError(
+                "Ion state entries for `$(ht_species)` must be JSON objects."
+            ))
+            state = state_raw::AbstractDict
+            haskey(state, "Z") || throw(ArgumentError(
+                "Missing `Z` in `output.average.ions.$(ht_species)[$(state_index)]`."
+            ))
+            charge_state = coerce_charge_state(
+                state["Z"],
+                "output.average.ions.$(ht_species)[$(state_index)].Z",
+            )
+            species_name = map_ion_species_name(String(ht_species), charge_state)
+            push!(ion_species, species_name)
+            _insert_species_series!(
+                velocities,
+                species_name,
+                require_number_array(state, "u",
+                    "output.average.ions.$(ht_species)[$(state_index)]"),
+                "ion species `$(ht_species)` charge state $(charge_state)",
+            )
+            _insert_species_series!(
+                densities,
+                species_name,
+                require_number_array(state, "n",
+                    "output.average.ions.$(ht_species)[$(state_index)]"),
+                "ion species `$(ht_species)` charge state $(charge_state) density",
+            )
+        end
+    end
+
+    return velocities, densities, sort!(ion_species)
+end
+
+function determine_trim_start_index(
+    ion_velocity_arrays::Dict{String, Vector{Float64}},
+    options,
+)
+    ion_velocity_policy = normalize_ion_velocity_policy(options.ion_velocity_policy)
+    if ion_velocity_policy == "strict_positive" || isempty(ion_velocity_arrays)
+        return 1
+    end
+
+    trim_indices = Int[]
+    for species_name in sort!(collect(keys(ion_velocity_arrays)))
+        idx = find_first_consecutive_positive_index(
+            ion_velocity_arrays[species_name];
+            floor = options.u_ion_floor,
+            min_consecutive_positive = options.min_consecutive_positive,
+        )
+        idx === nothing && throw(ArgumentError(
+            "Unable to find a valid trim point for ion species `$(species_name)` with policy `trim_to_first_positive` (u_ion_floor=$(options.u_ion_floor), min_consecutive_positive=$(options.min_consecutive_positive))."
+        ))
+        push!(trim_indices, idx)
+    end
+
+    return maximum(trim_indices)
+end
+
 function build_chain_profile(
     source::AbstractDict,
     options,
@@ -329,13 +416,11 @@ function build_chain_profile(
     output, average = load_average_block(source)
 
     z_m = require_number_array(average, "z", "output.average")
-    neutral_state = select_neutral_state(average, options.neutral_species)
-    ion_state = select_ion_state(average, options.ion_species, options.ion_charge_state)
+    neutral_velocities, neutral_densities = collect_neutral_species_data(average)
+    ion_velocities, ion_densities, exported_ion_species = collect_ion_species_data(average)
 
-    u_neutral_m_s = require_number_array(neutral_state, "u", "output.average.neutrals.$(options.neutral_species)")
-    n_neutral_m3 = require_number_array(neutral_state, "n", "output.average.neutrals.$(options.neutral_species)")
-    u_ion_m_s = require_number_array(ion_state, "u", "output.average.ions.$(options.ion_species)")
-    n_ion_m3 = require_number_array(ion_state, "n", "output.average.ions.$(options.ion_species)")
+    species_u_m_s = merge(copy(neutral_velocities), ion_velocities)
+    species_n_m3 = merge(copy(neutral_densities), ion_densities)
 
     tev = require_number_array(average, "Tev", "output.average")
     ne_m3 = require_number_array(average, "ne", "output.average")
@@ -346,16 +431,18 @@ function build_chain_profile(
     original_point_count = length(z_m)
     all_arrays = Dict{String, Vector{Float64}}(
         "z_m" => z_m,
-        "u_neutral_m_s" => u_neutral_m_s,
-        "n_neutral_m3" => n_neutral_m3,
-        "u_ion_m_s" => u_ion_m_s,
-        "n_ion_m3" => n_ion_m3,
         "tev_eV" => tev,
         "ne_m3" => ne_m3,
         "channel_area_m2" => channel_area_m2,
         "potential_V" => potential_V,
         "electric_field_V_m" => electric_field_V_m,
     )
+    for (species_name, values) in pairs(species_u_m_s)
+        all_arrays["species_u_m_s.$(species_name)"] = values
+    end
+    for (species_name, values) in pairs(species_n_m3)
+        all_arrays["species_n_m3.$(species_name)"] = values
+    end
 
     for (name, values) in all_arrays
         length(values) == original_point_count || throw(ArgumentError(
@@ -363,51 +450,54 @@ function build_chain_profile(
         ))
     end
 
-    ion_velocity_policy = normalize_ion_velocity_policy(options.ion_velocity_policy)
-    trim_start_index = 1
-
-    if ion_velocity_policy == "trim_to_first_positive"
-        idx = find_first_consecutive_positive_index(
-            all_arrays["u_ion_m_s"];
-            floor = options.u_ion_floor,
-            min_consecutive_positive = options.min_consecutive_positive,
-        )
-        idx === nothing && throw(ArgumentError(
-            "Unable to find a valid trim point for `u_ion_m_s` with policy `trim_to_first_positive` (u_ion_floor=$(options.u_ion_floor), min_consecutive_positive=$(options.min_consecutive_positive))."
-        ))
-        trim_start_index = idx
+    trim_start_index = determine_trim_start_index(ion_velocities, options)
+    if trim_start_index > 1
         all_arrays = trim_arrays_from_index(all_arrays, trim_start_index)
-    elseif ion_velocity_policy == "strict_positive"
-        trim_start_index = 1
     end
 
     z_m = all_arrays["z_m"]
-    u_neutral_m_s = all_arrays["u_neutral_m_s"]
-    n_neutral_m3 = all_arrays["n_neutral_m3"]
-    u_ion_m_s = all_arrays["u_ion_m_s"]
-    n_ion_m3 = all_arrays["n_ion_m3"]
     tev = all_arrays["tev_eV"]
     ne_m3 = all_arrays["ne_m3"]
     channel_area_m2 = all_arrays["channel_area_m2"]
     potential_V = all_arrays["potential_V"]
     electric_field_V_m = all_arrays["electric_field_V_m"]
 
+    species_u_m_s = Dict{String, Vector{Float64}}()
+    for species_name in sort!(collect(keys(neutral_velocities)))
+        species_u_m_s[species_name] = all_arrays["species_u_m_s.$(species_name)"]
+    end
+    for species_name in exported_ion_species
+        species_u_m_s[species_name] = all_arrays["species_u_m_s.$(species_name)"]
+    end
+
+    species_n_m3 = Dict{String, Vector{Float64}}()
+    for species_name in sort!(collect(keys(neutral_densities)))
+        species_n_m3[species_name] = all_arrays["species_n_m3.$(species_name)"]
+    end
+    for species_name in exported_ion_species
+        species_n_m3[species_name] = all_arrays["species_n_m3.$(species_name)"]
+    end
+
     te_K = tev .* EV_TO_K
     dx_m = compute_point_aligned_dx(z_m)
 
-    validate_profile!(z_m, dx_m, te_K, u_neutral_m_s, u_ion_m_s)
+    validate_profile!(z_m, dx_m, te_K, species_u_m_s)
+
+    n_total_m3 = copy(ne_m3)
+    for values in values(species_n_m3)
+        n_total_m3 .+= values
+    end
 
     diagnostics = Dict{String, Any}(
-        "n_neutral_m3" => n_neutral_m3,
-        "n_ion_m3" => n_ion_m3,
         "ne_m3" => ne_m3,
-        "n_total_m3" => n_neutral_m3 .+ n_ion_m3 .+ ne_m3,
+        "n_total_m3" => n_total_m3,
         "channel_area_m2" => channel_area_m2,
         "potential_V" => potential_V,
         "electric_field_V_m" => electric_field_V_m,
     )
     validate_optional_diagnostics!(diagnostics, length(z_m))
 
+    exported_species = sort!(collect(keys(species_u_m_s)))
     generator = Dict{String, Any}(
         "tool" => "hallthruster_jl_export_chain_profile",
         "tool_version" => SCRIPT_VERSION,
@@ -415,11 +505,9 @@ function build_chain_profile(
     )
 
     selection = Dict{String, Any}(
-        "neutral_species" => options.neutral_species,
-        "ion_species" => options.ion_species,
-        "ion_charge_state" => options.ion_charge_state,
         "average_start_time_s" => options.average_start_time_s,
-        "ion_velocity_policy" => ion_velocity_policy,
+        "exported_species" => exported_species,
+        "ion_velocity_policy" => normalize_ion_velocity_policy(options.ion_velocity_policy),
         "u_ion_floor" => options.u_ion_floor,
         "min_consecutive_positive" => options.min_consecutive_positive,
         "trim_start_index" => trim_start_index,
@@ -432,8 +520,9 @@ function build_chain_profile(
         "z_m" => z_m,
         "dx_m" => dx_m,
         "te_K" => te_K,
-        "u_neutral_m_s" => u_neutral_m_s,
-        "u_ion_m_s" => u_ion_m_s,
+        "species_u_m_s" => Dict{String, Any}(
+            name => species_u_m_s[name] for name in exported_species
+        ),
     )
 
     payload = Dict{String, Any}(
@@ -478,10 +567,8 @@ function export_chain_profile(args::Vector{String} = ARGS)
     println("HallThruster chain profile export completed.")
     println("input_file: ", options.hallthruster_input)
     println("output_file: ", output_path)
-    println("neutral_species: ", options.neutral_species)
-    println("ion_species: ", options.ion_species)
-    println("ion_charge_state: ", options.ion_charge_state)
     println("average_start_time_s: ", options.average_start_time_s)
+    println("exported_species: ", join(payload["selection"]["exported_species"], ", "))
     println("ion_velocity_policy: ", options.ion_velocity_policy)
     println("u_ion_floor: ", options.u_ion_floor)
     println("min_consecutive_positive: ", options.min_consecutive_positive)

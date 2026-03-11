@@ -16,15 +16,12 @@ Default generated source artifact:
 
 This HallThruster JSON file is the source input for the later adapter script in
 `tools/hallthruster_jl/export_chain_profile.jl`, which will reduce it to the TERRA-side
-`chain_profile_v1.json` contract.
+`chain_profile_v2.json` contract.
 
 Example conversion command:
 ```bash
 julia --project=tools/hallthruster_jl tools/hallthruster_jl/export_chain_profile.jl \
   output/hallthruster_solution_avg.json \
   /path/to/terra_case \
-  --average_start_time=0.0005 \
-  --neutral_species=N2 \
-  --ion_species=N2 \
-  --ion_charge_state=1
+  --average_start_time=0.0005
 ```

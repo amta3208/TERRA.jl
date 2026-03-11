@@ -30,6 +30,7 @@ include("helpers/shared.jl")
     @testset "IO" begin
         include("io/input_generation.jl")
         include("io/chain_profile_loader.jl")
+        include("io/export_chain_profile.jl")
         include("io/results.jl")
     end
 
