@@ -16,7 +16,7 @@ Default generated source artifact:
 
 This HallThruster JSON file is the source input for the later adapter script in
 `tools/hallthruster_jl/export_chain_profile.jl`, which will reduce it to the TERRA-side
-`chain_profile_v2.json` contract.
+`chain_profile_v3.json` contract.
 
 Example conversion command:
 ```bash

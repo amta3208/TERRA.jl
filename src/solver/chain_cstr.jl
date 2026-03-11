@@ -128,6 +128,30 @@ function _validate_profile_species(profile::AxialChainProfile, config::Config)
     end
 end
 
+function _validate_profile_inlet(profile::AxialChainProfile, config::Config)
+    inlet_species = profile.inlet.composition.species
+    expected_species = config.reactor.composition.species
+    inlet_species == expected_species || throw(ArgumentError(
+        "AxialChainProfile inlet composition species must match the initialized TERRA species ordering. " *
+        "Expected: $(join(expected_species, ", ")); got: $(join(inlet_species, ", "))."
+    ))
+    profile.inlet.source_compact_index == 1 || throw(ArgumentError(
+        "AxialChainProfile inlet.source_compact_index must be 1 for segment-1 initialization."
+    ))
+end
+
+function _build_profile_inlet_reactor(profile::AxialChainProfile, unit_system::Symbol)
+    inlet = profile.inlet
+    n_total = unit_system == :SI ? inlet.composition.total_number_density_m3 :
+              convert_number_density_si_to_cgs(inlet.composition.total_number_density_m3)
+    composition = ReactorComposition(;
+        species = inlet.composition.species,
+        mole_fractions = inlet.composition.mole_fractions,
+        total_number_density = n_total,
+    )
+    return ReactorConfig(; composition = composition, thermal = inlet.thermal)
+end
+
 function _build_chain_cells(profile::AxialChainProfile,
         compact_to_source_index::AbstractVector{<:Integer},
         segment_end_reactors::AbstractVector{<:ReactorConfig},
@@ -386,6 +410,7 @@ function solve_terra_chain_steady(config::Config,
     validate_axial_chain_profile(profile)
     validate_axial_marching_config(marching)
     _validate_profile_species(profile, config)
+    _validate_profile_inlet(profile, config)
 
     # Chain marching repeatedly reinitializes the Fortran API; keep MPI
     # finalization disabled to avoid shutting down MPI mid-process.
@@ -405,7 +430,7 @@ function solve_terra_chain_steady(config::Config,
     segment_messages = fill("Not executed.", n_segments)
     segment_results = [_failed_simulation_result("Not executed.") for _ in 1:n_segments]
 
-    inlet_reactor = config.reactor
+    inlet_reactor = _build_profile_inlet_reactor(profile, config.runtime.unit_system)
 
     for k in 1:n_segments
         local_result = nothing

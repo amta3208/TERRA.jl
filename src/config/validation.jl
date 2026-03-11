@@ -206,6 +206,10 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
         "AxialChainProfile: species_u_m_s must contain at least one species."
     ))
     for (name, values) in pairs(profile.species_u_m_s)
+        lowered = lowercase(strip(name))
+        lowered in ("e", "e-", "electron") && throw(ArgumentError(
+            "AxialChainProfile: species_u_m_s must not include electron species."
+        ))
         if length(values) != n
             throw(ArgumentError(
                 "AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."
@@ -230,6 +234,11 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
                 throw(ArgumentError("AxialChainProfile: diagnostic `$name[$i]` must be finite."))
         end
     end
+
+    source_idx = profile.inlet.source_compact_index
+    source_idx <= n || throw(ArgumentError(
+        "AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."
+    ))
 
     return true
 end

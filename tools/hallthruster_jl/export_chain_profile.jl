@@ -1,10 +1,10 @@
 using Dates
 using JSON
 
-const SCHEMA_VERSION = "terra_chain_profile_v2"
-const SCRIPT_VERSION = "0.3.0"
+const SCHEMA_VERSION = "terra_chain_profile_v3"
+const SCRIPT_VERSION = "0.4.0"
 const EV_TO_K = 11604.518121550082
-const DEFAULT_OUTPUT_BASENAME = "chain_profile_v2.json"
+const DEFAULT_OUTPUT_BASENAME = "chain_profile_v3.json"
 
 function usage()
     return """
@@ -14,7 +14,7 @@ function usage()
     Notes:
       - The HallThruster JSON input must already contain an `output.average` block.
       - For JSON inputs, `--average_start_time` is recorded as metadata only; this script does not recompute the time average.
-      - The output is written to `<terra_case_path>/input/chain_profile_v2.json`.
+      - The output is written to `<terra_case_path>/input/chain_profile_v3.json`.
       - Default ion-velocity handling is `trim_to_first_positive` with `u_ion_floor=0.0` and `min_consecutive_positive=3`.
       - All non-electron neutral and ion species present in HallThruster are exported.
     """
@@ -110,6 +110,20 @@ function require_number_array(container, key::AbstractString, context::AbstractS
     return to_float_vector(values; field_name = "$(context).$(key)")
 end
 
+function require_number(container, key::AbstractString, context::AbstractString)
+    haskey(container, key) || throw(ArgumentError("Missing `$(key)` in $(context)."))
+    value = container[key]
+    value isa Real || throw(ArgumentError("Expected `$(key)` in $(context) to be numeric."))
+    return Float64(value)
+end
+
+function require_string(container, key::AbstractString, context::AbstractString)
+    haskey(container, key) || throw(ArgumentError("Missing `$(key)` in $(context)."))
+    value = container[key]
+    value isa AbstractString || throw(ArgumentError("Expected `$(key)` in $(context) to be a string."))
+    return String(value)
+end
+
 function to_float_vector(values::Vector; field_name::AbstractString)
     result = Float64[]
     sizehint!(result, length(values))
@@ -157,6 +171,13 @@ function normalize_species_name(name::AbstractString)
     return species
 end
 
+function normalize_propellant_species_name(name::AbstractString)
+    token = replace(lowercase(strip(String(name))), r"[^a-z0-9]+" => "")
+    token in ("n", "nitrogen", "atomicnitrogen") && return "N"
+    token in ("n2", "molecularnitrogen", "dinitrogen") && return "N2"
+    return strip(String(name))
+end
+
 function map_neutral_species_name(ht_species::AbstractString)
     terra_name = normalize_species_name(ht_species)
     terra_name == "E-" && throw(ArgumentError(
@@ -170,6 +191,8 @@ function map_ion_species_name(ht_species::AbstractString, charge_state::Integer)
     charge_state == 1 && return "$(base)+"
     return "$(base)$(charge_state)+"
 end
+
+base_species_name(species::AbstractString) = replace(String(species), "+" => "")
 
 function compute_point_aligned_dx(z_m::Vector{Float64})
     n = length(z_m)
@@ -269,6 +292,34 @@ function validate_optional_diagnostics!(diagnostics::Dict{String, Any}, n::Int)
     end
 end
 
+function load_propellant_thermal_map(source::AbstractDict)
+    input = require_dict(source, "input", "top-level JSON")
+    config = require_dict(input, "config", "input")
+    propellants = require_array(config, "propellants", "input.config")
+    isempty(propellants) && throw(ArgumentError(
+        "Expected `input.config.propellants` to contain at least one propellant entry."
+    ))
+
+    thermal_map = Dict{String, NamedTuple{(:neutral_K, :ion_K), Tuple{Float64, Float64}}}()
+    for (i, entry_raw) in pairs(propellants)
+        entry_raw isa AbstractDict || throw(ArgumentError(
+            "Expected `input.config.propellants[$i]` to be a JSON object."
+        ))
+        entry = entry_raw::AbstractDict
+        species_name = normalize_propellant_species_name(
+            require_string(entry, "gas", "input.config.propellants[$i]"))
+        haskey(thermal_map, species_name) && throw(ArgumentError(
+            "Duplicate propellant thermal entry for species `$(species_name)`."
+        ))
+        thermal_map[species_name] = (
+            neutral_K = require_number(entry, "temperature_K", "input.config.propellants[$i]"),
+            ion_K = require_number(entry, "ion_temperature_K", "input.config.propellants[$i]"),
+        )
+    end
+
+    return thermal_map
+end
+
 function build_source_snapshot(
     source::AbstractDict,
     input_path::AbstractString,
@@ -345,6 +396,7 @@ function collect_ion_species_data(average::AbstractDict)
     velocities = Dict{String, Vector{Float64}}()
     densities = Dict{String, Vector{Float64}}()
     ion_species = String[]
+    charge_states = Dict{String, Int}()
 
     for (ht_species, species_states_raw) in pairs(ions)
         species_states_raw isa Vector || throw(ArgumentError(
@@ -364,6 +416,7 @@ function collect_ion_species_data(average::AbstractDict)
             )
             species_name = map_ion_species_name(String(ht_species), charge_state)
             push!(ion_species, species_name)
+            charge_states[species_name] = charge_state
             _insert_species_series!(
                 velocities,
                 species_name,
@@ -381,7 +434,98 @@ function collect_ion_species_data(average::AbstractDict)
         end
     end
 
-    return velocities, densities, sort!(ion_species)
+    return velocities, densities, sort!(ion_species), charge_states
+end
+
+function warn_on_charge_balance_mismatch(
+    ne_m3::Float64,
+    species_n_m3::Dict{String, Vector{Float64}},
+    ion_species::Vector{String},
+    ion_charge_states::Dict{String, Int};
+    source_compact_index::Int,
+)
+    ion_charge_density = 0.0
+    for species_name in ion_species
+        ion_charge_density += ion_charge_states[species_name] *
+                              species_n_m3[species_name][source_compact_index]
+    end
+
+    rel_error = abs(ion_charge_density - ne_m3) / max(ne_m3, eps(Float64))
+    if rel_error > 1e-2
+        @warn "HallThruster inlet charge balance mismatch at retained compact cell $(source_compact_index)." ne_m3 ion_charge_density rel_error
+    end
+end
+
+function build_inlet_payload(
+    source::AbstractDict,
+    species_n_m3::Dict{String, Vector{Float64}},
+    ne_m3::Vector{Float64},
+    te_K::Vector{Float64},
+    neutral_species::Vector{String},
+    ion_species::Vector{String},
+    ion_charge_states::Dict{String, Int},
+)
+    source_compact_index = 1
+    propellant_thermal_map = load_propellant_thermal_map(source)
+    warn_on_charge_balance_mismatch(
+        ne_m3[source_compact_index],
+        species_n_m3,
+        ion_species,
+        ion_charge_states;
+        source_compact_index = source_compact_index,
+    )
+
+    heavy_species = vcat(neutral_species, ion_species)
+    species_order = vcat(heavy_species, ["E-"])
+    n_total_m3 = ne_m3[source_compact_index]
+    heavy_n_total = 0.0
+    heavy_temperature_numerator = 0.0
+
+    for species_name in heavy_species
+        density = species_n_m3[species_name][source_compact_index]
+        n_total_m3 += density
+        heavy_n_total += density
+
+        base_species = base_species_name(species_name)
+        haskey(propellant_thermal_map, base_species) || throw(ArgumentError(
+            "Missing propellant thermal data for heavy species `$(base_species)`."
+        ))
+        temperatures = propellant_thermal_map[base_species]
+        heavy_temperature_numerator += density * (
+            occursin("+", species_name) ? temperatures.ion_K : temperatures.neutral_K
+        )
+    end
+
+    heavy_n_total > 0.0 || throw(ArgumentError(
+        "Cannot build inlet payload: total heavy-species number density is zero."
+    ))
+    n_total_m3 > 0.0 || throw(ArgumentError(
+        "Cannot build inlet payload: total number density is zero."
+    ))
+
+    mole_fractions = Float64[
+        species_n_m3[species_name][source_compact_index] / n_total_m3 for
+        species_name in heavy_species
+    ]
+    push!(mole_fractions, ne_m3[source_compact_index] / n_total_m3)
+
+    heavy_temperature_K = heavy_temperature_numerator / heavy_n_total
+    electron_temperature_K = te_K[source_compact_index]
+
+    return Dict{String, Any}(
+        "composition" => Dict{String, Any}(
+            "species" => species_order,
+            "mole_fractions" => mole_fractions,
+            "total_number_density_m3" => n_total_m3,
+        ),
+        "thermal" => Dict{String, Any}(
+            "Tt_K" => heavy_temperature_K,
+            "Tv_K" => heavy_temperature_K,
+            "Tee_K" => heavy_temperature_K,
+            "Te_K" => electron_temperature_K,
+        ),
+        "source_compact_index" => source_compact_index,
+    )
 end
 
 function determine_trim_start_index(
@@ -417,7 +561,7 @@ function build_chain_profile(
 
     z_m = require_number_array(average, "z", "output.average")
     neutral_velocities, neutral_densities = collect_neutral_species_data(average)
-    ion_velocities, ion_densities, exported_ion_species = collect_ion_species_data(average)
+    ion_velocities, ion_densities, exported_ion_species, ion_charge_states = collect_ion_species_data(average)
 
     species_u_m_s = merge(copy(neutral_velocities), ion_velocities)
     species_n_m3 = merge(copy(neutral_densities), ion_densities)
@@ -462,8 +606,9 @@ function build_chain_profile(
     potential_V = all_arrays["potential_V"]
     electric_field_V_m = all_arrays["electric_field_V_m"]
 
+    neutral_species = sort!(collect(keys(neutral_velocities)))
     species_u_m_s = Dict{String, Vector{Float64}}()
-    for species_name in sort!(collect(keys(neutral_velocities)))
+    for species_name in neutral_species
         species_u_m_s[species_name] = all_arrays["species_u_m_s.$(species_name)"]
     end
     for species_name in exported_ion_species
@@ -471,7 +616,7 @@ function build_chain_profile(
     end
 
     species_n_m3 = Dict{String, Vector{Float64}}()
-    for species_name in sort!(collect(keys(neutral_densities)))
+    for species_name in neutral_species
         species_n_m3[species_name] = all_arrays["species_n_m3.$(species_name)"]
     end
     for species_name in exported_ion_species
@@ -516,6 +661,16 @@ function build_chain_profile(
         "original_point_count" => original_point_count,
     )
 
+    inlet = build_inlet_payload(
+        source,
+        species_n_m3,
+        ne_m3,
+        te_K,
+        neutral_species,
+        exported_ion_species,
+        ion_charge_states,
+    )
+
     profile = Dict{String, Any}(
         "z_m" => z_m,
         "dx_m" => dx_m,
@@ -529,6 +684,7 @@ function build_chain_profile(
         "schema_version" => SCHEMA_VERSION,
         "generator" => generator,
         "selection" => selection,
+        "inlet" => inlet,
         "profile" => profile,
         "diagnostics" => diagnostics,
     )

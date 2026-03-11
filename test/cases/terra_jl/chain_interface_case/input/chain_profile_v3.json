@@ -649,6 +649,32 @@
     "trimmed_point_count": 14,
     "original_point_count": 102
   },
+  "inlet": {
+    "composition": {
+      "total_number_density_m3": 1.8416544559266372e20,
+      "mole_fractions": [
+        0.27467775116071635,
+        0.7110664065261894,
+        0.0014374393682710747,
+        0.005690481788276033,
+        0.0071279211565471075
+      ],
+      "species": [
+        "N",
+        "N2",
+        "N+",
+        "N2+",
+        "E-"
+      ]
+    },
+    "thermal": {
+      "Te_K": 86185.1063594181,
+      "Tt_K": 503.58954658330714,
+      "Tv_K": 503.58954658330714,
+      "Tee_K": 86185.1063594181
+    },
+    "source_compact_index": 1
+  },
   "diagnostics": {
     "n_total_m3": [
       1.841654455926637e20,
@@ -1102,8 +1128,8 @@
     ]
   },
   "generator": {
-    "tool_version": "0.3.0",
-    "created_utc": "2026-03-10T22:34:13Z",
+    "tool_version": "0.4.0",
+    "created_utc": "2026-03-11T17:23:05Z",
     "tool": "hallthruster_jl_export_chain_profile"
   },
   "source_snapshot": {
@@ -1123,5 +1149,5 @@
     "retcode": "success",
     "source_type": "hallthruster_json"
   },
-  "schema_version": "terra_chain_profile_v2"
+  "schema_version": "terra_chain_profile_v3"
 }

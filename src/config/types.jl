@@ -587,7 +587,7 @@ struct ChainMetadata
     retained_point_count::Int
 
     function ChainMetadata(;
-            schema_version::AbstractString = "terra_chain_profile_v2",
+            schema_version::AbstractString = "terra_chain_profile_v3",
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
             source_snapshot::Union{Nothing, AbstractDict} = nothing,
@@ -627,6 +627,76 @@ struct ChainMetadata
             original_points,
             retained_points
         )
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Composition payload for the self-contained chain-profile inlet.
+"""
+struct ChainProfileInletComposition
+    species::Vector{String}
+    mole_fractions::Vector{Float64}
+    total_number_density_m3::Float64
+
+    function ChainProfileInletComposition(;
+            species,
+            mole_fractions,
+            total_number_density_m3)
+        species_vec = String.(species)
+        mole_frac_vec = Float64.(mole_fractions)
+        n_tot = Float64(total_number_density_m3)
+
+        if length(species_vec) != length(mole_frac_vec)
+            throw(ArgumentError(
+                "ChainProfileInletComposition: species and mole_fractions arrays must have same length."
+            ))
+        end
+        isempty(species_vec) && throw(ArgumentError(
+            "ChainProfileInletComposition: at least one species must be specified."
+        ))
+        any(mole_frac_vec .< 0) && throw(ArgumentError(
+            "ChainProfileInletComposition: mole fractions must be non-negative."
+        ))
+        abs(sum(mole_frac_vec) - 1.0) > 1e-10 && throw(ArgumentError(
+            "ChainProfileInletComposition: mole fractions must sum to 1.0, got $(sum(mole_frac_vec))."
+        ))
+        n_tot > 0.0 || throw(ArgumentError(
+            "ChainProfileInletComposition: total_number_density_m3 must be positive."
+        ))
+        length(unique(species_vec)) == length(species_vec) || throw(ArgumentError(
+            "ChainProfileInletComposition: duplicate species names found."
+        ))
+        for name in species_vec
+            isempty(strip(name)) && throw(ArgumentError(
+                "ChainProfileInletComposition: species names cannot be empty."
+            ))
+        end
+
+        return new(species_vec, mole_frac_vec, n_tot)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Self-contained inlet state used to initialize segment 1 of the chain solver.
+"""
+struct ChainProfileInlet
+    composition::ChainProfileInletComposition
+    thermal::ReactorThermalState
+    source_compact_index::Int
+
+    function ChainProfileInlet(;
+            composition::ChainProfileInletComposition,
+            thermal::ReactorThermalState,
+            source_compact_index::Integer)
+        source_idx = Int(source_compact_index)
+        source_idx >= 1 || throw(ArgumentError(
+            "ChainProfileInlet: source_compact_index must be >= 1."
+        ))
+        return new(composition, thermal, source_idx)
     end
 end
 
@@ -711,6 +781,7 @@ Normalized axial chain profile used by the TERRA chain-of-CSTR interface.
 - `dx_m::Vector{Float64}`: Point-aligned control-volume lengths (m), strictly positive
 - `te_K::Vector{Float64}`: Electron temperature profile (K), strictly positive
 - `species_u_m_s::Dict{String, Vector{Float64}}`: Per-species convective velocities (m/s), strictly positive
+- `inlet::ChainProfileInlet`: Self-contained segment-1 inlet state
 - `diagnostics::Dict{String, Vector{Float64}}`: Optional diagnostics arrays
 - `generator::Dict{String, Any}`: Generator metadata from interchange artifact
 - `selection::Dict{String, Any}`: Selection metadata from interchange artifact
@@ -722,6 +793,7 @@ struct AxialChainProfile
     dx_m::Vector{Float64}
     te_K::Vector{Float64}
     species_u_m_s::Dict{String, Vector{Float64}}
+    inlet::ChainProfileInlet
     diagnostics::Dict{String, Vector{Float64}}
     generator::Dict{String, Any}
     selection::Dict{String, Any}
@@ -733,10 +805,11 @@ struct AxialChainProfile
             dx_m,
             te_K,
             species_u_m_s,
+            inlet::ChainProfileInlet,
             diagnostics::AbstractDict = Dict{String, Vector{Float64}}(),
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
-            schema_version::AbstractString = "terra_chain_profile_v2",
+            schema_version::AbstractString = "terra_chain_profile_v3",
             source_snapshot::Union{Nothing, AbstractDict} = nothing)
         z_m_vec = Float64.(z_m)
         dx_m_vec = Float64.(dx_m)
@@ -820,6 +893,7 @@ struct AxialChainProfile
             dx_m_vec,
             te_K_vec,
             species_u_dict,
+            inlet,
             diagnostics_dict,
             generator_dict,
             selection_dict,
@@ -851,7 +925,7 @@ struct AxialMarchingConfig
     function AxialMarchingConfig(;
             handoff_mode::Symbol = :reinitialize,
             termination_mode::Symbol = :final_time,
-            tee_policy::Symbol = :match_te,
+            tee_policy::Symbol = :from_inlet,
             override_tt_K::Union{Nothing, Real} = nothing,
             override_tv_K::Union{Nothing, Real} = nothing)
         handoff_mode in (:reinitialize, :full_state) || throw(ArgumentError(

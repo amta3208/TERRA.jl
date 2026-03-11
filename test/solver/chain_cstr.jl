@@ -16,6 +16,28 @@
         return config
     end
 
+    function profile_inlet(config;
+            source_compact_index::Int = 1,
+            mole_fractions = config.reactor.composition.mole_fractions,
+            total_number_density_m3 = nothing,
+            thermal = config.reactor.thermal)
+        n_total_m3 = config.runtime.unit_system == :SI ?
+                     config.reactor.composition.total_number_density :
+                     terra.convert_number_density_cgs_to_si(
+            config.reactor.composition.total_number_density)
+        n_total_val = total_number_density_m3 === nothing ? n_total_m3 : Float64(total_number_density_m3)
+        composition = terra.ChainProfileInletComposition(;
+            species = config.reactor.composition.species,
+            mole_fractions = mole_fractions,
+            total_number_density_m3 = n_total_val,
+        )
+        return terra.ChainProfileInlet(;
+            composition = composition,
+            thermal = thermal,
+            source_compact_index = source_compact_index,
+        )
+    end
+
     function cleanup_terra!()
         try
             terra.finalize_api_wrapper()
@@ -40,12 +62,17 @@
 
     @testset "Single segment run" begin
         config = build_chain_test_config()
+        inlet_thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0,
+            Tee = config.reactor.thermal.Te, Te = config.reactor.thermal.Te)
         profile = terra.AxialChainProfile(
             z_m = [0.0],
             dx_m = [0.01],
             te_K = [config.reactor.thermal.Te],
             species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
                 ion_base = 18000.0),
+            inlet = profile_inlet(config;
+                mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
+                thermal = inlet_thermal),
         )
         marching = terra.AxialMarchingConfig()
 
@@ -59,6 +86,8 @@
 
         segment_result = chain.cells[1].reactor
         @test !isempty(segment_result.t)
+        @test segment_result.frames[1].temperatures.tt ≈ inlet_thermal.Tt
+        @test segment_result.frames[1].temperatures.tv ≈ inlet_thermal.Tv
         @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in segment_result.frames)
 
         cleanup_terra!()
@@ -76,6 +105,7 @@
                 "N+" => [18000.0, 22000.0],
                 "N2+" => [19000.0, 23000.0],
             ),
+            inlet = profile_inlet(config),
         )
         marching = terra.AxialMarchingConfig()
 
@@ -113,6 +143,7 @@
                 "N+" => [18000.0, 22000.0],
                 "N2+" => [19000.0, 23000.0],
             ),
+            inlet = profile_inlet(config),
             generator = Dict(
                 "tool" => "unit-test",
                 "tool_version" => "1.0.0",
@@ -129,7 +160,7 @@
                 "trimmed_point_count" => 12,
                 "original_point_count" => 102,
             ),
-            schema_version = "terra_chain_profile_v2",
+            schema_version = "terra_chain_profile_v3",
             source_snapshot = Dict(
                 "enabled" => true,
                 "source_type" => "unit-test",
@@ -139,7 +170,7 @@
         chain = terra.solve_terra_chain_steady(config, profile)
 
         @test chain.success == true
-        @test chain.metadata.schema_version == "terra_chain_profile_v2"
+        @test chain.metadata.schema_version == "terra_chain_profile_v3"
         @test chain.metadata.generator["tool"] == "unit-test"
         @test chain.metadata.selection["trim_start_index"] == 13
         @test chain.metadata.source_snapshot !== nothing
@@ -169,6 +200,7 @@
                 "N2" => [200.0],
                 "N+" => [18000.0],
             ),
+            inlet = profile_inlet(config),
         )
         @test_throws ArgumentError terra.solve_terra_chain_steady(config, missing_profile)
 
@@ -183,6 +215,7 @@
                 "N2+" => [19000.0],
                 "Ar" => [1000.0],
             ),
+            inlet = profile_inlet(config),
         )
         @test_throws ArgumentError terra.solve_terra_chain_steady(config, extra_profile)
 
@@ -197,6 +230,7 @@
             te_K = [115000.0],
             species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
                 ion_base = 18000.0),
+            inlet = profile_inlet(config),
         )
 
         @test_throws ArgumentError terra.solve_terra_chain_steady(

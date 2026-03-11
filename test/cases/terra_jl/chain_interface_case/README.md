@@ -7,6 +7,7 @@ hold the reduced JSON chain-profile artifact written by the HallThruster exporte
 
 For MVP, this fixture only needs:
 1. `input/`
+2. `input/chain_profile_v3.json`
 
 The Julia-side test code should create any runtime case/output directories separately when
 exercising the actual TERRA chain solver.

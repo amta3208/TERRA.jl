@@ -4,6 +4,7 @@ version = "0.9.0"
 authors = ["Amin Taziny"]
 
 [deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -13,6 +14,7 @@ SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 
 [compat]
 Aqua = "0.8"
+Dates = "1.11.0"
 DocStringExtensions = "0.9.5"
 JSON = "1.4.0"
 Libdl = "1.11.0"
