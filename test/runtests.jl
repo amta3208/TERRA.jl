@@ -35,6 +35,7 @@ include("helpers/shared.jl")
     end
 
     @testset "Solver" begin
+        include("solver/initial_state.jl")
         include("solver/state_vector.jl")
         include("solver/rhs.jl")
         include("solver/residence_time.jl")

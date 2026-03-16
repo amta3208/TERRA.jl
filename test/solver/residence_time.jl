@@ -198,3 +198,47 @@ end
 
     @test any(abs.(rt.u_in .- u_base) .> 0.0)
 end
+
+@testset "Residence-time inlet state cache preserves rho_ex handoff" begin
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    temp_case_path = mktempdir()
+    config = terra.with_case_path(config, temp_case_path)
+    config = terra.with_time(config;
+        dt = 5e-12, dt_output = 5e-7, duration = 5e-7, nstep = 200000, method = 2)
+    config = terra.with_runtime(config;
+        validate_species_against_terra = false,
+        print_source_terms = false,
+        write_native_outputs = false,
+        print_integration_output = false)
+
+    @test_nowarn reset_and_init!(temp_case_path; config = config)
+
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+    u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    _, final_state_cache = terra._solve_terra_0d_internal(config)
+    @test final_state_cache !== nothing
+    @test final_state_cache.rho_ex_cgs !== nothing
+
+    rt_cfg = terra.ResidenceTimeConfig(;
+        L = 1.0,
+        U_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5),
+        inlet_reactor = config.reactor)
+
+    rt_boltz = terra._prepare_residence_time_data(layout, config, u_base, rt_cfg)
+    rt_cached = terra._prepare_residence_time_data(
+        layout, config, u_base, rt_cfg;
+        inlet_state_cache = final_state_cache)
+
+    boltz_inlet_state = terra.unpack_state_vector(rt_boltz.u_in, layout)
+    cached_inlet_state = terra.unpack_state_vector(rt_cached.u_in, layout)
+
+    @test any(abs.(rt_cached.u_in .- rt_boltz.u_in) .> 0.0)
+    @test cached_inlet_state.rho_ex ≈ final_state_cache.rho_ex_cgs
+    @test any(abs.(cached_inlet_state.rho_ex .- boltz_inlet_state.rho_ex) .> 0.0)
+end

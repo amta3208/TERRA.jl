@@ -123,10 +123,76 @@
         @test all(abs(frame.temperatures.te - profile.te_K[2]) <= 1e-6 for frame in second_result.frames)
 
         @test first_endpoint !== nothing
+        @test first_endpoint.thermal.Tee ≈ first_endpoint.thermal.Te
         @test second_result.frames[1].temperatures.tt ≈ first_endpoint.thermal.Tt
         @test second_result.frames[1].temperatures.tv ≈ first_endpoint.thermal.Tv
         @test second_result.frames[1].temperatures.te ≈ profile.te_K[2]
+        segment2_config = terra._build_chain_segment_config(
+            config, profile, 2, first_endpoint, marching)
+        @test segment2_config.reactor.thermal.Tee ≈ first_endpoint.thermal.Tee
         @test chain.cells[2].species_u_m_s["N2+"] == 23000.0
+
+        cleanup_terra!()
+    end
+
+    @testset "Two-segment full-state rho_ex handoff" begin
+        config = build_chain_test_config()
+        config = terra.with_time(config;
+            dt = 5e-12,
+            dt_output = 5e-8,
+            duration = 5e-8,
+            nstep = 20000,
+            method = 2)
+        profile = terra.AxialChainProfile(
+            z_m = [0.0, 0.01],
+            dx_m = [0.01, 0.01],
+            te_K = [115000.0, 90000.0],
+            species_u_m_s = Dict(
+                "N" => [220.0, 225.0],
+                "N2" => [200.0, 205.0],
+                "N+" => [18000.0, 22000.0],
+                "N2+" => [19000.0, 23000.0],
+            ),
+            inlet = profile_inlet(config;
+                thermal = terra.ReactorThermalState(;
+                    Tt = 500.0, Tv = 650.0, Tee = 2000.0, Te = 115000.0)),
+        )
+        marching = terra.AxialMarchingConfig(;
+            handoff_mode = :full_state,
+            override_tt_K = 800.0,
+            override_tv_K = 900.0,
+        )
+
+        chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
+
+        @test chain.success == true
+        @test chain.metadata.diagnostics["segment_rho_ex_handoff_applied"] == [false, true]
+        @test chain.metadata.diagnostics["full_state_rho_ex_handoff_supported"] == true
+        @test !haskey(chain.metadata.diagnostics, "tee_policy")
+        @test chain.cells[1].reactor.frames[1].temperatures.tt ≈ 800.0
+        @test chain.cells[1].reactor.frames[1].temperatures.tv ≈ 900.0
+
+        inlet_reactor = terra._build_profile_inlet_reactor(profile, config.runtime.unit_system)
+        segment1_config = terra._build_chain_segment_config(
+            config, profile, 1, inlet_reactor, marching)
+        @test_nowarn terra.initialize_terra(segment1_config, segment1_config.runtime.case_path)
+        segment1_result, segment1_cache = terra._solve_terra_0d_internal(segment1_config;
+            residence_time = segment1_config.numerics.residence_time,
+            use_residence_time = true)
+
+        segment1_endpoint = terra._extract_segment_endpoint_reactor(config, segment1_result)
+        segment2_config = terra._build_chain_segment_config(
+            config, profile, 2, segment1_endpoint, marching)
+        state_from_cache = terra.config_to_initial_state(segment2_config;
+            state_cache = segment1_cache)
+        state_from_boltz = terra.config_to_initial_state(segment2_config)
+        boltz_rho_ex_active = state_from_boltz.rho_ex[:, 1:length(profile.inlet.composition.species)]
+        @test any(abs.(state_from_cache.rho_ex .- boltz_rho_ex_active) .> 0.0)
+
+        chain_segment2 = chain.cells[2].reactor
+        @test chain_segment2.frames[1].temperatures.tt ≈ 800.0
+        @test chain_segment2.frames[1].temperatures.tv ≈ 900.0
+        @test chain_segment2.frames[1].temperatures.te ≈ profile.te_K[2]
 
         cleanup_terra!()
     end
@@ -222,7 +288,7 @@
         cleanup_terra!()
     end
 
-    @testset "Unsupported handoff/termination modes" begin
+    @testset "Unsupported termination mode" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(
             z_m = [0.0],
@@ -231,12 +297,6 @@
             species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
                 ion_base = 18000.0),
             inlet = profile_inlet(config),
-        )
-
-        @test_throws ArgumentError terra.solve_terra_chain_steady(
-            config,
-            profile;
-            marching = terra.AxialMarchingConfig(; handoff_mode = :full_state),
         )
 
         @test_throws ArgumentError terra.solve_terra_chain_steady(

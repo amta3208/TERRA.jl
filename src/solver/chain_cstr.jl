@@ -221,7 +221,7 @@ function _build_chain_models(base_models::ModelConfig)
         radiation_length = physics.radiation_length,
         get_electron_density_by_charge_balance = physics.get_electron_density_by_charge_balance,
         min_sts_frac = physics.min_sts_frac,
-        is_isothermal_teex = true,
+        is_isothermal_teex = physics.is_isothermal_teex,
         energy_loss_per_eii = physics.energy_loss_per_eii,
     )
     return ModelConfig(; physics = chain_physics, processes = base_models.processes)
@@ -229,8 +229,12 @@ end
 
 @inline function _resolve_segment_tee(inlet_reactor::ReactorConfig,
         te_profile::Float64,
-        marching::AxialMarchingConfig)
-    if marching.tee_policy == :match_te
+        marching::AxialMarchingConfig,
+        segment_index::Integer)
+    if segment_index == 1
+        return inlet_reactor.thermal.Tee
+    end
+    if marching.handoff_mode == :full_state
         return te_profile
     end
     return inlet_reactor.thermal.Tee
@@ -238,10 +242,11 @@ end
 
 function _build_segment_reactor(inlet_reactor::ReactorConfig,
         te_profile::Float64,
-        marching::AxialMarchingConfig)
+        marching::AxialMarchingConfig,
+        segment_index::Integer)
     tt = marching.override_tt_K === nothing ? inlet_reactor.thermal.Tt : marching.override_tt_K
     tv = marching.override_tv_K === nothing ? inlet_reactor.thermal.Tv : marching.override_tv_K
-    tee = _resolve_segment_tee(inlet_reactor, te_profile, marching)
+    tee = _resolve_segment_tee(inlet_reactor, te_profile, marching, segment_index)
 
     thermal = ReactorThermalState(; Tt = tt, Tv = tv, Tee = tee, Te = te_profile)
     return ReactorConfig(; composition = inlet_reactor.composition, thermal = thermal)
@@ -285,7 +290,8 @@ function _build_chain_segment_config(base_config::Config,
     segment_case_path = _segment_case_path(base_config.runtime.case_path, segment_index)
     mkpath(segment_case_path)
 
-    reactor = _build_segment_reactor(inlet_reactor, profile.te_K[segment_index], marching)
+    reactor = _build_segment_reactor(
+        inlet_reactor, profile.te_K[segment_index], marching, segment_index)
     models = _build_chain_models(base_config.models)
     rt = _build_segment_residence_time(base_config, profile, segment_index, inlet_reactor)
     numerics = NumericsConfig(
@@ -354,14 +360,23 @@ end
 function _build_chain_diagnostics(base_config::Config,
         profile::AxialChainProfile,
         marching::AxialMarchingConfig,
-        segment_end_reactors::Vector{ReactorConfig})
+        segment_end_reactors::Vector{ReactorConfig},
+        segment_state_cache_used::AbstractVector{Bool},
+        full_state_handoff_supported::Union{Nothing, Bool})
     diagnostics = Dict{String, Any}(
         "handoff_mode" => String(marching.handoff_mode),
         "termination_mode" => String(marching.termination_mode),
-        "tee_policy" => String(marching.tee_policy),
         "override_tt_K" => marching.override_tt_K,
         "override_tv_K" => marching.override_tv_K,
+        "segment_rho_ex_handoff_applied" => Bool[flag for flag in segment_state_cache_used],
     )
+
+    if marching.handoff_mode == :full_state
+        diagnostics["full_state_rho_ex_handoff_supported"] = full_state_handoff_supported === true
+        if full_state_handoff_supported === false
+            diagnostics["full_state_rho_ex_handoff_reason"] = "electronic_sts_inactive"
+        end
+    end
 
     if !isempty(profile.diagnostics)
         diagnostics["input_profile_diagnostics"] = Dict{String, Vector{Float64}}(
@@ -390,8 +405,9 @@ $(SIGNATURES)
 
 Solve a steady axial chain of CSTR segments using the TERRA 0D solver.
 
-This MVP implementation supports:
+This implementation supports:
 - `handoff_mode = :reinitialize`
+- `handoff_mode = :full_state`
 - `termination_mode = :final_time`
 
 # Arguments
@@ -429,21 +445,37 @@ function solve_terra_chain_steady(config::Config,
     segment_success = fill(false, n_segments)
     segment_messages = fill("Not executed.", n_segments)
     segment_results = [_failed_simulation_result("Not executed.") for _ in 1:n_segments]
+    segment_state_cache_used = fill(false, n_segments)
 
     inlet_reactor = _build_profile_inlet_reactor(profile, config.runtime.unit_system)
+    upstream_state_cache = nothing
+    full_state_handoff_supported = nothing
 
     for k in 1:n_segments
         local_result = nothing
+        local_state_cache = nothing
         try
             segment_config = _build_chain_segment_config(config, profile, k, inlet_reactor, marching)
             initialize_terra(segment_config, segment_config.runtime.case_path)
-            local_result = solve_terra_0d(segment_config;
+            if marching.handoff_mode == :full_state && full_state_handoff_supported === nothing
+                full_state_handoff_supported = has_electronic_sts_wrapper()
+            end
+            requested_state_cache = (marching.handoff_mode == :full_state && k > 1) ?
+                                    upstream_state_cache : nothing
+            segment_state_cache_used[k] =
+                requested_state_cache !== nothing &&
+                full_state_handoff_supported === true &&
+                requested_state_cache.rho_ex_cgs !== nothing
+            local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
                 residence_time = segment_config.numerics.residence_time,
-                use_residence_time = true)
+                use_residence_time = true,
+                state_cache = requested_state_cache)
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"
             segment_results[k] = _failed_simulation_result(segment_messages[k])
-            diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
+            diagnostics = _build_chain_diagnostics(
+                config, profile, marching, segment_end_reactors,
+                segment_state_cache_used, full_state_handoff_supported)
             cells = _build_chain_cells(profile, compact_to_source_index,
                 segment_end_reactors, segment_success, segment_messages, segment_results)
             metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
@@ -461,7 +493,9 @@ function solve_terra_chain_steady(config::Config,
         segment_messages[k] = local_result.message
 
         if !local_result.success
-            diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
+            diagnostics = _build_chain_diagnostics(
+                config, profile, marching, segment_end_reactors,
+                segment_state_cache_used, full_state_handoff_supported)
             cells = _build_chain_cells(profile, compact_to_source_index,
                 segment_end_reactors, segment_success, segment_messages, segment_results)
             metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
@@ -477,9 +511,12 @@ function solve_terra_chain_steady(config::Config,
         endpoint_reactor = _extract_segment_endpoint_reactor(config, local_result)
         segment_end_reactors[k] = endpoint_reactor
         inlet_reactor = endpoint_reactor
+        upstream_state_cache = local_state_cache
     end
 
-    diagnostics = _build_chain_diagnostics(config, profile, marching, segment_end_reactors)
+    diagnostics = _build_chain_diagnostics(
+        config, profile, marching, segment_end_reactors,
+        segment_state_cache_used, full_state_handoff_supported)
     cells = _build_chain_cells(profile, compact_to_source_index,
         segment_end_reactors, segment_success, segment_messages, segment_results)
     metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)

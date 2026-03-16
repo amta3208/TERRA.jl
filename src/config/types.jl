@@ -911,21 +911,18 @@ Controls for the axial-marching chain-of-CSTR solver.
 # Fields
 - `handoff_mode::Symbol`: Segment handoff mode (`:reinitialize` or `:full_state`)
 - `termination_mode::Symbol`: Segment termination mode (`:final_time` or `:steady_state`)
-- `tee_policy::Symbol`: Electron-electronic handoff policy (`:match_te` or `:from_inlet`)
 - `override_tt_K::Union{Nothing, Float64}`: Optional translational temperature override (K)
 - `override_tv_K::Union{Nothing, Float64}`: Optional vibrational temperature override (K)
 """
 struct AxialMarchingConfig
     handoff_mode::Symbol
     termination_mode::Symbol
-    tee_policy::Symbol
     override_tt_K::Union{Nothing, Float64}
     override_tv_K::Union{Nothing, Float64}
 
     function AxialMarchingConfig(;
-            handoff_mode::Symbol = :reinitialize,
+            handoff_mode::Symbol = :full_state,
             termination_mode::Symbol = :final_time,
-            tee_policy::Symbol = :from_inlet,
             override_tt_K::Union{Nothing, Real} = nothing,
             override_tv_K::Union{Nothing, Real} = nothing)
         handoff_mode in (:reinitialize, :full_state) || throw(ArgumentError(
@@ -933,9 +930,6 @@ struct AxialMarchingConfig
         ))
         termination_mode in (:final_time, :steady_state) || throw(ArgumentError(
             "AxialMarchingConfig: termination_mode must be :final_time or :steady_state."
-        ))
-        tee_policy in (:match_te, :from_inlet) || throw(ArgumentError(
-            "AxialMarchingConfig: tee_policy must be :match_te or :from_inlet."
         ))
         if override_tt_K !== nothing && (!isfinite(override_tt_K) || override_tt_K <= 0.0)
             throw(ArgumentError("AxialMarchingConfig: override_tt_K must be finite and positive when provided."))
@@ -947,7 +941,6 @@ struct AxialMarchingConfig
         return new(
             handoff_mode,
             termination_mode,
-            tee_policy,
             override_tt_K === nothing ? nothing : Float64(override_tt_K),
             override_tv_K === nothing ? nothing : Float64(override_tv_K)
         )

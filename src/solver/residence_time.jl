@@ -109,7 +109,8 @@ function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
 end
 
 function _prepare_residence_time_data(layout::ApiLayout, config::Config,
-        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
+        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig;
+        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     continuity = _build_residence_time_continuity_indices(
         layout, config.reactor.composition.species)
     species_order = continuity.species_order
@@ -135,7 +136,8 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
             numerics = config.numerics,
             runtime = config.runtime)
 
-        inlet_state = config_to_initial_state(inlet_config)
+        inlet_state = config_to_initial_state(inlet_config;
+            state_cache = inlet_state_cache)
         energy_scalar_in = config.models.physics.is_isothermal_teex ? inlet_state.rho_rem :
                            inlet_state.rho_energy
         rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing

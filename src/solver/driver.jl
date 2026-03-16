@@ -135,9 +135,10 @@ and result processing.
 # Throws
 - `ErrorException` if TERRA not initialized or simulation fails
 """
-function solve_terra_0d(config::Config;
+function _solve_terra_0d_internal(config::Config;
         residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing)
+        use_residence_time::Union{Nothing, Bool} = nothing,
+        state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
@@ -146,14 +147,16 @@ function solve_terra_0d(config::Config;
         @info "Starting TERRA 0D simulation" species=config.reactor.composition.species
 
         # Convert configuration to initial conditions (SI to CGS)
-        initial_state = config_to_initial_state(config)
+        initial_state = config_to_initial_state(config; state_cache = state_cache)
 
         # Run the time integration
-        results = integrate_0d_system(config, initial_state;
-            residence_time = residence_time, use_residence_time = use_residence_time)
+        results, final_state_cache = _integrate_0d_system(config, initial_state;
+            residence_time = residence_time,
+            use_residence_time = use_residence_time,
+            inlet_state_cache = state_cache)
 
         @info "TERRA simulation completed successfully"
-        return results
+        return results, final_state_cache
 
     catch e
         @error "TERRA simulation failed" exception=e
@@ -163,8 +166,17 @@ function solve_terra_0d(config::Config;
             source_terms = nothing,
             success = false,
             message = "Simulation failed: $(string(e))"
-        )
+        ), nothing
     end
+end
+
+function solve_terra_0d(config::Config;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing)
+    results, _ = _solve_terra_0d_internal(config;
+        residence_time = residence_time,
+        use_residence_time = use_residence_time)
+    return results
 end
 
 """
@@ -302,4 +314,3 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
         end
     end
 end
-

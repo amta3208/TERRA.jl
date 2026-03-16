@@ -246,7 +246,7 @@ end
 """
 $(SIGNATURES)
 
-Validate an `AxialMarchingConfig` for the currently implemented chain solver.
+Validate an `AxialMarchingConfig` for the current chain solver capabilities.
 
 # Arguments
 - `marching::AxialMarchingConfig`: Marching controls to validate
@@ -258,11 +258,6 @@ Validate an `AxialMarchingConfig` for the currently implemented chain solver.
 - `ArgumentError` if unsupported modes are requested
 """
 function validate_axial_marching_config(marching::AxialMarchingConfig)
-    if marching.handoff_mode != :reinitialize
-        throw(ArgumentError(
-            "Axial chain solver currently supports handoff_mode=:reinitialize only (got $(marching.handoff_mode))."
-        ))
-    end
     if marching.termination_mode != :final_time
         throw(ArgumentError(
             "Axial chain solver currently supports termination_mode=:final_time only (got $(marching.termination_mode))."
