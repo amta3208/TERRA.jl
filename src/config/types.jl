@@ -913,18 +913,21 @@ Controls for the axial-marching chain-of-CSTR solver.
 - `termination_mode::Symbol`: Segment termination mode (`:final_time` or `:steady_state`)
 - `override_tt_K::Union{Nothing, Float64}`: Optional translational temperature override (K)
 - `override_tv_K::Union{Nothing, Float64}`: Optional vibrational temperature override (K)
+- `is_isothermal_teex::Bool`: Whether chain segments enforce the profile `Te(x)` isothermally
 """
 struct AxialMarchingConfig
     handoff_mode::Symbol
     termination_mode::Symbol
     override_tt_K::Union{Nothing, Float64}
     override_tv_K::Union{Nothing, Float64}
+    is_isothermal_teex::Bool
 
     function AxialMarchingConfig(;
             handoff_mode::Symbol = :full_state,
             termination_mode::Symbol = :final_time,
             override_tt_K::Union{Nothing, Real} = nothing,
-            override_tv_K::Union{Nothing, Real} = nothing)
+            override_tv_K::Union{Nothing, Real} = nothing,
+            is_isothermal_teex::Bool = true)
         handoff_mode in (:reinitialize, :full_state) || throw(ArgumentError(
             "AxialMarchingConfig: handoff_mode must be :reinitialize or :full_state."
         ))
@@ -942,7 +945,8 @@ struct AxialMarchingConfig
             handoff_mode,
             termination_mode,
             override_tt_K === nothing ? nothing : Float64(override_tt_K),
-            override_tv_K === nothing ? nothing : Float64(override_tv_K)
+            override_tv_K === nothing ? nothing : Float64(override_tv_K),
+            is_isothermal_teex
         )
     end
 end

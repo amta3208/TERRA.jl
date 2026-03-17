@@ -34,8 +34,10 @@ using JSON
     @test isapprox(sum(composition["mole_fractions"]), 1.0; atol = 1e-12)
     @test composition["total_number_density_m3"] ≈ 1.841654455926637e20
     @test inlet["source_compact_index"] == 1
-    @test thermal["Te_K"] == thermal["Tee_K"]
+    @test thermal["Te_K"] ≈ raw["profile"]["te_K"][1]
+    @test thermal["Tee_K"] ≈ thermal["Tt_K"]
     @test thermal["Tt_K"] ≈ thermal["Tv_K"]
+    @test thermal["Te_K"] != thermal["Tee_K"]
     @test thermal["Tt_K"] ≈ 503.58954658330714 atol = 1e-9
 
     profile = raw["profile"]

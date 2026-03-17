@@ -209,7 +209,8 @@ function _build_chain_metadata(profile::AxialChainProfile,
     )
 end
 
-function _build_chain_models(base_models::ModelConfig)
+function _build_chain_models(base_models::ModelConfig,
+        marching::AxialMarchingConfig)
     physics = base_models.physics
     chain_physics = PhysicsConfig(
         bbh_model = physics.bbh_model,
@@ -221,7 +222,7 @@ function _build_chain_models(base_models::ModelConfig)
         radiation_length = physics.radiation_length,
         get_electron_density_by_charge_balance = physics.get_electron_density_by_charge_balance,
         min_sts_frac = physics.min_sts_frac,
-        is_isothermal_teex = physics.is_isothermal_teex,
+        is_isothermal_teex = marching.is_isothermal_teex,
         energy_loss_per_eii = physics.energy_loss_per_eii,
     )
     return ModelConfig(; physics = chain_physics, processes = base_models.processes)
@@ -292,7 +293,7 @@ function _build_chain_segment_config(base_config::Config,
 
     reactor = _build_segment_reactor(
         inlet_reactor, profile.te_K[segment_index], marching, segment_index)
-    models = _build_chain_models(base_config.models)
+    models = _build_chain_models(base_config.models, marching)
     rt = _build_segment_residence_time(base_config, profile, segment_index, inlet_reactor)
     numerics = NumericsConfig(
         time = base_config.numerics.time,

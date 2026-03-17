@@ -90,7 +90,10 @@ end
             @test profile.source_snapshot !== nothing
             @test profile.inlet.composition.species == ["N", "N2", "N+", "N2+", "E-"]
             @test profile.inlet.source_compact_index == 1
-            @test profile.inlet.thermal.Te == profile.inlet.thermal.Tee
+            @test profile.inlet.thermal.Te ≈ profile.te_K[1]
+            @test profile.inlet.thermal.Tee ≈ profile.inlet.thermal.Tt
+            @test profile.inlet.thermal.Tt ≈ profile.inlet.thermal.Tv
+            @test profile.inlet.thermal.Te != profile.inlet.thermal.Tee
         finally
             rm(temp_case; recursive = true, force = true)
         end
