@@ -1,3 +1,32 @@
+function _species_density_matrix(results::terra.ReactorResult)
+    n_times = length(results.frames)
+    n_times == 0 && return zeros(0, 0)
+    n_species = length(results.frames[1].species_densities)
+    densities = Matrix{Float64}(undef, n_species, n_times)
+    for i in 1:n_times
+        densities[:, i] = results.frames[i].species_densities
+    end
+    return densities
+end
+
+function _temperature_history(results::terra.ReactorResult)
+    n_times = length(results.frames)
+    tt = Vector{Float64}(undef, n_times)
+    te = Vector{Float64}(undef, n_times)
+    tv = Vector{Float64}(undef, n_times)
+    for i in 1:n_times
+        temps = results.frames[i].temperatures
+        tt[i] = temps.tt
+        te[i] = temps.te
+        tv[i] = temps.tv
+    end
+    return (tt = tt, te = te, tv = tv)
+end
+
+function _total_energy_history(results::terra.ReactorResult)
+    return Float64[frame.total_energy for frame in results.frames]
+end
+
 @testset "Integrate 0D (adiabatic)" begin
     # Initialize using the config-driven input to ensure the selected
     # database and options are honored (rather than a stale case file).
@@ -18,11 +47,14 @@
 
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
-    @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
-    @test all(isfinite, results.temperatures.tt)
-    @test all(isfinite, results.temperatures.te)
-    @test all(isfinite, results.temperatures.tv)
+    @test results isa terra.ReactorResult
+    densities = _species_density_matrix(results)
+    temperatures = _temperature_history(results)
+    @test results.t[end] > results.t[1]
+    @test size(densities, 1) == length(config.reactor.composition.species)
+    @test all(isfinite, temperatures.tt)
+    @test all(isfinite, temperatures.te)
+    @test all(isfinite, temperatures.tv)
 end
 
 @testset "Integrate 0D (isothermal)" begin
@@ -40,13 +72,16 @@ end
 
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
+    @test results isa terra.ReactorResult
 
-    @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
-    @test all(isfinite, results.temperatures.tt)
-    @test all(isfinite, results.temperatures.te)
-    @test maximum(abs.(results.temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
-    @test all(isfinite, results.temperatures.tv)
+    densities = _species_density_matrix(results)
+    temperatures = _temperature_history(results)
+    @test results.t[end] > results.t[1]
+    @test size(densities, 1) == length(config.reactor.composition.species)
+    @test all(isfinite, temperatures.tt)
+    @test all(isfinite, temperatures.te)
+    @test maximum(abs.(temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
+    @test all(isfinite, temperatures.tv)
 end
 
 @testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
@@ -64,26 +99,29 @@ end
 
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
+    @test results isa terra.ReactorResult
 
+    densities = _species_density_matrix(results)
+    temperatures = _temperature_history(results)
     @test results.success == true
-    @test length(results.time) >= 2
-    @test size(results.species_densities, 1) == 5
-    @test all(isfinite, results.temperatures.tt)
-    @test all(isfinite, results.temperatures.te)
-    @test all(isfinite, results.temperatures.tv)
+    @test length(results.t) >= 2
+    @test size(densities, 1) == 5
+    @test all(isfinite, temperatures.tt)
+    @test all(isfinite, temperatures.te)
+    @test all(isfinite, temperatures.tv)
     @test terra.validate_results(results)
 
     # Approximate final temperature values (update as needed)
-    @test results.temperatures.tt[end]≈754.6 rtol=0.03
-    @test results.temperatures.tv[end]≈759.2 rtol=0.03
-    @test results.temperatures.te[end]≈2474.0 rtol=0.03
+    @test temperatures.tt[end]≈754.6 rtol=0.03
+    @test temperatures.tv[end]≈759.2 rtol=0.03
+    @test temperatures.te[end]≈2474.0 rtol=0.03
 
     # Approximate final species densities in CGS (update as needed)
-    @test results.species_densities[1, end]≈4.182e-14 rtol=0.05 # N
-    @test results.species_densities[2, end]≈4.650e-10 rtol=0.03 # N₂
-    @test results.species_densities[3, end]≈5.513e-19 rtol=0.10 # N⁺
-    @test results.species_densities[4, end]≈4.943e-14 rtol=0.05 # N₂⁺
-    @test results.species_densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
+    @test densities[1, end]≈4.182e-14 rtol=0.05 # N
+    @test densities[2, end]≈4.650e-10 rtol=0.03 # N₂
+    @test densities[3, end]≈5.513e-19 rtol=0.10 # N⁺
+    @test densities[4, end]≈4.943e-14 rtol=0.05 # N₂⁺
+    @test densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
 end
 
 @testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
@@ -101,24 +139,28 @@ end
 
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
+    @test results isa terra.ReactorResult
 
-    @test results.time[end] > results.time[1]
-    @test size(results.species_densities, 1) == length(config.reactor.composition.species)
-    @test all(isfinite, results.temperatures.tt)
-    @test all(isfinite, results.temperatures.te)
-    @test maximum(abs.(results.temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
-    @test all(isfinite, results.temperatures.tv)
-    @test all(isfinite, results.total_energy)
+    densities = _species_density_matrix(results)
+    temperatures = _temperature_history(results)
+    total_energy = _total_energy_history(results)
+    @test results.t[end] > results.t[1]
+    @test size(densities, 1) == length(config.reactor.composition.species)
+    @test all(isfinite, temperatures.tt)
+    @test all(isfinite, temperatures.te)
+    @test maximum(abs.(temperatures.te .- config.reactor.thermal.Te)) <= 1e-6
+    @test all(isfinite, temperatures.tv)
+    @test all(isfinite, total_energy)
 
     # Approximate final temperature values (update as needed)
-    @test results.temperatures.tt[end]≈1782.0 rtol=0.05
-    @test results.temperatures.tv[end]≈751.6 rtol=0.01
-    @test results.temperatures.te[end]≈115000.0 rtol=0.01
+    @test temperatures.tt[end]≈1782.0 rtol=0.05
+    @test temperatures.tv[end]≈751.6 rtol=0.01
+    @test temperatures.te[end]≈115000.0 rtol=0.01
 
     # Approximate final species densities in CGS (update as needed)
-    @test results.species_densities[1, end]≈4.461e-11 rtol=0.03 # N
-    @test results.species_densities[2, end]≈4.100e-10 rtol=0.03 # N₂
-    @test results.species_densities[3, end]≈9.969e-13 rtol=0.10 # N⁺
-    @test results.species_densities[4, end]≈9.487e-12 rtol=0.03 # N₂⁺
-    @test results.species_densities[5, end]≈2.248e-16 rtol=0.05 # E⁻
+    @test densities[1, end]≈4.461e-11 rtol=0.03 # N
+    @test densities[2, end]≈4.100e-10 rtol=0.03 # N₂
+    @test densities[3, end]≈9.969e-13 rtol=0.10 # N⁺
+    @test densities[4, end]≈9.487e-12 rtol=0.03 # N₂⁺
+    @test densities[5, end]≈2.248e-16 rtol=0.05 # E⁻
 end

@@ -1,0 +1,56 @@
+[[species]]
+symbol = "N"
+name = "Nitrogen"
+max_charge = 1
+gamma = 1.666667
+mass = 14.0067
+flow_rate_kg_s = 0.5e-6
+temperature_K = 500.0
+
+[[species]]
+symbol = "N2"
+name = "Molecular Nitrogen"
+max_charge = 1
+gamma = 1.4
+mass = 28.0134
+flow_rate_kg_s = 4.5e-6
+temperature_K = 500.0
+
+#====================================
+# N reactions
+#====================================
+
+[[reactions]]
+type = "elastic"
+target_species = "N"
+rate_coeff_file = "C1_elastic_N_xN2_0p50.dat"
+
+[[reactions]]
+type = "electron_impact"
+equation = "N + e -> N(+) + 2e"
+rate_coeff_file = "C28_ionization_N_N+_xN2_0p50.dat"
+
+#====================================
+# N2 reactions
+#====================================
+
+[[reactions]]
+type = "elastic"
+target_species = "N2"
+rate_coeff_file = "C29_elastic_N2_xN2_0p50.dat"
+
+
+[[reactions]]
+type = "electron_impact"
+equation = "N2 + e -> 2N + e"
+rate_coeff_file = "C39_dissociation_N2_xN2_0p50.dat"
+
+[[reactions]]
+type = "electron_impact"
+equation = "N2 + e -> N2(+) + 2e"
+rate_coeff_file = "C45_ionization_N2_N2+_xN2_0p50.dat"
+
+[[reactions]]
+type = "electron_impact"
+equation = "N2 + e -> N + N(+) + 2e"
+rate_coeff_file = "C46_ionization_N2_N_N+_xN2_0p50.dat"

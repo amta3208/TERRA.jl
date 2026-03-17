@@ -1,0 +1,5 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+HallThruster = "2311f341-5e6d-4941-9e3e-3ce0ae0d9ed6"
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"

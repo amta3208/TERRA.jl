@@ -1,2 +1,12 @@
 # See https://domluna.github.io/JuliaFormatter.jl/stable/ for a list of options
-style = "sciml"
+
+style = "default"
+always_for_in = true
+disallow_single_arg_nesting = true
+join_lines_based_on_source = true
+normalize_line_endings = "unix"
+remove_extra_newlines = true
+short_to_long_function_def = true
+trailing_comma = true
+whitespace_ops_in_indices = true
+whitespace_typedefs = true

@@ -156,3 +156,112 @@ function validate_species_in_database(config::Config)
 
     return true
 end
+
+"""
+$(SIGNATURES)
+
+Validate an `AxialChainProfile` against the chain-profile contract.
+
+# Arguments
+- `profile::AxialChainProfile`: Profile to validate
+
+# Returns
+- `true` if validation passes
+
+# Throws
+- `ArgumentError` if the profile is invalid
+"""
+function validate_axial_chain_profile(profile::AxialChainProfile)
+    n = length(profile.z_m)
+    if n == 0
+        throw(ArgumentError("AxialChainProfile must contain at least one axial point."))
+    end
+    if length(profile.dx_m) != n || length(profile.te_K) != n
+        throw(ArgumentError("AxialChainProfile required arrays must have identical lengths."))
+    end
+
+    for (i, value) in pairs(profile.z_m)
+        isfinite(value) ||
+            throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
+    end
+    for i in 2:n
+        profile.z_m[i] > profile.z_m[i - 1] || throw(ArgumentError(
+            "AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."
+        ))
+    end
+
+    for (name, values) in (
+        ("dx_m", profile.dx_m),
+        ("te_K", profile.te_K),
+    )
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
+            value > 0.0 ||
+                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
+        end
+    end
+
+    isempty(profile.species_u_m_s) && throw(ArgumentError(
+        "AxialChainProfile: species_u_m_s must contain at least one species."
+    ))
+    for (name, values) in pairs(profile.species_u_m_s)
+        lowered = lowercase(strip(name))
+        lowered in ("e", "e-", "electron") && throw(ArgumentError(
+            "AxialChainProfile: species_u_m_s must not include electron species."
+        ))
+        if length(values) != n
+            throw(ArgumentError(
+                "AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."
+            ))
+        end
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be finite."))
+            value > 0.0 ||
+                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be strictly positive."))
+        end
+    end
+
+    for (name, values) in pairs(profile.diagnostics)
+        if length(values) != n
+            throw(ArgumentError(
+                "AxialChainProfile diagnostic `$name` length $(length(values)) does not match required profile length $n."
+            ))
+        end
+        for (i, value) in pairs(values)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: diagnostic `$name[$i]` must be finite."))
+        end
+    end
+
+    source_idx = profile.inlet.source_compact_index
+    source_idx <= n || throw(ArgumentError(
+        "AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."
+    ))
+
+    return true
+end
+
+"""
+$(SIGNATURES)
+
+Validate an `AxialMarchingConfig` for the current chain solver capabilities.
+
+# Arguments
+- `marching::AxialMarchingConfig`: Marching controls to validate
+
+# Returns
+- `true` if validation passes
+
+# Throws
+- `ArgumentError` if unsupported modes are requested
+"""
+function validate_axial_marching_config(marching::AxialMarchingConfig)
+    if marching.termination_mode != :final_time
+        throw(ArgumentError(
+            "Axial chain solver currently supports termination_mode=:final_time only (got $(marching.termination_mode))."
+        ))
+    end
+    return true
+end

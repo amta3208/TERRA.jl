@@ -2,6 +2,7 @@ module TERRA
 
 using DocStringExtensions
 using Libdl
+using JSON
 using OrdinaryDiffEq
 using SciMLBase: ODEProblem, solve, DiscreteCallback, set_proposed_dt!, u_modified!
 using Printf
@@ -27,6 +28,8 @@ include("io/prob_setup_writer.jl")
 include("io/sources_setup_writer.jl")
 include("io/tau_scaling_writer.jl")
 include("io/input_generation.jl")
+include("io/chain_profile_loader.jl")
+include("io/results.jl")
 
 include("solver/api_layout.jl")
 include("solver/initial_state.jl")
@@ -35,13 +38,18 @@ include("solver/residence_time.jl")
 include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
 include("solver/driver.jl")
+include("solver/chain_cstr.jl")
 
 export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
 export NumericsConfig, RuntimeConfig, ResidenceTimeConfig
+export ChainProfileInletComposition, ChainProfileInlet
+export AxialChainProfile, AxialMarchingConfig
+export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata
+export ChainSimulationResult, load_chain_profile
 export with_case_path, with_time, with_runtime
-export SimulationResult
-export solve_terra_0d, nitrogen_10ev_example
+export solve_terra_0d, nitrogen_10ev_example, save_results, load_results_chain
+export solve_terra_chain_steady
 
 end

@@ -1,6 +1,11 @@
-function _build_residence_time_continuity_indices(layout::ApiLayout)
-    neutral_indices = Int[]
-    ion_indices = Int[]
+function _build_residence_time_continuity_indices(layout::ApiLayout,
+        species_names::AbstractVector{<:AbstractString})
+    length(species_names) == layout.nsp || throw(ArgumentError(
+        "Residence-time species ordering length ($(length(species_names))) does not match layout.nsp ($(layout.nsp))."
+    ))
+
+    species_order = String[String(species_names[isp]) for isp in 1:layout.nsp if isp != layout.esp]
+    species_indices = Dict(name => Int[] for name in species_order)
 
     idx = 1
 
@@ -17,11 +22,7 @@ function _build_residence_time_continuity_indices(layout::ApiLayout)
                 mv_isp_iex = layout.mv[isp, iex]
                 for _ivx in 0:mv_isp_iex
                     if isp != layout.esp
-                        if layout.ie[isp] == 0
-                            push!(neutral_indices, idx)
-                        else
-                            push!(ion_indices, idx)
-                        end
+                        push!(species_indices[String(species_names[isp])], idx)
                     end
                     idx += 1
                 end
@@ -40,11 +41,7 @@ function _build_residence_time_continuity_indices(layout::ApiLayout)
                     continue
                 end
                 if isp != layout.esp
-                    if layout.ie[isp] == 0
-                        push!(neutral_indices, idx)
-                    else
-                        push!(ion_indices, idx)
-                    end
+                    push!(species_indices[String(species_names[isp])], idx)
                 end
                 idx += 1
             end
@@ -59,20 +56,15 @@ function _build_residence_time_continuity_indices(layout::ApiLayout)
         if layout.get_electron_density_by_charge_balance && isp == layout.esp
             continue
         end
-        # Ignore explicit electrons for now (when charge balance is off).
         if isp != layout.esp
-            if layout.ie[isp] == 0
-                push!(neutral_indices, idx)
-            else
-                push!(ion_indices, idx)
-            end
+            push!(species_indices[String(species_names[isp])], idx)
         end
         idx += 1
     end
 
     @assert idx==layout.mom_range.start "Internal error: continuity index mismatch while building residence-time indices"
 
-    return (neutral_indices = neutral_indices, ion_indices = ion_indices)
+    return (species_order = species_order, species_indices = species_indices)
 end
 
 function _build_residence_time_energy_indices(layout::ApiLayout, is_isothermal_teex::Bool)
@@ -88,11 +80,11 @@ end
         return nothing
     end
     u_in = rt.u_in
-    @inbounds for i in rt.neutral_indices
-        du[i] += (u_in[i] - u[i]) * rt.inv_tau_neutral
-    end
-    @inbounds for i in rt.ion_indices
-        du[i] += (u_in[i] - u[i]) * rt.inv_tau_ion
+    @inbounds for name in rt.species_order
+        inv_tau = rt.inv_tau_species[name]
+        for i in rt.species_indices[name]
+            du[i] += (u_in[i] - u[i]) * inv_tau
+        end
     end
     @inbounds for i in rt.energy_indices
         du[i] += (u_in[i] - u[i]) * rt.inv_tau_energy
@@ -100,14 +92,34 @@ end
     return nothing
 end
 
-function _prepare_residence_time_data(layout::ApiLayout, config::Config,
-        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig)
-    inv_tau_neutral = rt_cfg.U_neutral / rt_cfg.L
-    inv_tau_ion = rt_cfg.U_ion / rt_cfg.L
+function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
+        species_order::Vector{String})
+    missing_species = String[name for name in species_order if !haskey(rt_cfg.U_species, name)]
+    extra_species = sort!(String[
+        name for name in keys(rt_cfg.U_species) if !(name in species_order)
+    ])
 
-    continuity = _build_residence_time_continuity_indices(layout)
-    neutral_indices = continuity.neutral_indices
-    ion_indices = continuity.ion_indices
+    if !isempty(missing_species) || !isempty(extra_species)
+        throw(ArgumentError(
+            "ResidenceTimeConfig U_species keys must match the non-electron TERRA species ordering. " *
+            "Missing: $(isempty(missing_species) ? "none" : join(missing_species, ", ")); " *
+            "Extra: $(isempty(extra_species) ? "none" : join(extra_species, ", "))."
+        ))
+    end
+end
+
+function _prepare_residence_time_data(layout::ApiLayout, config::Config,
+        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig;
+        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+    continuity = _build_residence_time_continuity_indices(
+        layout, config.reactor.composition.species)
+    species_order = continuity.species_order
+    species_indices = continuity.species_indices
+    _validate_residence_time_species(rt_cfg, species_order)
+
+    inv_tau_species = Dict(
+        name => rt_cfg.U_species[name] / rt_cfg.L for name in species_order
+    )
     energy_indices = _build_residence_time_energy_indices(
         layout, config.models.physics.is_isothermal_teex)
 
@@ -124,7 +136,8 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
             numerics = config.numerics,
             runtime = config.runtime)
 
-        inlet_state = config_to_initial_state(inlet_config)
+        inlet_state = config_to_initial_state(inlet_config;
+            state_cache = inlet_state_cache)
         energy_scalar_in = config.models.physics.is_isothermal_teex ? inlet_state.rho_rem :
                            inlet_state.rho_energy
         rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing
@@ -142,20 +155,24 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
             rho_evib = rho_evib_in)
     end
 
+    inlet_state = unpack_state_vector(u_in, layout)
+
     U_energy = if rt_cfg.U_energy === nothing
-        rho_n = 0.0
-        @inbounds for i in neutral_indices
-            rho_n += u_in[i]
+        rho_weighted_u = 0.0
+        rho_total = 0.0
+        @inbounds for isp in 1:layout.nsp
+            if isp == layout.esp
+                continue
+            end
+            species_name = String(config.reactor.composition.species[isp])
+            rho_species = inlet_state.rho_sp[isp]
+            rho_weighted_u += rho_species * rt_cfg.U_species[species_name]
+            rho_total += rho_species
         end
-        rho_i = 0.0
-        @inbounds for i in ion_indices
-            rho_i += u_in[i]
-        end
-        rho_total = rho_n + rho_i
         if !(rho_total > 0.0) || !isfinite(rho_total)
-            error("ResidenceTimeConfig: cannot infer U_energy from inlet state (rho_n+rho_i=$rho_total).")
+            error("ResidenceTimeConfig: cannot infer U_energy from inlet state (rho_total=$rho_total).")
         end
-        (rho_n * rt_cfg.U_neutral + rho_i * rt_cfg.U_ion) / rho_total
+        rho_weighted_u / rho_total
     else
         rt_cfg.U_energy
     end
@@ -164,11 +181,10 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
 
     return (
         u_in = u_in,
-        neutral_indices = neutral_indices,
-        ion_indices = ion_indices,
+        species_order = species_order,
+        species_indices = species_indices,
         energy_indices = energy_indices,
-        inv_tau_neutral = inv_tau_neutral,
-        inv_tau_ion = inv_tau_ion,
+        inv_tau_species = inv_tau_species,
         inv_tau_energy = inv_tau_energy
     )
 end
@@ -181,5 +197,8 @@ end
     if !enabled
         return nothing
     end
-    return residence_time === nothing ? ResidenceTimeConfig() : residence_time
+    residence_time === nothing && throw(ArgumentError(
+        "Residence-time forcing was requested, but no ResidenceTimeConfig was provided."
+    ))
+    return residence_time
 end

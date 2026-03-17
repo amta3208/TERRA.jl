@@ -29,13 +29,18 @@ include("helpers/shared.jl")
 
     @testset "IO" begin
         include("io/input_generation.jl")
+        include("io/chain_profile_loader.jl")
+        include("io/export_chain_profile.jl")
+        include("io/results.jl")
     end
 
     @testset "Solver" begin
+        include("solver/initial_state.jl")
         include("solver/state_vector.jl")
         include("solver/rhs.jl")
         include("solver/residence_time.jl")
         include("solver/driver.jl")
         include("solver/integrate_0d.jl")
+        include("solver/chain_cstr.jl")
     end
 end

@@ -54,7 +54,7 @@ end
     results = terra.integrate_0d_system(config, initial_state)
 
     @test results.success == true
-    @test length(results.time) == config.numerics.solver.saveat_count
+    @test length(results.t) == config.numerics.solver.saveat_count
 end
 
 @testset "Native Output Generation" begin
@@ -97,7 +97,7 @@ end
 
     initial_state = terra.config_to_initial_state(config)
     results = terra.integrate_0d_system(config, initial_state)
-    @test results.time[end] >= results.time[1]
+    @test results.t[end] >= results.t[1]
 
     output_dir = joinpath(case_path_used, "output")
     @test isdir(output_dir)

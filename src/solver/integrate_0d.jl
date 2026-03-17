@@ -103,9 +103,41 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
         save_positions = (false, false))
 end
 
+function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
+        p,
+        layout::ApiLayout,
+        u_final::Vector{Float64},
+        is_isothermal::Bool)
+    rho_sp = zeros(Float64, layout.nsp)
+    rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
+
+    if is_isothermal
+        y_work = similar(u_final)
+        _compact_isothermal_fill_fortran_y_work!(y_work, rho_sp, rho_ex, u_final, p, layout)
+    else
+        _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp, rho_ex, u_final, layout)
+    end
+
+    return ReactorStateCache(;
+        species = species,
+        rho_sp_cgs = rho_sp,
+        rho_ex_cgs = rho_ex,
+    )
+end
+
 function integrate_0d_system(config::Config, initial_state;
         residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
         use_residence_time::Union{Nothing, Bool} = nothing)
+    results, _ = _integrate_0d_system(config, initial_state;
+        residence_time = residence_time,
+        use_residence_time = use_residence_time)
+    return results
+end
+
+function _integrate_0d_system(config::Config, initial_state;
+        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
+        use_residence_time::Union{Nothing, Bool} = nothing,
+        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
     solver_cfg = config.numerics.solver
@@ -173,7 +205,8 @@ function integrate_0d_system(config::Config, initial_state;
     residence_time_data = (effective_residence_time === nothing ||
                            !effective_residence_time.enabled) ? nothing :
                           _prepare_residence_time_data(
-        layout, config, u0, effective_residence_time)
+        layout, config, u0, effective_residence_time;
+        inlet_state_cache = inlet_state_cache)
 
     p = (
         layout = layout,
@@ -357,37 +390,61 @@ function integrate_0d_system(config::Config, initial_state;
             total_energies_si = total_energies
         end
 
-        temperatures = (tt = temperatures_tt, te = temperatures_te, tv = temperatures_tv)
+        final_state_cache = _extract_reactor_state_cache(
+            species_names, p, layout, sol.u[end], is_isothermal)
 
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
         message = success ? "ODE integration completed successfully" :
                   "ODE integration terminated: $(rc)"
+        frames = Vector{ReactorFrame}(undef, n_times)
+        for i in 1:n_times
+            frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i], tv = temperatures_tv[i])
+            frames[i] = ReactorFrame(;
+                t = time_points[i],
+                species_densities = species_densities_si[:, i],
+                temperatures = frame_temps,
+                total_energy = total_energies_si[i],
+                source_terms = nothing
+            )
+        end
 
-        return SimulationResult(
-            time_points,
-            species_densities_si,
-            temperatures,
-            total_energies_si,
-            nothing,
-            success,
-            message
-        )
+        return ReactorResult(;
+            t = time_points,
+            frames = frames,
+            source_terms = nothing,
+            success = success,
+            message = message
+        ), final_state_cache
 
     catch e
         @error "ODE integration failed" exception=e
-        return SimulationResult(
-            [0.0],
-            reshape(initial_state.rho_sp, :, 1),
-            (tt = [config.reactor.thermal.Tt], te = [config.reactor.thermal.Te],
-                tv = [config.reactor.thermal.Tv],
-                tee = [config.reactor.thermal.Te]),
-            [initial_state.rho_energy],
-            nothing,
-            false,
-            "ODE integration failed: $(string(e))"
+        fallback_species = config.runtime.unit_system == :SI ?
+                           convert_density_cgs_to_si(initial_state.rho_sp) :
+                           copy(initial_state.rho_sp)
+        fallback_energy = config.runtime.unit_system == :SI ?
+                          convert_energy_density_cgs_to_si(initial_state.rho_energy) :
+                          initial_state.rho_energy
+        fallback_frame = ReactorFrame(;
+            t = 0.0,
+            species_densities = fallback_species,
+            temperatures = (
+                tt = config.reactor.thermal.Tt,
+                te = config.reactor.thermal.Te,
+                tv = config.reactor.thermal.Tv,
+                tee = config.reactor.thermal.Te,
+            ),
+            total_energy = fallback_energy,
+            source_terms = nothing
         )
+        return ReactorResult(;
+            t = [0.0],
+            frames = [fallback_frame],
+            source_terms = nothing,
+            success = false,
+            message = "ODE integration failed: $(string(e))"
+        ), nothing
     finally
         if outputs_opened
             try

@@ -202,14 +202,15 @@ end
 end
 
 @testset "ResidenceTimeConfig" begin
-    rt_default = terra.ResidenceTimeConfig(1.0, 1.0, 1.0)
+    u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
+
+    rt_default = terra.ResidenceTimeConfig(1.0, u_species)
     @test rt_default.enabled == true
     @test rt_default.L == 1.0
-    @test rt_default.U_neutral == 1.0
-    @test rt_default.U_ion == 1.0
+    @test rt_default.U_species == u_species
 
-    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_neutral = 2.0,
-        U_ion = 2.5, U_energy = 3.0)
+    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_species = u_species,
+        U_energy = 3.0)
     @test rt_disabled.enabled == false
     @test rt_disabled.U_energy == 3.0
 
@@ -218,44 +219,206 @@ end
     rt_inlet_reactor = terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_reactor = inlet_config.reactor)
     @test rt_inlet_reactor.inlet_reactor == inlet_config.reactor
 
     rt_inlet_config_alias = terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_config = inlet_config)
     @test rt_inlet_config_alias.inlet_reactor == inlet_config.reactor
 
     @test_throws ArgumentError terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
-        U_neutral = 1.0,
-        U_ion = 1.0,
+        U_species = u_species,
         inlet_reactor = inlet_config.reactor,
         inlet_config = inlet_config)
 end
 
-@testset "SimulationResult" begin
-    time = [0.0, 1.0, 2.0]
-    species_densities = [1e-3 1e-3 1e-3; 1e-6 1e-6 1e-6]
-    temperatures = (tt = [300.0, 310.0, 320.0], te = [10000.0, 11000.0, 12000.0])
-    total_energy = [1e4, 1.1e4, 1.2e4]
+@testset "AxialMarchingConfig" begin
+    marching = terra.AxialMarchingConfig()
+    @test marching.handoff_mode == :full_state
+    @test marching.termination_mode == :final_time
+    @test !(:tee_policy in fieldnames(typeof(marching)))
+    @test marching.override_tt_K === nothing
+    @test marching.override_tv_K === nothing
+    @test marching.is_isothermal_teex == true
 
-    results = terra.SimulationResult(
-        time, species_densities, temperatures, total_energy,
-        nothing, true, "Success"
+    custom = terra.AxialMarchingConfig(;
+        handoff_mode = :full_state,
+        termination_mode = :steady_state,
+        override_tt_K = 900.0,
+        override_tv_K = 800.0,
+        is_isothermal_teex = false)
+    @test custom.handoff_mode == :full_state
+    @test custom.termination_mode == :steady_state
+    @test custom.override_tt_K == 900.0
+    @test custom.override_tv_K == 800.0
+    @test custom.is_isothermal_teex == false
+
+    @test_throws ArgumentError terra.AxialMarchingConfig(; handoff_mode = :bad_mode)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; termination_mode = :bad_mode)
+    @test_throws MethodError terra.AxialMarchingConfig(; tee_policy = :from_inlet)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; override_tt_K = 0.0)
+    @test_throws ArgumentError terra.AxialMarchingConfig(; override_tv_K = -10.0)
+end
+
+@testset "ReactorResult and ReactorFrame" begin
+    frame1 = terra.ReactorFrame(;
+        t = 0.0,
+        species_densities = [1e-3, 1e-6, 1e-8],
+        temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
+        total_energy = 1e4,
+    )
+    frame2 = terra.ReactorFrame(;
+        t = 1.0,
+        species_densities = [2e-3, 2e-6, 2e-8],
+        temperatures = (tt = 320.0, te = 10500.0, tv = 315.0),
+        total_energy = 1.1e4,
     )
 
-    @test results.time == time
-    @test results.species_densities == species_densities
-    @test results.temperatures == temperatures
-    @test results.total_energy == total_energy
-    @test results.source_terms === nothing
-    @test results.success == true
-    @test results.message == "Success"
+    reactor = terra.ReactorResult(;
+        t = [0.0, 1.0],
+        frames = [frame1, frame2],
+        success = true,
+        message = "ok",
+    )
+    @test reactor.success == true
+    @test length(reactor.frames) == 2
+    @test reactor.frames[1].t == 0.0
+    @test reactor.frames[2].temperatures.te == 10500.0
+
+    single = reactor[2]
+    @test length(single.t) == 1
+    @test length(single.frames) == 1
+    @test single.frames[1].t == 1.0
+end
+
+@testset "ChainSimulationResult" begin
+    reactor_cfg = terra.ReactorConfig(;
+        composition = terra.ReactorComposition(;
+            species = ["N", "N2", "E-"],
+            mole_fractions = [0.1, 0.8, 0.1],
+            total_number_density = 1e13),
+        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0, Te = 10000.0))
+
+    reactor = terra.ReactorResult(;
+        t = [0.0, 1.0],
+        frames = [
+            terra.ReactorFrame(;
+                t = 0.0,
+                species_densities = [1e-3, 1e-6, 1e-8],
+                temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
+                total_energy = 1e4,
+            ),
+            terra.ReactorFrame(;
+                t = 1.0,
+                species_densities = [1e-3, 1e-6, 1e-8],
+                temperatures = (tt = 301.0, te = 10000.0, tv = 311.0),
+                total_energy = 1.1e4,
+            ),
+        ],
+        success = true,
+        message = "ok",
+    )
+
+    cell = terra.ChainCellResult(;
+        compact_cell_index = 1,
+        source_cell_index = 13,
+        z_m = 0.0,
+        dx_m = 0.01,
+        te_K = 10000.0,
+        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
+        reactor = reactor,
+        endpoint_reactor = reactor_cfg,
+    )
+    metadata = terra.ChainMetadata(;
+        diagnostics = Dict{String, Any}("note" => "test"),
+        compact_to_source_index = [13],
+        retained_point_count = 1,
+    )
+
+    chain = terra.ChainSimulationResult(;
+        cells = [cell],
+        metadata = metadata,
+        success = true,
+        failed_cell = nothing,
+        message = "done",
+    )
+
+    @test chain.success == true
+    @test chain.failed_cell === nothing
+    @test length(chain.cells) == 1
+    @test chain.cells[1].endpoint_reactor == reactor_cfg
+    @test chain.cells[1].reactor == reactor
+end
+
+@testset "Nested Chain Cell Indexing" begin
+    reactor = terra.ReactorResult(;
+        t = [0.0, 1.0],
+        frames = [
+            terra.ReactorFrame(;
+                t = 0.0,
+                species_densities = [1e-3, 1e-6, 1e-8],
+                temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
+                total_energy = 1e4,
+            ),
+            terra.ReactorFrame(;
+                t = 1.0,
+                species_densities = [1e-3, 1e-6, 1e-8],
+                temperatures = (tt = 301.0, te = 10000.0, tv = 311.0),
+                total_energy = 1.1e4,
+            ),
+        ],
+        success = true,
+        message = "ok",
+    )
+
+    cell1 = terra.ChainCellResult(;
+        compact_cell_index = 1,
+        source_cell_index = 13,
+        z_m = 0.0,
+        dx_m = 0.01,
+        te_K = 10000.0,
+        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
+        reactor = reactor
+    )
+    cell2 = terra.ChainCellResult(;
+        compact_cell_index = 2,
+        source_cell_index = 14,
+        z_m = 0.01,
+        dx_m = 0.01,
+        te_K = 9500.0,
+        species_u_m_s = Dict("N" => 105.0, "N2" => 125.0, "N+" => 1200.0),
+        reactor = reactor
+    )
+
+    metadata = terra.ChainMetadata(;
+        compact_to_source_index = [13, 14],
+        original_point_count = 102,
+        retained_point_count = 2,
+        diagnostics = Dict{String, Any}("trimmed_point_count" => 12)
+    )
+
+    chain = terra.ChainSimulationResult(;
+        cells = [cell1, cell2],
+        metadata = metadata,
+        success = true,
+        failed_cell = nothing,
+        message = "ok"
+    )
+
+    @test length(chain.cells) == 2
+    @test chain.cells[1].source_cell_index == 13
+    @test chain.cells[2].source_cell_index == 14
+    @test chain.cells[1].reactor.frames[1].t == 0.0
+
+    # Chain slicing is cell-based
+    second = chain[2]
+    @test length(second.cells) == 1
+    @test second.cells[1].compact_cell_index == 2
+    @test second.cells[1].source_cell_index == 14
 end

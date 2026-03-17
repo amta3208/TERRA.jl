@@ -1,7 +1,7 @@
 ####################################################
 # Location of database and output folders
 ####################################################
-DATABASE_PATH=../../database/n2/elec_sts_expanded_electron_fits
+DATABASE_PATH=../../../../database/n2/elec_sts_expanded_electron_fits
 CHEM_FILE_NAME=chemistry.dat
 
 --- Turn on source term printouts
