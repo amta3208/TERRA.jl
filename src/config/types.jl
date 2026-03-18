@@ -381,14 +381,110 @@ end
 """
 $(SIGNATURES)
 
+Per-species wall-interaction closure for wrapper-managed wall losses.
+"""
+struct SpeciesWallModel
+    class::Symbol
+    rate_model::Symbol
+    parameters::Dict{String, Float64}
+    products::Dict{String, Float64}
+
+    function SpeciesWallModel(;
+            class::Symbol,
+            rate_model::Symbol,
+            parameters::AbstractDict = Dict{String, Float64}(),
+            products::AbstractDict = Dict{String, Float64}())
+        class in (:ion_neutralization, :neutral_recombination, :electronic_quench) ||
+            throw(ArgumentError(
+                "SpeciesWallModel: class must be one of `:ion_neutralization`, `:neutral_recombination`, or `:electronic_quench`."
+            ))
+        rate_model in (:bohm_gap, :ballistic_sticking, :constant) || throw(ArgumentError(
+            "SpeciesWallModel: rate_model must be one of `:bohm_gap`, `:ballistic_sticking`, or `:constant`."
+        ))
+
+        parameter_dict = Dict{String, Float64}()
+        for (name, value) in pairs(parameters)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "SpeciesWallModel: parameter keys must be non-empty."
+            ))
+            value_f64 = Float64(value)
+            isfinite(value_f64) && value_f64 >= 0.0 || throw(ArgumentError(
+                "SpeciesWallModel: parameters[$name_str] must be finite and nonnegative."
+            ))
+            parameter_dict[name_str] = value_f64
+        end
+
+        product_dict = Dict{String, Float64}()
+        for (name, value) in pairs(products)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "SpeciesWallModel: product keys must be non-empty."
+            ))
+            value_f64 = Float64(value)
+            isfinite(value_f64) && value_f64 >= 0.0 || throw(ArgumentError(
+                "SpeciesWallModel: products[$name_str] must be finite and nonnegative."
+            ))
+            product_dict[name_str] = value_f64
+        end
+
+        return new(class, rate_model, parameter_dict, product_dict)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Wrapper-managed wall-loss configuration.
+"""
+struct WallLossConfig
+    enabled::Bool
+    use_ion_losses::Bool
+    use_neutral_recombination::Bool
+    use_electronic_quenching::Bool
+    species_models::Dict{String, SpeciesWallModel}
+
+    function WallLossConfig(;
+            enabled::Bool = true,
+            use_ion_losses::Bool = true,
+            use_neutral_recombination::Bool = true,
+            use_electronic_quenching::Bool = true,
+            species_models::AbstractDict = Dict{String, SpeciesWallModel}())
+        species_model_dict = Dict{String, SpeciesWallModel}()
+        for (name, model) in pairs(species_models)
+            name_str = String(name)
+            isempty(strip(name_str)) && throw(ArgumentError(
+                "WallLossConfig: species_models keys must be non-empty."
+            ))
+            model isa SpeciesWallModel || throw(ArgumentError(
+                "WallLossConfig: species_models[$name_str] must be a SpeciesWallModel."
+            ))
+            species_model_dict[name_str] = model
+        end
+
+        return new(
+            enabled,
+            use_ion_losses,
+            use_neutral_recombination,
+            use_electronic_quenching,
+            species_model_dict,
+        )
+    end
+end
+
+"""
+$(SIGNATURES)
+
 Wrapper-managed additive source-term configuration.
 """
 struct SourceTermsConfig
     residence_time::Union{Nothing, ResidenceTimeConfig}
+    wall_losses::Union{Nothing, WallLossConfig}
 
     function SourceTermsConfig(;
-            residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
-        return new(residence_time)
+            residence_time::Union{Nothing, ResidenceTimeConfig} = nothing,
+            wall_losses::Union{Nothing, WallLossConfig} = nothing)
+        return new(residence_time, wall_losses)
     end
 end
 
@@ -601,7 +697,7 @@ struct ChainMetadata
     retained_point_count::Int
 
     function ChainMetadata(;
-            schema_version::AbstractString = "terra_chain_profile_v3",
+            schema_version::AbstractString = "terra_chain_profile_v4",
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
             source_snapshot::Union{Nothing, AbstractDict} = nothing,
@@ -788,6 +884,55 @@ end
 """
 $(SIGNATURES)
 
+Normalized wall-geometry/profile inputs for chain-driven wall losses.
+"""
+struct ChainWallProfile
+    a_wall_over_v_m_inv::Vector{Float64}
+    channel_gap_m::Union{Nothing, Vector{Float64}}
+    wall_temperature_K::Union{Nothing, Vector{Float64}}
+    ion_edge_to_center_ratio::Union{Nothing, Vector{Float64}}
+
+    function ChainWallProfile(;
+            a_wall_over_v_m_inv,
+            channel_gap_m::Union{Nothing, AbstractVector} = nothing,
+            wall_temperature_K::Union{Nothing, AbstractVector} = nothing,
+            ion_edge_to_center_ratio::Union{Nothing, AbstractVector} = nothing)
+        a_wall_over_v_vec = Float64.(a_wall_over_v_m_inv)
+        isempty(a_wall_over_v_vec) && throw(ArgumentError(
+            "ChainWallProfile: a_wall_over_v_m_inv must be non-empty."
+        ))
+        for (i, value) in pairs(a_wall_over_v_vec)
+            isfinite(value) && value > 0.0 || throw(ArgumentError(
+                "ChainWallProfile: a_wall_over_v_m_inv[$i] must be finite and strictly positive."
+            ))
+        end
+
+        function _coerce_optional_wall_array(values, field_name::AbstractString)
+            values === nothing && return nothing
+            values_vec = Float64.(values)
+            length(values_vec) == length(a_wall_over_v_vec) || throw(ArgumentError(
+                "ChainWallProfile: $field_name length $(length(values_vec)) does not match required length $(length(a_wall_over_v_vec))."
+            ))
+            for (i, value) in pairs(values_vec)
+                isfinite(value) && value > 0.0 || throw(ArgumentError(
+                    "ChainWallProfile: $field_name[$i] must be finite and strictly positive."
+                ))
+            end
+            return values_vec
+        end
+
+        return new(
+            a_wall_over_v_vec,
+            _coerce_optional_wall_array(channel_gap_m, "channel_gap_m"),
+            _coerce_optional_wall_array(wall_temperature_K, "wall_temperature_K"),
+            _coerce_optional_wall_array(ion_edge_to_center_ratio, "ion_edge_to_center_ratio"),
+        )
+    end
+end
+
+"""
+$(SIGNATURES)
+
 Normalized axial chain profile used by the TERRA chain-of-CSTR interface.
 
 # Fields
@@ -795,6 +940,7 @@ Normalized axial chain profile used by the TERRA chain-of-CSTR interface.
 - `dx_m::Vector{Float64}`: Point-aligned control-volume lengths (m), strictly positive
 - `te_K::Vector{Float64}`: Electron temperature profile (K), strictly positive
 - `species_u_m_s::Dict{String, Vector{Float64}}`: Per-species convective velocities (m/s), strictly positive
+- `wall_profile::Union{Nothing, ChainWallProfile}`: Optional validated wall-profile inputs for wall-loss source terms
 - `inlet::ChainProfileInlet`: Self-contained segment-1 inlet state
 - `diagnostics::Dict{String, Vector{Float64}}`: Optional diagnostics arrays
 - `generator::Dict{String, Any}`: Generator metadata from interchange artifact
@@ -807,6 +953,7 @@ struct AxialChainProfile
     dx_m::Vector{Float64}
     te_K::Vector{Float64}
     species_u_m_s::Dict{String, Vector{Float64}}
+    wall_profile::Union{Nothing, ChainWallProfile}
     inlet::ChainProfileInlet
     diagnostics::Dict{String, Vector{Float64}}
     generator::Dict{String, Any}
@@ -819,11 +966,12 @@ struct AxialChainProfile
             dx_m,
             te_K,
             species_u_m_s,
+            wall_profile::Union{Nothing, ChainWallProfile} = nothing,
             inlet::ChainProfileInlet,
             diagnostics::AbstractDict = Dict{String, Vector{Float64}}(),
             generator::AbstractDict = Dict{String, Any}(),
             selection::AbstractDict = Dict{String, Any}(),
-            schema_version::AbstractString = "terra_chain_profile_v3",
+            schema_version::AbstractString = "terra_chain_profile_v4",
             source_snapshot::Union{Nothing, AbstractDict} = nothing)
         z_m_vec = Float64.(z_m)
         dx_m_vec = Float64.(dx_m)
@@ -882,6 +1030,27 @@ struct AxialChainProfile
             "AxialChainProfile: species_u_m_s must contain at least one species."
         ))
 
+        if wall_profile !== nothing
+            length(wall_profile.a_wall_over_v_m_inv) == n || throw(ArgumentError(
+                "AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."
+            ))
+            if wall_profile.channel_gap_m !== nothing
+                length(wall_profile.channel_gap_m) == n || throw(ArgumentError(
+                    "AxialChainProfile: wall_profile.channel_gap_m length $(length(wall_profile.channel_gap_m)) does not match required profile length $n."
+                ))
+            end
+            if wall_profile.wall_temperature_K !== nothing
+                length(wall_profile.wall_temperature_K) == n || throw(ArgumentError(
+                    "AxialChainProfile: wall_profile.wall_temperature_K length $(length(wall_profile.wall_temperature_K)) does not match required profile length $n."
+                ))
+            end
+            if wall_profile.ion_edge_to_center_ratio !== nothing
+                length(wall_profile.ion_edge_to_center_ratio) == n || throw(ArgumentError(
+                    "AxialChainProfile: wall_profile.ion_edge_to_center_ratio length $(length(wall_profile.ion_edge_to_center_ratio)) does not match required profile length $n."
+                ))
+            end
+        end
+
         diagnostics_dict = Dict{String, Vector{Float64}}()
         for (key, values) in pairs(diagnostics)
             key_str = String(key)
@@ -907,6 +1076,7 @@ struct AxialChainProfile
             dx_m_vec,
             te_K_vec,
             species_u_dict,
+            wall_profile,
             inlet,
             diagnostics_dict,
             generator_dict,

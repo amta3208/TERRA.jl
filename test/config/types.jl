@@ -153,11 +153,21 @@ end
     @test config.reactor == reactor
     @test config.models == models
     @test config.sources.residence_time === sources.residence_time
+    @test config.sources.wall_losses === nothing
     @test config.numerics == numerics
     @test config.runtime == runtime
 end
 
 @testset "Config Modifiers" begin
+    wall_cfg = terra.WallLossConfig(;
+        species_models = Dict(
+            "N+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N" => 1.0),
+            ),
+        ),
+    )
     config = terra.Config(;
         reactor = terra.ReactorConfig(;
             composition = terra.ReactorComposition(;
@@ -169,7 +179,7 @@ end
         numerics = terra.NumericsConfig(;
             time = terra.TimeConfig(;
                 dt = 1e-6, dt_output = 1e-4, duration = 1e-3, nstep = 1234, method = 2)),
-        sources = terra.SourceTermsConfig(),
+        sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
         runtime = terra.RuntimeConfig(;
             database_path = ".",
             case_path = pwd(),
@@ -191,6 +201,7 @@ end
     @test config_time.numerics.time.method == 1
     @test config.numerics.time.dt == 1e-6
     @test config_time.sources.residence_time === config.sources.residence_time
+    @test config_time.sources.wall_losses === config.sources.wall_losses
 
     config_runtime = terra.with_runtime(config;
         unit_system = :SI,
@@ -200,6 +211,7 @@ end
     @test config_runtime.runtime.print_source_terms == true
     @test config_runtime.runtime.write_native_outputs == true
     @test config_runtime.sources.residence_time === config.sources.residence_time
+    @test config_runtime.sources.wall_losses === config.sources.wall_losses
 
     @test_throws ArgumentError terra.with_case_path(config, joinpath(temp_case, "missing"))
     @test_throws ArgumentError terra.with_time(config; method = 9)
@@ -211,6 +223,87 @@ end
 @testset "SourceTermsConfig" begin
     cfg = terra.SourceTermsConfig()
     @test cfg.residence_time === nothing
+    @test cfg.wall_losses === nothing
+end
+
+@testset "SpeciesWallModel" begin
+    model = terra.SpeciesWallModel(;
+        class = :ion_neutralization,
+        rate_model = :bohm_gap,
+        parameters = Dict("alpha" => 0.5),
+        products = Dict("N" => 1.0),
+    )
+    @test model.class == :ion_neutralization
+    @test model.rate_model == :bohm_gap
+    @test model.parameters["alpha"] == 0.5
+    @test model.products["N"] == 1.0
+
+    @test_throws ArgumentError terra.SpeciesWallModel(;
+        class = :unsupported,
+        rate_model = :bohm_gap)
+    @test_throws ArgumentError terra.SpeciesWallModel(;
+        class = :ion_neutralization,
+        rate_model = :unsupported)
+    @test_throws ArgumentError terra.SpeciesWallModel(;
+        class = :ion_neutralization,
+        rate_model = :bohm_gap,
+        parameters = Dict("alpha" => -1.0))
+end
+
+@testset "WallLossConfig" begin
+    cfg = terra.WallLossConfig(;
+        species_models = Dict(
+            "N+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N" => 1.0),
+            ),
+        ),
+    )
+    @test cfg.enabled == true
+    @test haskey(cfg.species_models, "N+")
+    @test_throws ArgumentError terra.WallLossConfig(;
+        species_models = Dict("" => cfg.species_models["N+"]))
+end
+
+@testset "ChainWallProfile" begin
+    wall_profile = terra.ChainWallProfile(;
+        a_wall_over_v_m_inv = [100.0, 101.0],
+        channel_gap_m = [0.02, 0.02],
+    )
+    @test wall_profile.channel_gap_m == [0.02, 0.02]
+
+    inlet_composition = terra.ChainProfileInletComposition(;
+        species = ["N", "N2", "N+", "N2+", "E-"],
+        mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
+        total_number_density_m3 = 1e19,
+    )
+    inlet = terra.ChainProfileInlet(;
+        composition = inlet_composition,
+        thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0, Tee = 500.0, Te = 20000.0),
+        source_compact_index = 1,
+    )
+    profile = terra.AxialChainProfile(;
+        z_m = [0.0, 0.01],
+        dx_m = [0.01, 0.01],
+        te_K = [20000.0, 21000.0],
+        species_u_m_s = Dict(
+            "N" => [200.0, 210.0],
+            "N2" => [180.0, 181.0],
+            "N+" => [1000.0, 1100.0],
+            "N2+" => [900.0, 950.0],
+        ),
+        wall_profile = wall_profile,
+        inlet = inlet,
+    )
+    @test profile.schema_version == "terra_chain_profile_v4"
+    @test profile.wall_profile !== nothing
+
+    @test_throws ArgumentError terra.ChainWallProfile(;
+        a_wall_over_v_m_inv = [100.0, -1.0])
+    @test_throws ArgumentError terra.ChainWallProfile(;
+        a_wall_over_v_m_inv = [100.0, 101.0],
+        channel_gap_m = [0.02])
 end
 
 @testset "ResidenceTimeConfig" begin

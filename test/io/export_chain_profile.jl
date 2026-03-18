@@ -1,9 +1,7 @@
 using JSON
 
 @testset "export_chain_profile" begin
-    package_root = normpath(joinpath(@__DIR__, "..", ".."))
-    script_path = joinpath(package_root, "tools", "hallthruster_jl", "export_chain_profile.jl")
-    Base.include(Main, script_path)
+    export_tool = hallthruster_export_tool()
 
     temp_case = mktempdir()
     input_path = joinpath(
@@ -12,17 +10,17 @@ using JSON
         "hallthruster_solution_avg.json",
     )
 
-    output_path = Main.export_chain_profile([
+    output_path = export_tool.export_chain_profile([
         input_path,
         temp_case,
         "--average_start_time=0.0005",
     ])
 
-    @test output_path == joinpath(temp_case, "input", "chain_profile_v3.json")
+    @test output_path == joinpath(temp_case, "input", "chain_profile_v4.json")
     @test isfile(output_path)
 
     raw = JSON.parsefile(output_path)
-    @test raw["schema_version"] == "terra_chain_profile_v3"
+    @test raw["schema_version"] == "terra_chain_profile_v4"
     @test raw["selection"]["trim_start_index"] == 15
     @test raw["selection"]["trimmed_point_count"] == 14
     @test sort!(String.(raw["selection"]["exported_species"])) == ["N", "N+", "N2", "N2+"]
@@ -45,4 +43,10 @@ using JSON
     @test sort!(collect(keys(profile["species_u_m_s"]))) == ["N", "N+", "N2", "N2+"]
     @test !haskey(profile, "u_neutral_m_s")
     @test !haskey(profile, "u_ion_m_s")
+
+    wall_profile = raw["wall_profile"]
+    @test sort!(collect(keys(wall_profile))) == ["a_wall_over_v_m_inv", "channel_gap_m"]
+    @test all(isapprox.(wall_profile["channel_gap_m"], 0.0155; atol = 1e-12))
+    @test all(isapprox.(wall_profile["a_wall_over_v_m_inv"], 2.0 / 0.0155; atol = 1e-12))
+    @test !haskey(wall_profile, "wall_temperature_K")
 end

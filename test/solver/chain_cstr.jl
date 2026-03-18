@@ -60,6 +60,13 @@
         )
     end
 
+    function wall_profile(; n_segments::Int)
+        return terra.ChainWallProfile(;
+            a_wall_over_v_m_inv = fill(2.0 / 0.0155, n_segments),
+            channel_gap_m = fill(0.0155, n_segments),
+        )
+    end
+
     @testset "Single segment run" begin
         config = build_chain_test_config()
         inlet_thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0,
@@ -265,7 +272,7 @@
                 "trimmed_point_count" => 12,
                 "original_point_count" => 102,
             ),
-            schema_version = "terra_chain_profile_v3",
+            schema_version = "terra_chain_profile_v4",
             source_snapshot = Dict(
                 "enabled" => true,
                 "source_type" => "unit-test",
@@ -275,7 +282,7 @@
         chain = terra.solve_terra_chain_steady(config, profile)
 
         @test chain.success == true
-        @test chain.metadata.schema_version == "terra_chain_profile_v3"
+        @test chain.metadata.schema_version == "terra_chain_profile_v4"
         @test chain.metadata.generator["tool"] == "unit-test"
         @test chain.metadata.selection["trim_start_index"] == 13
         @test chain.metadata.source_snapshot !== nothing
@@ -289,6 +296,73 @@
         @test chain.cells[2].source_cell_index == 14
         @test !isempty(chain.cells[1].reactor.t)
         @test !isempty(chain.cells[2].reactor.t)
+
+        cleanup_terra!()
+    end
+
+    @testset "Wall-loss infrastructure is profile-driven and no-op in Phase 1" begin
+        base_config = build_chain_test_config()
+        wall_cfg = terra.WallLossConfig(;
+            species_models = Dict(
+                "N+" => terra.SpeciesWallModel(;
+                    class = :ion_neutralization,
+                    rate_model = :bohm_gap,
+                    products = Dict("N" => 1.0),
+                ),
+                "N2+" => terra.SpeciesWallModel(;
+                    class = :ion_neutralization,
+                    rate_model = :bohm_gap,
+                    products = Dict("N2" => 1.0),
+                ),
+            ),
+        )
+        wall_config = terra.Config(;
+            reactor = base_config.reactor,
+            models = base_config.models,
+            sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
+            numerics = base_config.numerics,
+            runtime = base_config.runtime,
+        )
+
+        profile = terra.AxialChainProfile(
+            z_m = [0.0],
+            dx_m = [0.01],
+            te_K = [base_config.reactor.thermal.Te],
+            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
+                ion_base = 18000.0),
+            wall_profile = wall_profile(; n_segments = 1),
+            inlet = profile_inlet(base_config),
+        )
+
+        chain_base = terra.solve_terra_chain_steady(base_config, profile)
+        chain_wall = terra.solve_terra_chain_steady(wall_config, profile)
+
+        @test chain_wall.success == true
+        @test chain_wall.metadata.diagnostics["wall_profile"]["channel_gap_m"] == [0.0155]
+        @test chain_wall.metadata.diagnostics["wall_profile"]["a_wall_over_v_m_inv"] ≈ [2.0 / 0.0155]
+
+        wall_segment_inputs = terra._build_segment_wall_inputs(profile, 1, wall_cfg)
+        @test wall_segment_inputs !== nothing
+        @test wall_segment_inputs.channel_gap_m ≈ 0.0155
+
+        base_frame = chain_base.cells[1].reactor.frames[end]
+        wall_frame = chain_wall.cells[1].reactor.frames[end]
+        @test wall_frame.species_densities ≈ base_frame.species_densities atol = 0.0 rtol = 1e-12
+        @test wall_frame.total_energy ≈ base_frame.total_energy atol = 0.0 rtol = 1e-12
+        @test wall_frame.temperatures.tt ≈ base_frame.temperatures.tt atol = 0.0 rtol = 1e-12
+        @test wall_frame.temperatures.tv ≈ base_frame.temperatures.tv atol = 0.0 rtol = 1e-12
+        @test wall_frame.temperatures.te ≈ base_frame.temperatures.te atol = 0.0 rtol = 1e-12
+
+        missing_wall_profile = terra.AxialChainProfile(
+            z_m = [0.0],
+            dx_m = [0.01],
+            te_K = [base_config.reactor.thermal.Te],
+            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
+                ion_base = 18000.0),
+            inlet = profile_inlet(base_config),
+        )
+        @test_throws ArgumentError terra._build_segment_wall_inputs(
+            missing_wall_profile, 1, wall_cfg)
 
         cleanup_terra!()
     end

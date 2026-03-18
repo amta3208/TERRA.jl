@@ -35,6 +35,7 @@ include("solver/api_layout.jl")
 include("solver/initial_state.jl")
 include("solver/state_vector.jl")
 include("solver/residence_time.jl")
+include("solver/wall_losses.jl")
 include("solver/source_terms.jl")
 include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
@@ -45,6 +46,7 @@ export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
 export NumericsConfig, RuntimeConfig, ResidenceTimeConfig, SourceTermsConfig
+export SpeciesWallModel, WallLossConfig, ChainWallProfile
 export ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata

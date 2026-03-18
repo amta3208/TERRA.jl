@@ -235,6 +235,34 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
         end
     end
 
+    if profile.wall_profile !== nothing
+        wall_profile = profile.wall_profile
+        length(wall_profile.a_wall_over_v_m_inv) == n || throw(ArgumentError(
+            "AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."
+        ))
+        for (i, value) in pairs(wall_profile.a_wall_over_v_m_inv)
+            isfinite(value) && value > 0.0 || throw(ArgumentError(
+                "AxialChainProfile: wall_profile.a_wall_over_v_m_inv[$i] must be finite and strictly positive."
+            ))
+        end
+
+        for (name, values) in (
+            ("channel_gap_m", wall_profile.channel_gap_m),
+            ("wall_temperature_K", wall_profile.wall_temperature_K),
+            ("ion_edge_to_center_ratio", wall_profile.ion_edge_to_center_ratio),
+        )
+            values === nothing && continue
+            length(values) == n || throw(ArgumentError(
+                "AxialChainProfile: wall_profile.$name length $(length(values)) does not match required profile length $n."
+            ))
+            for (i, value) in pairs(values)
+                isfinite(value) && value > 0.0 || throw(ArgumentError(
+                    "AxialChainProfile: wall_profile.$name[$i] must be finite and strictly positive."
+                ))
+            end
+        end
+    end
+
     source_idx = profile.inlet.source_compact_index
     source_idx <= n || throw(ArgumentError(
         "AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."

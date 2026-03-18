@@ -1,4 +1,4 @@
-const CHAIN_PROFILE_SCHEMA_VERSION = "terra_chain_profile_v3"
+const CHAIN_PROFILE_SCHEMA_VERSION = "terra_chain_profile_v4"
 
 function _read_chain_profile_json(path::AbstractString)
     if !isfile(path)
@@ -40,6 +40,11 @@ function _require_float_array_field(container::AbstractDict, key::AbstractString
         end
     end
     return result
+end
+
+function _optional_float_array_field(container::AbstractDict, key::AbstractString, context::AbstractString)
+    haskey(container, key) || return nothing
+    return _require_float_array_field(container, key, context)
 end
 
 function _require_string_array_field(container::AbstractDict, key::AbstractString, context::AbstractString)
@@ -137,6 +142,21 @@ function _build_chain_profile_inlet(raw::AbstractDict)
     )
 end
 
+function _build_chain_wall_profile(raw::AbstractDict)
+    haskey(raw, "wall_profile") || return nothing
+    wall_profile = _require_dict_field(raw, "wall_profile", "chain profile root")
+    return ChainWallProfile(;
+        a_wall_over_v_m_inv = _require_float_array_field(
+            wall_profile, "a_wall_over_v_m_inv", "wall_profile"),
+        channel_gap_m = _optional_float_array_field(
+            wall_profile, "channel_gap_m", "wall_profile"),
+        wall_temperature_K = _optional_float_array_field(
+            wall_profile, "wall_temperature_K", "wall_profile"),
+        ion_edge_to_center_ratio = _optional_float_array_field(
+            wall_profile, "ion_edge_to_center_ratio", "wall_profile"),
+    )
+end
+
 function _validate_chain_profile_schema(raw::AbstractDict)
     schema_version = get(raw, "schema_version", nothing)
     schema_version === CHAIN_PROFILE_SCHEMA_VERSION || throw(ArgumentError(
@@ -172,6 +192,10 @@ function _validate_chain_profile_schema(raw::AbstractDict)
         haskey(profile, key) || throw(ArgumentError("Missing required profile field `$key`."))
     end
 
+    if haskey(raw, "wall_profile")
+        _require_dict_field(raw, "wall_profile", "chain profile root")
+    end
+
     for key in ("species", "mole_fractions", "total_number_density_m3")
         haskey(inlet_composition, key) || throw(ArgumentError(
             "Missing required inlet composition field `$key`."
@@ -196,7 +220,7 @@ $(SIGNATURES)
 Load a chain profile JSON artifact into normalized `AxialChainProfile`.
 
 # Arguments
-- `path::AbstractString`: Path to `chain_profile_v3.json`
+- `path::AbstractString`: Path to `chain_profile_v4.json`
 
 # Returns
 - `AxialChainProfile`
@@ -229,6 +253,7 @@ function load_chain_profile(path::AbstractString)
         dx_m = _require_float_array_field(profile, "dx_m", "profile"),
         te_K = _require_float_array_field(profile, "te_K", "profile"),
         species_u_m_s = _require_float_array_dict_field(profile, "species_u_m_s", "profile"),
+        wall_profile = _build_chain_wall_profile(raw),
         inlet = _build_chain_profile_inlet(raw),
         diagnostics = _coerce_optional_diagnostics(diagnostics_raw),
         generator = generator,

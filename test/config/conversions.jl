@@ -35,6 +35,7 @@
               config_si.reactor.composition.mole_fractions
         @test converted.runtime.write_native_outputs == config_si.runtime.write_native_outputs
         @test converted.sources.residence_time === config_si.sources.residence_time
+        @test converted.sources.wall_losses === config_si.sources.wall_losses
     end
 
     @testset "CGS to SI Conversion" begin
@@ -48,6 +49,7 @@
               config_cgs.reactor.composition.mole_fractions
         @test converted.runtime.write_native_outputs == config_cgs.runtime.write_native_outputs
         @test converted.sources.residence_time === config_cgs.sources.residence_time
+        @test converted.sources.wall_losses === config_cgs.sources.wall_losses
     end
 
     @testset "Invalid Conversion" begin

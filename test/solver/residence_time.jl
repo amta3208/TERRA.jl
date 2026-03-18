@@ -182,10 +182,92 @@ end
     prepared = terra._prepare_source_terms_data(
         layout, config, u_base, terra.SourceTermsConfig(; residence_time = rt_cfg))
     @test prepared.residence_time !== nothing
+    @test prepared.wall_losses === nothing
 
     disabled = terra._prepare_source_terms_data(
         layout, config, u_base, terra.SourceTermsConfig())
     @test disabled.residence_time === nothing
+    @test disabled.wall_losses === nothing
+end
+
+@testset "Wall-loss preparation is profile-driven and no-op in Phase 1" begin
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    @test_nowarn reset_and_init!(tempname(); config = config)
+
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+    u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
+    wall_cfg = terra.WallLossConfig(;
+        species_models = Dict(
+            "N+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N" => 1.0),
+            ),
+            "N2+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N2" => 1.0),
+            ),
+        ),
+    )
+    wall_inputs = terra.SegmentWallInputs(;
+        a_wall_over_v_m_inv = 2.0 / 0.0155,
+        channel_gap_m = 0.0155,
+    )
+
+    prepared = terra._prepare_source_terms_data(
+        layout, config, u_base,
+        terra.SourceTermsConfig(; wall_losses = wall_cfg);
+        wall_inputs = wall_inputs)
+    @test prepared.residence_time === nothing
+    @test prepared.wall_losses !== nothing
+    @test prepared.wall_losses.wall_inputs.channel_gap_m ≈ 0.0155
+    @test prepared.wall_losses.species_indices["N+"] != Int[]
+    @test prepared.wall_losses.molecular_weights["N+"] > 0.0
+
+    @test_throws ArgumentError terra._prepare_source_terms_data(
+        layout, config, u_base,
+        terra.SourceTermsConfig(; wall_losses = wall_cfg))
+
+    bad_wall_cfg = terra.WallLossConfig(;
+        species_models = Dict(
+            "Ar+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N" => 1.0),
+            ),
+        ),
+    )
+    @test_throws ArgumentError terra._prepare_wall_loss_data(
+        layout, config, bad_wall_cfg;
+        wall_inputs = wall_inputs)
+
+    du_base = zeros(length(u_base))
+    du_wall = zeros(length(u_base))
+
+    p_base = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
+    )
+    p_wall = (
+        layout = layout,
+        config = config,
+        teex_const = state.teex_const,
+        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
+        sources = (residence_time = nothing, wall_losses = prepared.wall_losses),
+    )
+
+    @test_nowarn terra.terra_ode_system!(du_base, u_base, p_base, 0.0)
+    @test_nowarn terra.terra_ode_system!(du_wall, u_base, p_wall, 0.0)
+    @test du_wall ≈ du_base atol = 0.0 rtol = 1e-12
 end
 
 @testset "Residence-time inlet_reactor support" begin

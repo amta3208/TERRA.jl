@@ -50,6 +50,12 @@ function _write_chain_profile_json(path::AbstractString; schema_version::Abstrac
             "species_u_m_s" => Dict{String, Any}(species_u_m_s),
         ),
     )
+    if schema_version == "terra_chain_profile_v4"
+        payload["wall_profile"] = Dict{String, Any}(
+            "a_wall_over_v_m_inv" => fill(100.0, length(z_m)),
+            "channel_gap_m" => fill(0.02, length(z_m)),
+        )
+    end
     if diagnostics !== nothing
         payload["diagnostics"] = diagnostics
     end
@@ -61,9 +67,7 @@ function _write_chain_profile_json(path::AbstractString; schema_version::Abstrac
 end
 
 @testset "load_chain_profile" begin
-    package_root = normpath(joinpath(@__DIR__, "..", ".."))
-    script_path = joinpath(package_root, "tools", "hallthruster_jl", "export_chain_profile.jl")
-    Base.include(Main, script_path)
+    export_tool = hallthruster_export_tool()
 
     @testset "Loads Exported Fixture Profile" begin
         temp_case = mktempdir()
@@ -73,7 +77,7 @@ end
                 "output",
                 "hallthruster_solution_avg.json",
             )
-            profile_path = Main.export_chain_profile([
+            profile_path = export_tool.export_chain_profile([
                 input_path,
                 temp_case,
                 "--average_start_time=0.0005",
@@ -81,12 +85,15 @@ end
             profile = terra.load_chain_profile(profile_path)
 
             @test profile isa terra.AxialChainProfile
-            @test profile.schema_version == "terra_chain_profile_v3"
+            @test profile.schema_version == "terra_chain_profile_v4"
             @test length(profile.z_m) == length(profile.dx_m) == length(profile.te_K)
             @test sort!(collect(keys(profile.species_u_m_s))) == ["N", "N+", "N2", "N2+"]
             @test haskey(profile.selection, "exported_species")
             @test haskey(profile.generator, "tool")
             @test haskey(profile.diagnostics, "n_total_m3")
+            @test profile.wall_profile !== nothing
+            @test all(isapprox.(profile.wall_profile.channel_gap_m, 0.0155; atol = 1e-12))
+            @test all(isapprox.(profile.wall_profile.a_wall_over_v_m_inv, 2.0 / 0.0155; atol = 1e-12))
             @test profile.source_snapshot !== nothing
             @test profile.inlet.composition.species == ["N", "N2", "N+", "N2+", "E-"]
             @test profile.inlet.source_compact_index == 1
@@ -102,11 +109,18 @@ end
     @testset "Supports Missing Optional Diagnostics" begin
         temp_dir = mktempdir()
         try
-            profile_path = joinpath(temp_dir, "chain_profile_v3.json")
-            _write_chain_profile_json(profile_path; schema_version = "terra_chain_profile_v3")
+            profile_path = joinpath(temp_dir, "chain_profile_v4.json")
+            _write_chain_profile_json(profile_path; schema_version = "terra_chain_profile_v4")
+            raw = JSON.parsefile(profile_path)
+            delete!(raw, "wall_profile")
+            open(profile_path, "w") do io
+                JSON.print(io, raw, 2)
+                write(io, '\n')
+            end
 
             profile = terra.load_chain_profile(profile_path)
             @test isempty(profile.diagnostics)
+            @test profile.wall_profile === nothing
             @test profile.source_snapshot === nothing
         finally
             rm(temp_dir; recursive = true, force = true)
@@ -116,7 +130,7 @@ end
     @testset "Rejects Unsupported Schema Version" begin
         temp_dir = mktempdir()
         try
-            for schema_version in ("terra_chain_profile_v2", "terra_chain_profile_v1")
+            for schema_version in ("terra_chain_profile_v3", "terra_chain_profile_v2", "terra_chain_profile_v1")
                 profile_path = joinpath(temp_dir, "chain_profile_bad_version.json")
                 _write_chain_profile_json(profile_path; schema_version = schema_version)
                 @test_throws ArgumentError terra.load_chain_profile(profile_path)
@@ -132,7 +146,7 @@ end
             profile_path = joinpath(temp_dir, "chain_profile_bad_z.json")
             _write_chain_profile_json(
                 profile_path;
-                schema_version = "terra_chain_profile_v3",
+                schema_version = "terra_chain_profile_v4",
                 z_m = [0.01, 0.02, 0.019],
             )
 
@@ -148,7 +162,7 @@ end
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_length.json")
             _write_chain_profile_json(
                 profile_path;
-                schema_version = "terra_chain_profile_v3",
+                schema_version = "terra_chain_profile_v4",
                 species_u_m_s = Dict(
                     "N" => [200.0, 210.0, 220.0],
                     "N2" => [180.0, 181.0],
@@ -169,7 +183,7 @@ end
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_velocity.json")
             _write_chain_profile_json(
                 profile_path;
-                schema_version = "terra_chain_profile_v3",
+                schema_version = "terra_chain_profile_v4",
                 species_u_m_s = Dict(
                     "N" => [200.0, 210.0, 220.0],
                     "N2" => [180.0, 181.0, 182.0],
@@ -177,6 +191,24 @@ end
                     "N2+" => [900.0, 1000.0, 1100.0],
                 ),
             )
+
+            @test_throws ArgumentError terra.load_chain_profile(profile_path)
+        finally
+            rm(temp_dir; recursive = true, force = true)
+        end
+    end
+
+    @testset "Rejects Malformed Wall Profile Arrays" begin
+        temp_dir = mktempdir()
+        try
+            profile_path = joinpath(temp_dir, "chain_profile_bad_wall_profile.json")
+            _write_chain_profile_json(profile_path; schema_version = "terra_chain_profile_v4")
+            raw = JSON.parsefile(profile_path)
+            raw["wall_profile"]["channel_gap_m"] = [0.02, 0.02]
+            open(profile_path, "w") do io
+                JSON.print(io, raw, 2)
+                write(io, '\n')
+            end
 
             @test_throws ArgumentError terra.load_chain_profile(profile_path)
         finally

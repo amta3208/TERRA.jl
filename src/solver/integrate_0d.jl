@@ -128,6 +128,7 @@ end
 
 function integrate_0d_system(config::Config, initial_state;
         sources::Union{Nothing, SourceTermsConfig} = config.sources)
+    _validate_direct_wall_loss_usage(sources)
     results, _ = _integrate_0d_system(config, initial_state;
         sources = sources)
     return results
@@ -135,6 +136,7 @@ end
 
 function _integrate_0d_system(config::Config, initial_state;
         sources::Union{Nothing, SourceTermsConfig} = config.sources,
+        wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
         inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -201,6 +203,7 @@ function _integrate_0d_system(config::Config, initial_state;
 
     prepared_sources = _prepare_source_terms_data(
         layout, config, u0, sources;
+        wall_inputs = wall_inputs,
         inlet_state_cache = inlet_state_cache)
 
     p = (

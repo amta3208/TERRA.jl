@@ -137,6 +137,7 @@ and result processing.
 """
 function _solve_terra_0d_internal(config::Config;
         sources::Union{Nothing, SourceTermsConfig} = config.sources,
+        wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
         state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
@@ -151,6 +152,7 @@ function _solve_terra_0d_internal(config::Config;
         # Run the time integration
         results, final_state_cache = _integrate_0d_system(config, initial_state;
             sources = sources,
+            wall_inputs = wall_inputs,
             inlet_state_cache = state_cache)
 
         @info "TERRA simulation completed successfully"
@@ -170,6 +172,7 @@ end
 
 function solve_terra_0d(config::Config;
         sources::Union{Nothing, SourceTermsConfig} = config.sources)
+    _validate_direct_wall_loss_usage(sources)
     results, _ = _solve_terra_0d_internal(config;
         sources = sources)
     return results

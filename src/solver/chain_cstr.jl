@@ -103,6 +103,31 @@ function _profile_species_velocity_at_segment(profile::AxialChainProfile, segmen
     return species_u
 end
 
+function _build_segment_wall_inputs(profile::AxialChainProfile,
+        segment_index::Integer,
+        wall_cfg::Union{Nothing, WallLossConfig} = nothing)
+    if profile.wall_profile === nothing
+        if wall_cfg !== nothing && wall_cfg.enabled
+            throw(ArgumentError(
+                "WallLossConfig is enabled, but AxialChainProfile.wall_profile is missing. " *
+                "Phase 1 wall losses require `wall_profile` in a `terra_chain_profile_v4` chain profile."
+            ))
+        end
+        return nothing
+    end
+
+    wall_profile = profile.wall_profile
+    return SegmentWallInputs(;
+        a_wall_over_v_m_inv = wall_profile.a_wall_over_v_m_inv[segment_index],
+        channel_gap_m = wall_profile.channel_gap_m === nothing ? nothing :
+                        wall_profile.channel_gap_m[segment_index],
+        wall_temperature_K = wall_profile.wall_temperature_K === nothing ? nothing :
+                             wall_profile.wall_temperature_K[segment_index],
+        ion_edge_to_center_ratio = wall_profile.ion_edge_to_center_ratio === nothing ? nothing :
+                                   wall_profile.ion_edge_to_center_ratio[segment_index],
+    )
+end
+
 function _non_electron_species_names(config::Config)
     species = config.reactor.composition.species
     molecular_weights = get_molecular_weights(species)
@@ -268,7 +293,10 @@ function _build_segment_sources(base_config::Config,
         U_energy = u_energy,
         inlet_reactor = inlet_reactor,
     )
-    return SourceTermsConfig(; residence_time = rt)
+    return SourceTermsConfig(;
+        residence_time = rt,
+        wall_losses = base_config.sources.wall_losses,
+    )
 end
 
 function _build_segment_runtime(base_runtime::RuntimeConfig,
@@ -386,6 +414,10 @@ function _build_chain_diagnostics(base_config::Config,
         )
     end
 
+    if profile.wall_profile !== nothing
+        diagnostics["wall_profile"] = _chain_wall_profile_to_dict(profile.wall_profile)
+    end
+
     simulated_n_total = [reactor.composition.total_number_density for reactor in segment_end_reactors]
     diagnostics["simulated_total_number_density"] = simulated_n_total
 
@@ -458,6 +490,7 @@ function solve_terra_chain_steady(config::Config,
         local_state_cache = nothing
         try
             segment_config = _build_chain_segment_config(config, profile, k, inlet_reactor, marching)
+            wall_inputs = _build_segment_wall_inputs(profile, k, segment_config.sources.wall_losses)
             initialize_terra(segment_config, segment_config.runtime.case_path)
             if marching.handoff_mode == :full_state && full_state_handoff_supported === nothing
                 full_state_handoff_supported = has_electronic_sts_wrapper()
@@ -469,6 +502,7 @@ function solve_terra_chain_steady(config::Config,
                 full_state_handoff_supported === true &&
                 requested_state_cache.rho_ex_cgs !== nothing
             local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
+                wall_inputs = wall_inputs,
                 state_cache = requested_state_cache)
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"

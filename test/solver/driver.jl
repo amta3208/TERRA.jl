@@ -16,6 +16,7 @@
         @test config.numerics.time.nstep == 500000
         @test config.numerics.time.method == 2
         @test config.sources.residence_time === nothing
+        @test config.sources.wall_losses === nothing
     end
 end
 
@@ -55,6 +56,28 @@ end
 
     @test results.success == true
     @test length(results.t) == config.numerics.solver.saveat_count
+end
+
+@testset "Direct 0D solve rejects wall-loss configs without profile inputs" begin
+    base = terra.nitrogen_10ev_config(; isothermal = false)
+    wall_cfg = terra.WallLossConfig(;
+        species_models = Dict(
+            "N+" => terra.SpeciesWallModel(;
+                class = :ion_neutralization,
+                rate_model = :bohm_gap,
+                products = Dict("N" => 1.0),
+            ),
+        ),
+    )
+    config = terra.Config(;
+        reactor = base.reactor,
+        models = base.models,
+        sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
+        numerics = base.numerics,
+        runtime = base.runtime,
+    )
+
+    @test_throws ArgumentError terra.solve_terra_0d(config; sources = config.sources)
 end
 
 @testset "Native Output Generation" begin
