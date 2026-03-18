@@ -15,6 +15,7 @@
         @test config.numerics.time.duration ≈ 1e-3
         @test config.numerics.time.nstep == 500000
         @test config.numerics.time.method == 2
+        @test config.sources.residence_time === nothing
     end
 end
 
@@ -38,8 +39,7 @@ end
                 abstol_density = 1e-10,
                 ramp_understep_ratio = inv(64),
                 ramp_history_steps = 4),
-            space = base.numerics.space,
-            residence_time = nothing),
+            space = base.numerics.space),
         runtime = terra.RuntimeConfig(;
             database_path = base.runtime.database_path,
             case_path = case_path,

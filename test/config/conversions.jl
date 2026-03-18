@@ -16,6 +16,7 @@
                     total_number_density = 1e19),  # SI: 1/m^3
                 thermal = base.reactor.thermal),
             models = base.models,
+            sources = base.sources,
             numerics = base.numerics,
             runtime = terra.RuntimeConfig(;
                 database_path = base.runtime.database_path,
@@ -33,6 +34,7 @@
         @test converted.reactor.composition.mole_fractions ==
               config_si.reactor.composition.mole_fractions
         @test converted.runtime.write_native_outputs == config_si.runtime.write_native_outputs
+        @test converted.sources.residence_time === config_si.sources.residence_time
     end
 
     @testset "CGS to SI Conversion" begin
@@ -45,6 +47,7 @@
         @test converted.reactor.composition.mole_fractions ==
               config_cgs.reactor.composition.mole_fractions
         @test converted.runtime.write_native_outputs == config_cgs.runtime.write_native_outputs
+        @test converted.sources.residence_time === config_cgs.sources.residence_time
     end
 
     @testset "Invalid Conversion" begin

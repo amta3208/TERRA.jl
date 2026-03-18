@@ -8,8 +8,7 @@
             thermal = terra.ReactorThermalState(;
                 Tt = 300.0, Tv = 300.0, Tee = 300.0, Te = 10000.0)),
         numerics = terra.NumericsConfig(;
-            time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3),
-            residence_time = nothing),
+            time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3)),
         runtime = terra.RuntimeConfig(;
             case_path = pwd(),
             unit_system = :CGS,

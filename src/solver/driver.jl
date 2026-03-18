@@ -136,8 +136,7 @@ and result processing.
 - `ErrorException` if TERRA not initialized or simulation fails
 """
 function _solve_terra_0d_internal(config::Config;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing,
+        sources::Union{Nothing, SourceTermsConfig} = config.sources,
         state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
@@ -151,8 +150,7 @@ function _solve_terra_0d_internal(config::Config;
 
         # Run the time integration
         results, final_state_cache = _integrate_0d_system(config, initial_state;
-            residence_time = residence_time,
-            use_residence_time = use_residence_time,
+            sources = sources,
             inlet_state_cache = state_cache)
 
         @info "TERRA simulation completed successfully"
@@ -171,11 +169,9 @@ function _solve_terra_0d_internal(config::Config;
 end
 
 function solve_terra_0d(config::Config;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing)
+        sources::Union{Nothing, SourceTermsConfig} = config.sources)
     results, _ = _solve_terra_0d_internal(config;
-        residence_time = residence_time,
-        use_residence_time = use_residence_time)
+        sources = sources)
     return results
 end
 
@@ -235,12 +231,14 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
               "Please ensure the database is complete.")
     end
 
-    numerics = NumericsConfig(; time = time, residence_time = nothing)
+    numerics = NumericsConfig(; time = time)
+    sources = SourceTermsConfig()
     runtime = RuntimeConfig(; database_path = database_path)
 
     return Config(;
         reactor = reactor,
         models = models,
+        sources = sources,
         numerics = numerics,
         runtime = runtime)
 end

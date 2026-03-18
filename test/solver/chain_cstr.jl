@@ -186,10 +186,9 @@
         segment1_config = terra._build_chain_segment_config(
             config, profile, 1, inlet_reactor, marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
+        @test segment1_config.sources.residence_time !== nothing
         @test_nowarn terra.initialize_terra(segment1_config, segment1_config.runtime.case_path)
-        segment1_result, segment1_cache = terra._solve_terra_0d_internal(segment1_config;
-            residence_time = segment1_config.numerics.residence_time,
-            use_residence_time = true)
+        segment1_result, segment1_cache = terra._solve_terra_0d_internal(segment1_config)
 
         segment1_endpoint = terra._extract_segment_endpoint_reactor(config, segment1_result)
         segment2_config = terra._build_chain_segment_config(

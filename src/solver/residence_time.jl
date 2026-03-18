@@ -133,6 +133,7 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         inlet_config = Config(;
             reactor = inlet_reactor,
             models = config.models,
+            sources = config.sources,
             numerics = config.numerics,
             runtime = config.runtime)
 
@@ -187,18 +188,4 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         inv_tau_species = inv_tau_species,
         inv_tau_energy = inv_tau_energy
     )
-end
-
-@inline function _resolve_residence_time(
-        residence_time::Union{Nothing, ResidenceTimeConfig},
-        use_residence_time::Union{Nothing, Bool})
-    default_enabled = residence_time !== nothing && residence_time.enabled
-    enabled = use_residence_time === nothing ? default_enabled : use_residence_time
-    if !enabled
-        return nothing
-    end
-    residence_time === nothing && throw(ArgumentError(
-        "Residence-time forcing was requested, but no ResidenceTimeConfig was provided."
-    ))
-    return residence_time
 end

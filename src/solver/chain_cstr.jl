@@ -253,21 +253,22 @@ function _build_segment_reactor(inlet_reactor::ReactorConfig,
     return ReactorConfig(; composition = inlet_reactor.composition, thermal = thermal)
 end
 
-function _build_segment_residence_time(base_config::Config,
+function _build_segment_sources(base_config::Config,
         profile::AxialChainProfile,
         segment_index::Integer,
         inlet_reactor::ReactorConfig)
-    base_rt = base_config.numerics.residence_time
+    base_rt = base_config.sources.residence_time
     u_energy = base_rt === nothing ? nothing : base_rt.U_energy
     species_u = _profile_species_velocity_at_segment(profile, segment_index)
 
-    return ResidenceTimeConfig(
+    rt = ResidenceTimeConfig(
         enabled = true,
         L = profile.dx_m[segment_index],
         U_species = species_u,
         U_energy = u_energy,
         inlet_reactor = inlet_reactor,
     )
+    return SourceTermsConfig(; residence_time = rt)
 end
 
 function _build_segment_runtime(base_runtime::RuntimeConfig,
@@ -294,18 +295,18 @@ function _build_chain_segment_config(base_config::Config,
     reactor = _build_segment_reactor(
         inlet_reactor, profile.te_K[segment_index], marching, segment_index)
     models = _build_chain_models(base_config.models, marching)
-    rt = _build_segment_residence_time(base_config, profile, segment_index, inlet_reactor)
+    sources = _build_segment_sources(base_config, profile, segment_index, inlet_reactor)
     numerics = NumericsConfig(
         time = base_config.numerics.time,
         solver = base_config.numerics.solver,
         space = base_config.numerics.space,
-        residence_time = rt,
     )
     runtime = _build_segment_runtime(base_config.runtime, segment_case_path)
 
     return Config(;
         reactor = reactor,
         models = models,
+        sources = sources,
         numerics = numerics,
         runtime = runtime,
     )
@@ -412,7 +413,7 @@ This implementation supports:
 - `termination_mode = :final_time`
 
 # Arguments
-- `config::Config`: Base TERRA config for solver controls and inlet state
+- `config::Config`: Base TERRA config for models, sources, solver controls, and inlet state
 - `profile::AxialChainProfile`: Axial chain profile
 
 # Keyword Arguments
@@ -468,8 +469,6 @@ function solve_terra_chain_steady(config::Config,
                 full_state_handoff_supported === true &&
                 requested_state_cache.rho_ex_cgs !== nothing
             local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
-                residence_time = segment_config.numerics.residence_time,
-                use_residence_time = true,
                 state_cache = requested_state_cache)
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"

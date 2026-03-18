@@ -139,18 +139,20 @@ end
         thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0))
     models = terra.ModelConfig()
     numerics = terra.NumericsConfig(;
-        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3),
-        residence_time = nothing)
+        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3))
+    sources = terra.SourceTermsConfig()
     runtime = terra.RuntimeConfig(; case_path = pwd(), unit_system = :CGS)
 
     config = terra.Config(;
         reactor = reactor,
         models = models,
+        sources = sources,
         numerics = numerics,
         runtime = runtime)
 
     @test config.reactor == reactor
     @test config.models == models
+    @test config.sources.residence_time === sources.residence_time
     @test config.numerics == numerics
     @test config.runtime == runtime
 end
@@ -166,8 +168,8 @@ end
                 Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0)),
         numerics = terra.NumericsConfig(;
             time = terra.TimeConfig(;
-                dt = 1e-6, dt_output = 1e-4, duration = 1e-3, nstep = 1234, method = 2),
-            residence_time = nothing),
+                dt = 1e-6, dt_output = 1e-4, duration = 1e-3, nstep = 1234, method = 2)),
+        sources = terra.SourceTermsConfig(),
         runtime = terra.RuntimeConfig(;
             database_path = ".",
             case_path = pwd(),
@@ -188,6 +190,7 @@ end
     @test config_time.numerics.time.dt_output == config.numerics.time.dt_output
     @test config_time.numerics.time.method == 1
     @test config.numerics.time.dt == 1e-6
+    @test config_time.sources.residence_time === config.sources.residence_time
 
     config_runtime = terra.with_runtime(config;
         unit_system = :SI,
@@ -196,9 +199,18 @@ end
     @test config_runtime.runtime.unit_system == :SI
     @test config_runtime.runtime.print_source_terms == true
     @test config_runtime.runtime.write_native_outputs == true
+    @test config_runtime.sources.residence_time === config.sources.residence_time
 
     @test_throws ArgumentError terra.with_case_path(config, joinpath(temp_case, "missing"))
     @test_throws ArgumentError terra.with_time(config; method = 9)
+    @test_throws MethodError terra.NumericsConfig(;
+        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3),
+        residence_time = nothing)
+end
+
+@testset "SourceTermsConfig" begin
+    cfg = terra.SourceTermsConfig()
+    @test cfg.residence_time === nothing
 end
 
 @testset "ResidenceTimeConfig" begin

@@ -460,8 +460,8 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
 
     if !is_isothermal
         calculate_rhs_api_wrapper!(du, u_eval)
-        if hasproperty(p, :residence_time)
-            _apply_residence_time_term!(du, u_eval, p.residence_time)
+        if hasproperty(p, :sources)
+            _apply_source_terms!(du, u_eval, p.sources)
         end
         if needs_clamp
             _compact_apply_shampine_positivity!(du, u, layout)
@@ -485,8 +485,8 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     calculate_rhs_api_isothermal_teex_wrapper!(du, u_eval, teex_const;
         tex = teex_vec)
 
-    if hasproperty(p, :residence_time)
-        _apply_residence_time_term!(du, u_eval, p.residence_time)
+    if hasproperty(p, :sources)
+        _apply_source_terms!(du, u_eval, p.sources)
     end
     if needs_clamp
         _compact_apply_shampine_positivity!(du, u, layout)

@@ -381,20 +381,32 @@ end
 """
 $(SIGNATURES)
 
-Numerical controls for the wrapper runtime.
+Wrapper-managed additive source-term configuration.
+"""
+struct SourceTermsConfig
+    residence_time::Union{Nothing, ResidenceTimeConfig}
+
+    function SourceTermsConfig(;
+            residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
+        return new(residence_time)
+    end
+end
+
+"""
+$(SIGNATURES)
+
+Solver and discretization controls for the wrapper runtime.
 """
 struct NumericsConfig
     time::TimeConfig
     solver::ODESolverConfig
     space::SpaceConfig
-    residence_time::Union{Nothing, ResidenceTimeConfig}
 
     function NumericsConfig(;
             time::TimeConfig,
             solver::ODESolverConfig = ODESolverConfig(),
-            space::SpaceConfig = SpaceConfig(),
-            residence_time::Union{Nothing, ResidenceTimeConfig} = nothing)
-        return new(time, solver, space, residence_time)
+            space::SpaceConfig = SpaceConfig())
+        return new(time, solver, space)
     end
 end
 
@@ -440,15 +452,17 @@ Top-level configuration for refactored TERRA workflows.
 struct Config
     reactor::ReactorConfig
     models::ModelConfig
+    sources::SourceTermsConfig
     numerics::NumericsConfig
     runtime::RuntimeConfig
 
     function Config(;
             reactor::ReactorConfig,
             numerics::NumericsConfig,
+            sources::SourceTermsConfig = SourceTermsConfig(),
             models::ModelConfig = ModelConfig(),
             runtime::RuntimeConfig = RuntimeConfig())
-        return new(reactor, models, numerics, runtime)
+        return new(reactor, models, sources, numerics, runtime)
     end
 end
 

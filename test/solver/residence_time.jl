@@ -60,7 +60,7 @@
         config = config,
         teex_const = state.teex_const,
         teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-        residence_time = rt
+        sources = (residence_time = rt,)
     )
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
@@ -151,7 +151,7 @@ end
         config = config,
         teex_const = state.teex_const,
         teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-        residence_time = rt
+        sources = (residence_time = rt,)
     )
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
@@ -162,14 +162,30 @@ end
     @test du_rt[layout.idx_eeex] == 0.0
 end
 
-@testset "Residence-time override toggle" begin
+@testset "Source-term preparation respects empty and populated sources" begin
+    config = terra.nitrogen_10ev_config(; isothermal = false)
+    @test_nowarn reset_and_init!(tempname(); config = config)
+
+    state = terra.config_to_initial_state(config)
+    layout = terra.get_api_layout()
+    u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
+        rho_ex = state.rho_ex,
+        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+        rho_erot = layout.rot_noneq ? 0.0 : nothing,
+        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+
     rt_cfg = terra.ResidenceTimeConfig(;
         enabled = true,
         L = 1.0,
         U_species = Dict("N" => 1.0, "N2" => 1.0, "N+" => 1.0, "N2+" => 1.0))
-    @test terra._resolve_residence_time(rt_cfg, nothing) === rt_cfg
-    @test terra._resolve_residence_time(rt_cfg, false) === nothing
-    @test_throws ArgumentError terra._resolve_residence_time(nothing, true)
+
+    prepared = terra._prepare_source_terms_data(
+        layout, config, u_base, terra.SourceTermsConfig(; residence_time = rt_cfg))
+    @test prepared.residence_time !== nothing
+
+    disabled = terra._prepare_source_terms_data(
+        layout, config, u_base, terra.SourceTermsConfig())
+    @test disabled.residence_time === nothing
 end
 
 @testset "Residence-time inlet_reactor support" begin

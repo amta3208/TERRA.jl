@@ -35,6 +35,7 @@ include("solver/api_layout.jl")
 include("solver/initial_state.jl")
 include("solver/state_vector.jl")
 include("solver/residence_time.jl")
+include("solver/source_terms.jl")
 include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
 include("solver/driver.jl")
@@ -43,7 +44,7 @@ include("solver/chain_cstr.jl")
 export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
-export NumericsConfig, RuntimeConfig, ResidenceTimeConfig
+export NumericsConfig, RuntimeConfig, ResidenceTimeConfig, SourceTermsConfig
 export ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata

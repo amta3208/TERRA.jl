@@ -10,7 +10,8 @@ Notes:
 - Vibrational STS is not yet supported in this wrapper (vibrational *mode* energy is supported).
 - For isothermal Teex cases, the stored energy slot in `u` is `rho_rem` (legacy semantics), and
   the working `y` passed to Fortran is reconstructed each call.
-- Optional residence-time (CSTR) terms can be enabled via `residence_time`.
+- Wrapper-managed additive source terms are prepared from `config.sources` or an explicit
+  `sources` override.
 """
 mutable struct NativeRampLimiter{T <: Real}
     base_dt::T
@@ -126,17 +127,14 @@ function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
 end
 
 function integrate_0d_system(config::Config, initial_state;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing)
+        sources::Union{Nothing, SourceTermsConfig} = config.sources)
     results, _ = _integrate_0d_system(config, initial_state;
-        residence_time = residence_time,
-        use_residence_time = use_residence_time)
+        sources = sources)
     return results
 end
 
 function _integrate_0d_system(config::Config, initial_state;
-        residence_time::Union{Nothing, ResidenceTimeConfig} = config.numerics.residence_time,
-        use_residence_time::Union{Nothing, Bool} = nothing,
+        sources::Union{Nothing, SourceTermsConfig} = config.sources,
         inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -201,11 +199,8 @@ function _integrate_0d_system(config::Config, initial_state;
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
-    effective_residence_time = _resolve_residence_time(residence_time, use_residence_time)
-    residence_time_data = (effective_residence_time === nothing ||
-                           !effective_residence_time.enabled) ? nothing :
-                          _prepare_residence_time_data(
-        layout, config, u0, effective_residence_time;
+    prepared_sources = _prepare_source_terms_data(
+        layout, config, u0, sources;
         inlet_state_cache = inlet_state_cache)
 
     p = (
@@ -217,7 +212,7 @@ function _integrate_0d_system(config::Config, initial_state;
         teex_const = initial_state.teex_const,
         teex_const_vec = teex_const_vec,
         work_u = work_u,
-        residence_time = residence_time_data
+        sources = prepared_sources
     )
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)

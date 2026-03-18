@@ -23,6 +23,7 @@ function with_runtime(config::Config;
     return Config(;
         reactor = config.reactor,
         models = config.models,
+        sources = config.sources,
         numerics = config.numerics,
         runtime = runtime)
 end
@@ -56,11 +57,11 @@ function with_time(config::Config;
     numerics = NumericsConfig(;
         time = time,
         solver = config.numerics.solver,
-        space = config.numerics.space,
-        residence_time = config.numerics.residence_time)
+        space = config.numerics.space)
     return Config(;
         reactor = config.reactor,
         models = config.models,
+        sources = config.sources,
         numerics = numerics,
         runtime = config.runtime)
 end
@@ -111,6 +112,7 @@ function convert_config_units(config::Config, target_unit_system::Symbol)
     return Config(;
         reactor = new_reactor,
         models = config.models,
+        sources = config.sources,
         numerics = config.numerics,
         runtime = new_runtime)
 end
