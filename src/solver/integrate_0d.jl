@@ -100,15 +100,15 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
     understep_dt = min(initial_dt, initial_dt * understep_ratio)
     affect! = NativeRampLimiter(initial_dt, understep_dt, history_steps)
     DiscreteCallback(native_ramp_condition, affect!;
-        initialize = native_ramp_initialize,
-        save_positions = (false, false))
+                     initialize = native_ramp_initialize,
+                     save_positions = (false, false))
 end
 
 function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
-        p,
-        layout::ApiLayout,
-        u_final::Vector{Float64},
-        is_isothermal::Bool)
+                                      p,
+                                      layout::ApiLayout,
+                                      u_final::Vector{Float64},
+                                      is_isothermal::Bool)
     rho_sp = zeros(Float64, layout.nsp)
     rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
@@ -120,24 +120,23 @@ function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
     end
 
     return ReactorStateCache(;
-        species = species,
-        rho_sp_cgs = rho_sp,
-        rho_ex_cgs = rho_ex,
-    )
+                             species = species,
+                             rho_sp_cgs = rho_sp,
+                             rho_ex_cgs = rho_ex,)
 end
 
 function integrate_0d_system(config::Config, initial_state;
-        sources::Union{Nothing, SourceTermsConfig} = config.sources)
+                             sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
     results, _ = _integrate_0d_system(config, initial_state;
-        sources = sources)
+                                      sources = sources)
     return results
 end
 
 function _integrate_0d_system(config::Config, initial_state;
-        sources::Union{Nothing, SourceTermsConfig} = config.sources,
-        wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                              sources::Union{Nothing, SourceTermsConfig} = config.sources,
+                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
+                              inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
     solver_cfg = config.numerics.solver
@@ -178,13 +177,13 @@ function _integrate_0d_system(config::Config, initial_state;
     rho_evib0 = layout.vib_noneq ? initial_state.rho_evib : nothing
 
     u0 = pack_state_vector(layout, initial_state.rho_sp, energy_scalar0;
-        rho_ex = rho_ex0,
-        rho_u = layout.nd >= 1 ? 0.0 : nothing,
-        rho_v = layout.nd >= 2 ? 0.0 : nothing,
-        rho_w = layout.nd >= 3 ? 0.0 : nothing,
-        rho_eeex = rho_eeex0,
-        rho_erot = rho_erot0,
-        rho_evib = rho_evib0)
+                           rho_ex = rho_ex0,
+                           rho_u = layout.nd >= 1 ? 0.0 : nothing,
+                           rho_v = layout.nd >= 2 ? 0.0 : nothing,
+                           rho_w = layout.nd >= 3 ? 0.0 : nothing,
+                           rho_eeex = rho_eeex0,
+                           rho_erot = rho_erot0,
+                           rho_evib = rho_evib0)
 
     @info "Initial state vector created" length_u0=length(u0) neq=layout.neq n_species=n_species
 
@@ -201,27 +200,25 @@ function _integrate_0d_system(config::Config, initial_state;
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
-    prepared_sources = _prepare_source_terms_data(
-        layout, config, u0, sources;
-        wall_inputs = wall_inputs,
-        inlet_state_cache = inlet_state_cache)
+    prepared_sources = _prepare_source_terms_data(layout, config, u0, sources;
+                                                  wall_inputs = wall_inputs,
+                                                  inlet_state_cache = inlet_state_cache)
+    result_metadata = _source_terms_result_metadata(prepared_sources)
 
-    p = (
-        layout = layout,
-        config = config,
-        molecular_weights = molecular_weights,
-        species = species_names,
-        gas_constants = gas_constants,
-        teex_const = initial_state.teex_const,
-        teex_const_vec = teex_const_vec,
-        work_u = work_u,
-        sources = prepared_sources
-    )
+    p = (layout = layout,
+         config = config,
+         molecular_weights = molecular_weights,
+         species = species_names,
+         gas_constants = gas_constants,
+         teex_const = initial_state.teex_const,
+         teex_const_vec = teex_const_vec,
+         work_u = work_u,
+         sources = prepared_sources)
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
     ramp_callback = native_ramp_callback(dt;
-        understep_ratio = solver_cfg.ramp_understep_ratio,
-        history_steps = solver_cfg.ramp_history_steps)
+                                         understep_ratio = solver_cfg.ramp_understep_ratio,
+                                         history_steps = solver_cfg.ramp_history_steps)
 
     @info "ODE problem created, starting integration..."
 
@@ -270,16 +267,16 @@ function _integrate_0d_system(config::Config, initial_state;
         end
 
         sol = solve(prob;
-            alg_hints = [:stiff],
-            dt = dt,
-            callback = ramp_callback,
-            isoutofdomain = (u, _p, _t) -> (!_compact_nonnegative_ok(u, layout) || any(!isfinite, u)),
-            reltol = local_reltol,
-            abstol = (local_abstol_vec === nothing ? local_abstol_density :
-                      local_abstol_vec),
-            saveat = range(0.0, tlim; length = solver_cfg.saveat_count),
-            save_everystep = false
-        )
+                    alg_hints = [:stiff],
+                    dt = dt,
+                    callback = ramp_callback,
+                    isoutofdomain = (u, _p, _t) -> (!_compact_nonnegative_ok(u, layout) ||
+                                                    any(!isfinite, u)),
+                    reltol = local_reltol,
+                    abstol = (local_abstol_vec === nothing ? local_abstol_density :
+                              local_abstol_vec),
+                    saveat = range(0.0, tlim; length = solver_cfg.saveat_count),
+                    save_everystep = false)
 
         @info "ODE integration completed" retcode=sol.retcode
 
@@ -289,13 +286,14 @@ function _integrate_0d_system(config::Config, initial_state;
             for (i, t) in enumerate(sol.t)
                 local_dt = i == 1 ? first_dt : (t - sol.t[i - 1])
                 if is_isothermal
-                    _compact_isothermal_fill_fortran_y_work!(
-                        work_y, work_rho_sp, work_rho_ex, sol.u[i], p, layout)
-                    write_api_outputs_wrapper(
-                        i - 1, t, local_dt, work_y; dist = 0.0, dx = 0.0)
+                    _compact_isothermal_fill_fortran_y_work!(work_y, work_rho_sp,
+                                                             work_rho_ex, sol.u[i], p,
+                                                             layout)
+                    write_api_outputs_wrapper(i - 1, t, local_dt, work_y; dist = 0.0,
+                                              dx = 0.0)
                 else
-                    write_api_outputs_wrapper(
-                        i - 1, t, local_dt, sol.u[i]; dist = 0.0, dx = 0.0)
+                    write_api_outputs_wrapper(i - 1, t, local_dt, sol.u[i]; dist = 0.0,
+                                              dx = 0.0)
                 end
             end
         end
@@ -319,8 +317,8 @@ function _integrate_0d_system(config::Config, initial_state;
             ui = sol.u[i]
 
             if is_isothermal
-                iso = _compact_isothermal_fill_fortran_y_work!(
-                    work_y, work_rho_sp, rho_ex_arg, ui, p, layout)
+                iso = _compact_isothermal_fill_fortran_y_work!(work_y, work_rho_sp,
+                                                               rho_ex_arg, ui, p, layout)
                 species_densities[:, i] = work_rho_sp
                 total_energies[i] = iso.rho_etot
 
@@ -330,46 +328,51 @@ function _integrate_0d_system(config::Config, initial_state;
                 temperatures_tv[i] = temps.tvib
 
                 if print_integration_output
-                    _print_terra_integration_output(
-                        t, local_dt, work_rho_sp, molecular_weights, temps,
-                        iso.rho_etot;
-                        rho_ex = rho_ex_arg,
-                        rho_eeex = iso.rho_eeex,
-                        rho_evib = iso.rho_evib,
-                        has_electronic_states = has_electronic_states,
-                        electronic_state_counts = electronic_state_counts)
+                    _print_terra_integration_output(t, local_dt, work_rho_sp,
+                                                    molecular_weights, temps,
+                                                    iso.rho_etot;
+                                                    rho_ex = rho_ex_arg,
+                                                    rho_eeex = iso.rho_eeex,
+                                                    rho_evib = iso.rho_evib,
+                                                    has_electronic_states = has_electronic_states,
+                                                    electronic_state_counts = electronic_state_counts)
                 end
             else
-                _reconstruct_rho_sp_rho_ex_from_compact!(
-                    work_rho_sp, rho_ex_arg, ui, layout)
+                _reconstruct_rho_sp_rho_ex_from_compact!(work_rho_sp, rho_ex_arg, ui,
+                                                         layout)
                 species_densities[:, i] = work_rho_sp
 
                 rho_etot = Float64(ui[layout.idx_etot])
                 total_energies[i] = rho_etot
 
                 temps = calculate_temperatures_wrapper(work_rho_sp, rho_etot;
-                    rho_ex = rho_ex_arg,
-                    rho_erot = layout.idx_erot == 0 ? nothing :
-                               Float64(ui[layout.idx_erot]),
-                    rho_eeex = layout.idx_eeex == 0 ? nothing :
-                               Float64(ui[layout.idx_eeex]),
-                    rho_evib = layout.idx_evib == 0 ? nothing :
-                               Float64(ui[layout.idx_evib]))
+                                                       rho_ex = rho_ex_arg,
+                                                       rho_erot = layout.idx_erot == 0 ?
+                                                                  nothing :
+                                                                  Float64(ui[layout.idx_erot]),
+                                                       rho_eeex = layout.idx_eeex == 0 ?
+                                                                  nothing :
+                                                                  Float64(ui[layout.idx_eeex]),
+                                                       rho_evib = layout.idx_evib == 0 ?
+                                                                  nothing :
+                                                                  Float64(ui[layout.idx_evib]))
                 temperatures_tt[i] = temps.tt
                 temperatures_te[i] = temps.teex
                 temperatures_tv[i] = temps.tvib
 
                 if print_integration_output
-                    _print_terra_integration_output(
-                        t, local_dt, work_rho_sp, molecular_weights, temps,
-                        rho_etot;
-                        rho_ex = rho_ex_arg,
-                        rho_eeex = layout.idx_eeex == 0 ? nothing :
-                                   Float64(ui[layout.idx_eeex]),
-                        rho_evib = layout.idx_evib == 0 ? nothing :
-                                   Float64(ui[layout.idx_evib]),
-                        has_electronic_states = has_electronic_states,
-                        electronic_state_counts = electronic_state_counts)
+                    _print_terra_integration_output(t, local_dt, work_rho_sp,
+                                                    molecular_weights, temps,
+                                                    rho_etot;
+                                                    rho_ex = rho_ex_arg,
+                                                    rho_eeex = layout.idx_eeex == 0 ?
+                                                               nothing :
+                                                               Float64(ui[layout.idx_eeex]),
+                                                    rho_evib = layout.idx_evib == 0 ?
+                                                               nothing :
+                                                               Float64(ui[layout.idx_evib]),
+                                                    has_electronic_states = has_electronic_states,
+                                                    electronic_state_counts = electronic_state_counts)
                 end
             end
         end
@@ -378,8 +381,8 @@ function _integrate_0d_system(config::Config, initial_state;
         if config.runtime.unit_system == :SI
             species_densities_si = zeros(size(species_densities))
             for i in axes(species_densities, 2)
-                species_densities_si[:, i] = convert_density_cgs_to_si(species_densities[
-                    :, i])
+                species_densities_si[:, i] = convert_density_cgs_to_si(species_densities[:,
+                                                                                         i])
             end
             total_energies_si = [convert_energy_density_cgs_to_si(e)
                                  for e in total_energies]
@@ -388,8 +391,8 @@ function _integrate_0d_system(config::Config, initial_state;
             total_energies_si = total_energies
         end
 
-        final_state_cache = _extract_reactor_state_cache(
-            species_names, p, layout, sol.u[end], is_isothermal)
+        final_state_cache = _extract_reactor_state_cache(species_names, p, layout,
+                                                         sol.u[end], is_isothermal)
 
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
@@ -398,23 +401,25 @@ function _integrate_0d_system(config::Config, initial_state;
                   "ODE integration terminated: $(rc)"
         frames = Vector{ReactorFrame}(undef, n_times)
         for i in 1:n_times
-            frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i], tv = temperatures_tv[i])
+            frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i],
+                           tv = temperatures_tv[i])
+            frame_source_terms = _source_terms_frame_snapshot(sol.u[i], prepared_sources,
+                                                              config.runtime.unit_system)
             frames[i] = ReactorFrame(;
-                t = time_points[i],
-                species_densities = species_densities_si[:, i],
-                temperatures = frame_temps,
-                total_energy = total_energies_si[i],
-                source_terms = nothing
-            )
+                                     t = time_points[i],
+                                     species_densities = species_densities_si[:, i],
+                                     temperatures = frame_temps,
+                                     total_energy = total_energies_si[i],
+                                     source_terms = frame_source_terms)
         end
 
         return ReactorResult(;
-            t = time_points,
-            frames = frames,
-            source_terms = nothing,
-            success = success,
-            message = message
-        ), final_state_cache
+                             t = time_points,
+                             frames = frames,
+                             source_terms = nothing,
+                             success = success,
+                             message = message,
+                             metadata = result_metadata,), final_state_cache
 
     catch e
         @error "ODE integration failed" exception=e
@@ -425,24 +430,21 @@ function _integrate_0d_system(config::Config, initial_state;
                           convert_energy_density_cgs_to_si(initial_state.rho_energy) :
                           initial_state.rho_energy
         fallback_frame = ReactorFrame(;
-            t = 0.0,
-            species_densities = fallback_species,
-            temperatures = (
-                tt = config.reactor.thermal.Tt,
-                te = config.reactor.thermal.Te,
-                tv = config.reactor.thermal.Tv,
-                tee = config.reactor.thermal.Te,
-            ),
-            total_energy = fallback_energy,
-            source_terms = nothing
-        )
+                                      t = 0.0,
+                                      species_densities = fallback_species,
+                                      temperatures = (tt = config.reactor.thermal.Tt,
+                                                      te = config.reactor.thermal.Te,
+                                                      tv = config.reactor.thermal.Tv,
+                                                      tee = config.reactor.thermal.Te),
+                                      total_energy = fallback_energy,
+                                      source_terms = nothing)
         return ReactorResult(;
-            t = [0.0],
-            frames = [fallback_frame],
-            source_terms = nothing,
-            success = false,
-            message = "ODE integration failed: $(string(e))"
-        ), nothing
+                             t = [0.0],
+                             frames = [fallback_frame],
+                             source_terms = nothing,
+                             success = false,
+                             message = "ODE integration failed: $(string(e))",
+                             metadata = result_metadata,), nothing
     finally
         if outputs_opened
             try

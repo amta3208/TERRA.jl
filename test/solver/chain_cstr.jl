@@ -3,39 +3,37 @@
         config = terra.nitrogen_10ev_config(; isothermal = false)
         config = terra.with_case_path(config, mktempdir())
         config = terra.with_time(config;
-            dt = 5e-12,
-            dt_output = 5e-7,
-            duration = 5e-7,
-            nstep = 200000,
-            method = 2)
+                                 dt = 5e-12,
+                                 dt_output = 5e-7,
+                                 duration = 5e-7,
+                                 nstep = 200000,
+                                 method = 2)
         config = terra.with_runtime(config;
-            validate_species_against_terra = false,
-            print_source_terms = false,
-            write_native_outputs = false,
-            print_integration_output = false)
+                                    validate_species_against_terra = false,
+                                    print_source_terms = false,
+                                    write_native_outputs = false,
+                                    print_integration_output = false)
         return config
     end
 
     function profile_inlet(config;
-            source_compact_index::Int = 1,
-            mole_fractions = config.reactor.composition.mole_fractions,
-            total_number_density_m3 = nothing,
-            thermal = config.reactor.thermal)
+                           source_compact_index::Int = 1,
+                           mole_fractions = config.reactor.composition.mole_fractions,
+                           total_number_density_m3 = nothing,
+                           thermal = config.reactor.thermal)
         n_total_m3 = config.runtime.unit_system == :SI ?
                      config.reactor.composition.total_number_density :
-                     terra.convert_number_density_cgs_to_si(
-            config.reactor.composition.total_number_density)
-        n_total_val = total_number_density_m3 === nothing ? n_total_m3 : Float64(total_number_density_m3)
+                     terra.convert_number_density_cgs_to_si(config.reactor.composition.total_number_density)
+        n_total_val = total_number_density_m3 === nothing ? n_total_m3 :
+                      Float64(total_number_density_m3)
         composition = terra.ChainProfileInletComposition(;
-            species = config.reactor.composition.species,
-            mole_fractions = mole_fractions,
-            total_number_density_m3 = n_total_val,
-        )
+                                                         species = config.reactor.composition.species,
+                                                         mole_fractions = mole_fractions,
+                                                         total_number_density_m3 = n_total_val,)
         return terra.ChainProfileInlet(;
-            composition = composition,
-            thermal = thermal,
-            source_compact_index = source_compact_index,
-        )
+                                       composition = composition,
+                                       thermal = thermal,
+                                       source_compact_index = source_compact_index,)
     end
 
     function cleanup_terra!()
@@ -51,36 +49,42 @@
         end
     end
 
-    function species_velocity_profile(; n_segments::Int, neutral_base::Float64, ion_base::Float64)
-        return Dict(
-            "N" => fill(neutral_base + 20.0, n_segments),
-            "N2" => fill(neutral_base, n_segments),
-            "N+" => collect(range(ion_base, step = 500.0, length = n_segments)),
-            "N2+" => collect(range(ion_base + 1000.0, step = 500.0, length = n_segments)),
-        )
+    function species_velocity_profile(;
+                                      n_segments::Int,
+                                      neutral_base::Float64,
+                                      ion_base::Float64,)
+        return Dict("N" => fill(neutral_base + 20.0, n_segments),
+                    "N2" => fill(neutral_base, n_segments),
+                    "N+" => collect(range(ion_base, step = 500.0, length = n_segments)),
+                    "N2+" => collect(range(ion_base + 1000.0, step = 500.0,
+                                           length = n_segments)))
     end
 
     function wall_profile(; n_segments::Int)
         return terra.ChainWallProfile(;
-            a_wall_over_v_m_inv = fill(2.0 / 0.0155, n_segments),
-            channel_gap_m = fill(0.0155, n_segments),
-        )
+                                      a_wall_over_v_m_inv = fill(2.0 / 0.0155, n_segments),
+                                      channel_gap_m = fill(0.0155, n_segments),)
     end
 
     @testset "Single segment run" begin
         config = build_chain_test_config()
         inlet_thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0,
-            Tee = config.reactor.thermal.Te, Te = config.reactor.thermal.Te)
-        profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [config.reactor.thermal.Te],
-            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
-                ion_base = 18000.0),
-            inlet = profile_inlet(config;
-                mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
-                thermal = inlet_thermal),
-        )
+                                                  Tee = config.reactor.thermal.Te,
+                                                  Te = config.reactor.thermal.Te)
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config;
+                                                                mole_fractions = [0.2,
+                                                                    0.65,
+                                                                    0.05,
+                                                                    0.05,
+                                                                    0.05],
+                                                                thermal = inlet_thermal))
         marching = terra.AxialMarchingConfig()
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
@@ -95,14 +99,15 @@
         @test !isempty(segment_result.t)
         @test segment_result.frames[1].temperatures.tt ≈ inlet_thermal.Tt
         @test segment_result.frames[1].temperatures.tv ≈ inlet_thermal.Tv
-        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in segment_result.frames)
-        segment1_config = terra._build_chain_segment_config(
-            config,
-            profile,
-            1,
-            terra._build_profile_inlet_reactor(profile, config.runtime.unit_system),
-            marching,
-        )
+        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6
+                  for
+                  frame in segment_result.frames)
+        segment1_config = terra._build_chain_segment_config(config,
+                                                            profile,
+                                                            1,
+                                                            terra._build_profile_inlet_reactor(profile,
+                                                                                               config.runtime.unit_system),
+                                                            marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
 
         cleanup_terra!()
@@ -110,18 +115,14 @@
 
     @testset "Two-segment handoff and Te profile enforcement" begin
         config = build_chain_test_config()
-        profile = terra.AxialChainProfile(
-            z_m = [0.0, 0.01],
-            dx_m = [0.01, 0.01],
-            te_K = [115000.0, 90000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0, 225.0],
-                "N2" => [200.0, 205.0],
-                "N+" => [18000.0, 22000.0],
-                "N2+" => [19000.0, 23000.0],
-            ),
-            inlet = profile_inlet(config),
-        )
+        profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
+                                          dx_m = [0.01, 0.01],
+                                          te_K = [115000.0, 90000.0],
+                                          species_u_m_s = Dict("N" => [220.0, 225.0],
+                                                               "N2" => [200.0, 205.0],
+                                                               "N+" => [18000.0, 22000.0],
+                                                               "N2+" => [19000.0, 23000.0]),
+                                          inlet = profile_inlet(config))
         marching = terra.AxialMarchingConfig()
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
@@ -134,16 +135,20 @@
         first_endpoint = chain.cells[1].endpoint_reactor
         @test first_result.success == true
         @test second_result.success == true
-        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6 for frame in first_result.frames)
-        @test all(abs(frame.temperatures.te - profile.te_K[2]) <= 1e-6 for frame in second_result.frames)
+        @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6
+                  for
+                  frame in first_result.frames)
+        @test all(abs(frame.temperatures.te - profile.te_K[2]) <= 1e-6
+                  for
+                  frame in second_result.frames)
 
         @test first_endpoint !== nothing
         @test first_endpoint.thermal.Tee ≈ first_endpoint.thermal.Te
         @test second_result.frames[1].temperatures.tt ≈ first_endpoint.thermal.Tt
         @test second_result.frames[1].temperatures.tv ≈ first_endpoint.thermal.Tv
         @test second_result.frames[1].temperatures.te ≈ profile.te_K[2]
-        segment2_config = terra._build_chain_segment_config(
-            config, profile, 2, first_endpoint, marching)
+        segment2_config = terra._build_chain_segment_config(config, profile, 2,
+                                                            first_endpoint, marching)
         @test segment2_config.models.physics.is_isothermal_teex == true
         @test segment2_config.reactor.thermal.Tee ≈ profile.te_K[2]
         @test chain.cells[2].species_u_m_s["N2+"] == 23000.0
@@ -154,30 +159,28 @@
     @testset "Two-segment full-state rho_ex handoff" begin
         config = build_chain_test_config()
         config = terra.with_time(config;
-            dt = 5e-12,
-            dt_output = 5e-8,
-            duration = 5e-8,
-            nstep = 20000,
-            method = 2)
-        profile = terra.AxialChainProfile(
-            z_m = [0.0, 0.01],
-            dx_m = [0.01, 0.01],
-            te_K = [115000.0, 90000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0, 225.0],
-                "N2" => [200.0, 205.0],
-                "N+" => [18000.0, 22000.0],
-                "N2+" => [19000.0, 23000.0],
-            ),
-            inlet = profile_inlet(config;
-                thermal = terra.ReactorThermalState(;
-                    Tt = 500.0, Tv = 650.0, Tee = 2000.0, Te = 115000.0)),
-        )
+                                 dt = 5e-12,
+                                 dt_output = 5e-8,
+                                 duration = 5e-8,
+                                 nstep = 20000,
+                                 method = 2)
+        profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
+                                          dx_m = [0.01, 0.01],
+                                          te_K = [115000.0, 90000.0],
+                                          species_u_m_s = Dict("N" => [220.0, 225.0],
+                                                               "N2" => [200.0, 205.0],
+                                                               "N+" => [18000.0, 22000.0],
+                                                               "N2+" => [19000.0, 23000.0]),
+                                          inlet = profile_inlet(config;
+                                                                thermal = terra.ReactorThermalState(;
+                                                                                                    Tt = 500.0,
+                                                                                                    Tv = 650.0,
+                                                                                                    Tee = 2000.0,
+                                                                                                    Te = 115000.0)))
         marching = terra.AxialMarchingConfig(;
-            handoff_mode = :full_state,
-            override_tt_K = 800.0,
-            override_tv_K = 900.0,
-        )
+                                             handoff_mode = :full_state,
+                                             override_tt_K = 800.0,
+                                             override_tv_K = 900.0,)
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
 
@@ -189,21 +192,24 @@
         @test chain.cells[1].reactor.frames[1].temperatures.tv ≈ 900.0
         @test chain.cells[1].reactor.frames[1].temperatures.te ≈ profile.te_K[1]
 
-        inlet_reactor = terra._build_profile_inlet_reactor(profile, config.runtime.unit_system)
-        segment1_config = terra._build_chain_segment_config(
-            config, profile, 1, inlet_reactor, marching)
+        inlet_reactor = terra._build_profile_inlet_reactor(profile,
+                                                           config.runtime.unit_system)
+        segment1_config = terra._build_chain_segment_config(config, profile, 1,
+                                                            inlet_reactor, marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
         @test segment1_config.sources.residence_time !== nothing
-        @test_nowarn terra.initialize_terra(segment1_config, segment1_config.runtime.case_path)
+        @test_nowarn terra.initialize_terra(segment1_config,
+                                            segment1_config.runtime.case_path)
         segment1_result, segment1_cache = terra._solve_terra_0d_internal(segment1_config)
 
         segment1_endpoint = terra._extract_segment_endpoint_reactor(config, segment1_result)
-        segment2_config = terra._build_chain_segment_config(
-            config, profile, 2, segment1_endpoint, marching)
+        segment2_config = terra._build_chain_segment_config(config, profile, 2,
+                                                            segment1_endpoint, marching)
         state_from_cache = terra.config_to_initial_state(segment2_config;
-            state_cache = segment1_cache)
+                                                         state_cache = segment1_cache)
         state_from_boltz = terra.config_to_initial_state(segment2_config)
-        boltz_rho_ex_active = state_from_boltz.rho_ex[:, 1:length(profile.inlet.composition.species)]
+        boltz_rho_ex_active = state_from_boltz.rho_ex[:,
+                                                      1:length(profile.inlet.composition.species)]
         @test any(abs.(state_from_cache.rho_ex .- boltz_rho_ex_active) .> 0.0)
         @test segment2_config.models.physics.is_isothermal_teex == true
 
@@ -217,25 +223,22 @@
 
     @testset "Chain marching can opt out of isothermal Teex enforcement" begin
         config = build_chain_test_config()
-        profile = terra.AxialChainProfile(
-            z_m = [0.0, 0.01],
-            dx_m = [0.01, 0.01],
-            te_K = [115000.0, 90000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0, 225.0],
-                "N2" => [200.0, 205.0],
-                "N+" => [18000.0, 22000.0],
-                "N2+" => [19000.0, 23000.0],
-            ),
-            inlet = profile_inlet(config),
-        )
+        profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
+                                          dx_m = [0.01, 0.01],
+                                          te_K = [115000.0, 90000.0],
+                                          species_u_m_s = Dict("N" => [220.0, 225.0],
+                                                               "N2" => [200.0, 205.0],
+                                                               "N+" => [18000.0, 22000.0],
+                                                               "N2+" => [19000.0, 23000.0]),
+                                          inlet = profile_inlet(config))
         marching = terra.AxialMarchingConfig(; is_isothermal_teex = false)
 
-        inlet_reactor = terra._build_profile_inlet_reactor(profile, config.runtime.unit_system)
-        segment1_config = terra._build_chain_segment_config(
-            config, profile, 1, inlet_reactor, marching)
-        segment2_config = terra._build_chain_segment_config(
-            config, profile, 2, inlet_reactor, marching)
+        inlet_reactor = terra._build_profile_inlet_reactor(profile,
+                                                           config.runtime.unit_system)
+        segment1_config = terra._build_chain_segment_config(config, profile, 1,
+                                                            inlet_reactor, marching)
+        segment2_config = terra._build_chain_segment_config(config, profile, 2,
+                                                            inlet_reactor, marching)
 
         @test segment1_config.models.physics.is_isothermal_teex == false
         @test segment2_config.models.physics.is_isothermal_teex == false
@@ -245,39 +248,34 @@
 
     @testset "Metadata propagation and compact/source mapping" begin
         config = build_chain_test_config()
-        profile = terra.AxialChainProfile(
-            z_m = [0.0, 0.01],
-            dx_m = [0.01, 0.01],
-            te_K = [115000.0, 90000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0, 225.0],
-                "N2" => [200.0, 205.0],
-                "N+" => [18000.0, 22000.0],
-                "N2+" => [19000.0, 23000.0],
-            ),
-            inlet = profile_inlet(config),
-            generator = Dict(
-                "tool" => "unit-test",
-                "tool_version" => "1.0.0",
-                "created_utc" => "2026-03-05T00:00:00Z",
-            ),
-            selection = Dict(
-                "average_start_time_s" => 5e-4,
-                "exported_species" => ["N", "N2", "N+", "N2+"],
-                "ion_velocity_policy" => "trim_to_first_positive",
-                "u_ion_floor" => 0.0,
-                "min_consecutive_positive" => 3,
-                "trim_start_index" => 13,
-                "trim_start_z_m" => 0.0025,
-                "trimmed_point_count" => 12,
-                "original_point_count" => 102,
-            ),
-            schema_version = "terra_chain_profile_v4",
-            source_snapshot = Dict(
-                "enabled" => true,
-                "source_type" => "unit-test",
-            ),
-        )
+        profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
+                                          dx_m = [0.01, 0.01],
+                                          te_K = [115000.0, 90000.0],
+                                          species_u_m_s = Dict("N" => [220.0, 225.0],
+                                                               "N2" => [200.0, 205.0],
+                                                               "N+" => [18000.0, 22000.0],
+                                                               "N2+" => [19000.0, 23000.0]),
+                                          inlet = profile_inlet(config),
+                                          generator = Dict("tool" => "unit-test",
+                                                           "tool_version" => "1.0.0",
+                                                           "created_utc" => "2026-03-05T00:00:00Z"),
+                                          selection = Dict("average_start_time_s" => 5e-4,
+                                                           "exported_species" => [
+                                                               "N",
+                                                               "N2",
+                                                               "N+",
+                                                               "N2+",
+                                                           ],
+                                                           "ion_velocity_policy" => "trim_to_first_positive",
+                                                           "u_ion_floor" => 0.0,
+                                                           "min_consecutive_positive" => 3,
+                                                           "trim_start_index" => 13,
+                                                           "trim_start_z_m" => 0.0025,
+                                                           "trimmed_point_count" => 12,
+                                                           "original_point_count" => 102),
+                                          schema_version = "terra_chain_profile_v4",
+                                          source_snapshot = Dict("enabled" => true,
+                                                                 "source_type" => "unit-test"))
 
         chain = terra.solve_terra_chain_steady(config, profile)
 
@@ -300,46 +298,49 @@
         cleanup_terra!()
     end
 
-    @testset "Wall-loss infrastructure is profile-driven and no-op in Phase 1" begin
+    @testset "Wall losses change the chain solution and expose diagnostics" begin
         base_config = build_chain_test_config()
         wall_cfg = terra.WallLossConfig(;
-            species_models = Dict(
-                "N+" => terra.SpeciesWallModel(;
-                    class = :ion_neutralization,
-                    rate_model = :bohm_gap,
-                    products = Dict("N" => 1.0),
-                ),
-                "N2+" => terra.SpeciesWallModel(;
-                    class = :ion_neutralization,
-                    rate_model = :bohm_gap,
-                    products = Dict("N2" => 1.0),
-                ),
-            ),
-        )
+                                        use_neutral_recombination = true,
+                                        species_models = Dict("N+" => terra.SpeciesWallModel(;
+                                                                                             class = :ion_neutralization,
+                                                                                             rate_model = :bohm_gap,
+                                                                                             parameters = Dict("bohm_scale" => 1.25),
+                                                                                             products = Dict("N" => 1.0),),
+                                                              "N2+" => terra.SpeciesWallModel(;
+                                                                                              class = :ion_neutralization,
+                                                                                              rate_model = :bohm_gap,
+                                                                                              products = Dict("N2" => 1.0),),
+                                                              "N" => terra.SpeciesWallModel(;
+                                                                                            class = :neutral_recombination,
+                                                                                            rate_model = :constant,
+                                                                                            parameters = Dict("k_wall_1_s" => 4.0e5),
+                                                                                            products = Dict("N2" => 0.5),)),)
         wall_config = terra.Config(;
-            reactor = base_config.reactor,
-            models = base_config.models,
-            sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
-            numerics = base_config.numerics,
-            runtime = base_config.runtime,
-        )
+                                   reactor = base_config.reactor,
+                                   models = base_config.models,
+                                   sources = terra.SourceTermsConfig(;
+                                                                     wall_losses = wall_cfg),
+                                   numerics = base_config.numerics,
+                                   runtime = base_config.runtime,)
 
-        profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [base_config.reactor.thermal.Te],
-            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
-                ion_base = 18000.0),
-            wall_profile = wall_profile(; n_segments = 1),
-            inlet = profile_inlet(base_config),
-        )
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [base_config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          wall_profile = wall_profile(; n_segments = 1),
+                                          inlet = profile_inlet(base_config))
 
         chain_base = terra.solve_terra_chain_steady(base_config, profile)
         chain_wall = terra.solve_terra_chain_steady(wall_config, profile)
 
         @test chain_wall.success == true
         @test chain_wall.metadata.diagnostics["wall_profile"]["channel_gap_m"] == [0.0155]
-        @test chain_wall.metadata.diagnostics["wall_profile"]["a_wall_over_v_m_inv"] ≈ [2.0 / 0.0155]
+        @test chain_wall.metadata.diagnostics["wall_profile"]["a_wall_over_v_m_inv"] ≈
+              [2.0 / 0.0155]
 
         wall_segment_inputs = terra._build_segment_wall_inputs(profile, 1, wall_cfg)
         @test wall_segment_inputs !== nothing
@@ -347,22 +348,28 @@
 
         base_frame = chain_base.cells[1].reactor.frames[end]
         wall_frame = chain_wall.cells[1].reactor.frames[end]
-        @test wall_frame.species_densities ≈ base_frame.species_densities atol = 0.0 rtol = 1e-12
-        @test wall_frame.total_energy ≈ base_frame.total_energy atol = 0.0 rtol = 1e-12
-        @test wall_frame.temperatures.tt ≈ base_frame.temperatures.tt atol = 0.0 rtol = 1e-12
-        @test wall_frame.temperatures.tv ≈ base_frame.temperatures.tv atol = 0.0 rtol = 1e-12
-        @test wall_frame.temperatures.te ≈ base_frame.temperatures.te atol = 0.0 rtol = 1e-12
+        @test any(abs.(wall_frame.species_densities .- base_frame.species_densities) .> 0.0)
+        @test wall_frame.temperatures.te≈base_frame.temperatures.te atol=0.0 rtol=1e-12
+        @test wall_frame.source_terms !== nothing
+        @test haskey(wall_frame.source_terms.wall_losses.species_mass_density_rates, "N2+")
+        @test wall_frame.source_terms.wall_losses.species_mass_density_rates["N2+"] < 0.0
+        @test wall_frame.source_terms.wall_losses.species_mass_density_rates["N2"] > 0.0
+        @test haskey(chain_wall.cells[1].reactor.metadata, "wall_losses")
+        @test chain_wall.cells[1].reactor.metadata["wall_losses"]["species_models"]["N+"]["rate_model"] ==
+              "bohm_gap"
+        @test chain_wall.cells[1].reactor.metadata["wall_losses"]["enabled_flags"]["use_electronic_quenching"] ==
+              false
 
-        missing_wall_profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [base_config.reactor.thermal.Te],
-            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
-                ion_base = 18000.0),
-            inlet = profile_inlet(base_config),
-        )
-        @test_throws ArgumentError terra._build_segment_wall_inputs(
-            missing_wall_profile, 1, wall_cfg)
+        missing_wall_profile = terra.AxialChainProfile(z_m = [0.0],
+                                                       dx_m = [0.01],
+                                                       te_K = [base_config.reactor.thermal.Te],
+                                                       species_u_m_s = species_velocity_profile(;
+                                                                                                n_segments = 1,
+                                                                                                neutral_base = 180.0,
+                                                                                                ion_base = 18000.0),
+                                                       inlet = profile_inlet(base_config))
+        @test_throws ArgumentError terra._build_segment_wall_inputs(missing_wall_profile, 1,
+                                                                    wall_cfg)
 
         cleanup_terra!()
     end
@@ -370,32 +377,24 @@
     @testset "Rejects Missing or Extra Profile Species" begin
         config = build_chain_test_config()
 
-        missing_profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [115000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0],
-                "N2" => [200.0],
-                "N+" => [18000.0],
-            ),
-            inlet = profile_inlet(config),
-        )
+        missing_profile = terra.AxialChainProfile(z_m = [0.0],
+                                                  dx_m = [0.01],
+                                                  te_K = [115000.0],
+                                                  species_u_m_s = Dict("N" => [220.0],
+                                                                       "N2" => [200.0],
+                                                                       "N+" => [18000.0]),
+                                                  inlet = profile_inlet(config))
         @test_throws ArgumentError terra.solve_terra_chain_steady(config, missing_profile)
 
-        extra_profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [115000.0],
-            species_u_m_s = Dict(
-                "N" => [220.0],
-                "N2" => [200.0],
-                "N+" => [18000.0],
-                "N2+" => [19000.0],
-                "Ar" => [1000.0],
-            ),
-            inlet = profile_inlet(config),
-        )
+        extra_profile = terra.AxialChainProfile(z_m = [0.0],
+                                                dx_m = [0.01],
+                                                te_K = [115000.0],
+                                                species_u_m_s = Dict("N" => [220.0],
+                                                                     "N2" => [200.0],
+                                                                     "N+" => [18000.0],
+                                                                     "N2+" => [19000.0],
+                                                                     "Ar" => [1000.0]),
+                                                inlet = profile_inlet(config))
         @test_throws ArgumentError terra.solve_terra_chain_steady(config, extra_profile)
 
         cleanup_terra!()
@@ -403,20 +402,19 @@
 
     @testset "Unsupported termination mode" begin
         config = build_chain_test_config()
-        profile = terra.AxialChainProfile(
-            z_m = [0.0],
-            dx_m = [0.01],
-            te_K = [115000.0],
-            species_u_m_s = species_velocity_profile(; n_segments = 1, neutral_base = 180.0,
-                ion_base = 18000.0),
-            inlet = profile_inlet(config),
-        )
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [115000.0],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
 
-        @test_throws ArgumentError terra.solve_terra_chain_steady(
-            config,
-            profile;
-            marching = terra.AxialMarchingConfig(; termination_mode = :steady_state),
-        )
+        @test_throws ArgumentError terra.solve_terra_chain_steady(config,
+                                                                  profile;
+                                                                  marching = terra.AxialMarchingConfig(;
+                                                                                                       termination_mode = :steady_state),)
 
         cleanup_terra!()
     end

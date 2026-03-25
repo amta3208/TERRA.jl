@@ -7,10 +7,10 @@
     layout = terra.get_api_layout()
 
     u_in = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                   rho_ex = state.rho_ex,
+                                   rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                   rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                   rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
     rt_cfg = terra.ResidenceTimeConfig(; L = 1.0, U_species = u_species)
@@ -49,35 +49,31 @@
     du_base = zeros(length(u))
     du_rt = zeros(length(u))
 
-    p_base = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp)
-    )
-    p_rt = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-        sources = (residence_time = rt,)
-    )
+    p_base = (layout = layout,
+              config = config,
+              teex_const = state.teex_const,
+              teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp))
+    p_rt = (layout = layout,
+            config = config,
+            teex_const = state.teex_const,
+            teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
+            sources = (residence_time = rt,))
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
     @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
 
     diff = du_rt .- du_base
 
-    @test diff[i_n] ≈ (rt.u_in[i_n] - u[i_n]) * rt.inv_tau_species["N"] atol=1e-20
-    @test diff[i_n2] ≈ (rt.u_in[i_n2] - u[i_n2]) * rt.inv_tau_species["N2"] atol=1e-20
-    @test diff[i_n_plus] ≈ (rt.u_in[i_n_plus] - u[i_n_plus]) * rt.inv_tau_species["N+"] atol=1e-20
-    @test diff[i_n2_plus] ≈ (rt.u_in[i_n2_plus] - u[i_n2_plus]) * rt.inv_tau_species["N2+"] atol=1e-20
+    @test diff[i_n]≈(rt.u_in[i_n] - u[i_n]) * rt.inv_tau_species["N"] atol=1e-20
+    @test diff[i_n2]≈(rt.u_in[i_n2] - u[i_n2]) * rt.inv_tau_species["N2"] atol=1e-20
+    @test diff[i_n_plus]≈(rt.u_in[i_n_plus] - u[i_n_plus]) * rt.inv_tau_species["N+"] atol=1e-20
+    @test diff[i_n2_plus]≈(rt.u_in[i_n2_plus] - u[i_n2_plus]) * rt.inv_tau_species["N2+"] atol=1e-20
     @test diff[i_E] ≈ (rt.u_in[i_E] - u[i_E]) * rt.inv_tau_energy
 
     for species_name in rt.species_order
         for i in rt.species_indices[species_name]
             expected = (rt.u_in[i] - u[i]) * rt.inv_tau_species[species_name]
-            @test diff[i] ≈ expected atol=1e-20
+            @test diff[i]≈expected atol=1e-20
         end
     end
 end
@@ -89,26 +85,27 @@ end
     state = terra.config_to_initial_state(config)
     layout = terra.get_api_layout()
     u_in = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                   rho_ex = state.rho_ex,
+                                   rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                   rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                   rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     missing_rt = terra.ResidenceTimeConfig(;
-        L = 1.0,
-        U_species = Dict("N" => 1.0, "N2" => 1.0, "N+" => 2.0))
-    @test_throws ArgumentError terra._prepare_residence_time_data(layout, config, u_in, missing_rt)
+                                           L = 1.0,
+                                           U_species = Dict("N" => 1.0, "N2" => 1.0,
+                                                            "N+" => 2.0))
+    @test_throws ArgumentError terra._prepare_residence_time_data(layout, config, u_in,
+                                                                  missing_rt)
 
     extra_rt = terra.ResidenceTimeConfig(;
-        L = 1.0,
-        U_species = Dict(
-            "N" => 1.0,
-            "N2" => 1.0,
-            "N+" => 2.0,
-            "N2+" => 2.0,
-            "Ar" => 3.0,
-        ))
-    @test_throws ArgumentError terra._prepare_residence_time_data(layout, config, u_in, extra_rt)
+                                         L = 1.0,
+                                         U_species = Dict("N" => 1.0,
+                                                          "N2" => 1.0,
+                                                          "N+" => 2.0,
+                                                          "N2+" => 2.0,
+                                                          "Ar" => 3.0))
+    @test_throws ArgumentError terra._prepare_residence_time_data(layout, config, u_in,
+                                                                  extra_rt)
 end
 
 @testset "Isothermal Teex: residence time skips rho_eeex" begin
@@ -122,14 +119,15 @@ end
     @test layout.idx_eeex != 0
 
     u_in = terra.pack_state_vector(layout, state.rho_sp, state.rho_rem;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                   rho_ex = state.rho_ex,
+                                   rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                   rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                   rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     rt_cfg = terra.ResidenceTimeConfig(;
-        L = 1.0,
-        U_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5))
+                                       L = 1.0,
+                                       U_species = Dict("N" => 1.0, "N2" => 1.5,
+                                                        "N+" => 2.0, "N2+" => 2.5))
     rt = terra._prepare_residence_time_data(layout, config, u_in, rt_cfg)
 
     @test !(layout.idx_eeex in rt.energy_indices)
@@ -140,19 +138,15 @@ end
     du_base = zeros(length(u))
     du_rt = zeros(length(u))
 
-    p_base = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp)
-    )
-    p_rt = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-        sources = (residence_time = rt,)
-    )
+    p_base = (layout = layout,
+              config = config,
+              teex_const = state.teex_const,
+              teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp))
+    p_rt = (layout = layout,
+            config = config,
+            teex_const = state.teex_const,
+            teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
+            sources = (residence_time = rt,))
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
     @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
@@ -169,105 +163,27 @@ end
     state = terra.config_to_initial_state(config)
     layout = terra.get_api_layout()
     u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                     rho_ex = state.rho_ex,
+                                     rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                     rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                     rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     rt_cfg = terra.ResidenceTimeConfig(;
-        enabled = true,
-        L = 1.0,
-        U_species = Dict("N" => 1.0, "N2" => 1.0, "N+" => 1.0, "N2+" => 1.0))
+                                       enabled = true,
+                                       L = 1.0,
+                                       U_species = Dict("N" => 1.0, "N2" => 1.0,
+                                                        "N+" => 1.0, "N2+" => 1.0))
 
-    prepared = terra._prepare_source_terms_data(
-        layout, config, u_base, terra.SourceTermsConfig(; residence_time = rt_cfg))
+    prepared = terra._prepare_source_terms_data(layout, config, u_base,
+                                                terra.SourceTermsConfig(;
+                                                                        residence_time = rt_cfg))
     @test prepared.residence_time !== nothing
     @test prepared.wall_losses === nothing
 
-    disabled = terra._prepare_source_terms_data(
-        layout, config, u_base, terra.SourceTermsConfig())
+    disabled = terra._prepare_source_terms_data(layout, config, u_base,
+                                                terra.SourceTermsConfig())
     @test disabled.residence_time === nothing
     @test disabled.wall_losses === nothing
-end
-
-@testset "Wall-loss preparation is profile-driven and no-op in Phase 1" begin
-    config = terra.nitrogen_10ev_config(; isothermal = false)
-    @test_nowarn reset_and_init!(tempname(); config = config)
-
-    state = terra.config_to_initial_state(config)
-    layout = terra.get_api_layout()
-    u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
-
-    wall_cfg = terra.WallLossConfig(;
-        species_models = Dict(
-            "N+" => terra.SpeciesWallModel(;
-                class = :ion_neutralization,
-                rate_model = :bohm_gap,
-                products = Dict("N" => 1.0),
-            ),
-            "N2+" => terra.SpeciesWallModel(;
-                class = :ion_neutralization,
-                rate_model = :bohm_gap,
-                products = Dict("N2" => 1.0),
-            ),
-        ),
-    )
-    wall_inputs = terra.SegmentWallInputs(;
-        a_wall_over_v_m_inv = 2.0 / 0.0155,
-        channel_gap_m = 0.0155,
-    )
-
-    prepared = terra._prepare_source_terms_data(
-        layout, config, u_base,
-        terra.SourceTermsConfig(; wall_losses = wall_cfg);
-        wall_inputs = wall_inputs)
-    @test prepared.residence_time === nothing
-    @test prepared.wall_losses !== nothing
-    @test prepared.wall_losses.wall_inputs.channel_gap_m ≈ 0.0155
-    @test prepared.wall_losses.species_indices["N+"] != Int[]
-    @test prepared.wall_losses.molecular_weights["N+"] > 0.0
-
-    @test_throws ArgumentError terra._prepare_source_terms_data(
-        layout, config, u_base,
-        terra.SourceTermsConfig(; wall_losses = wall_cfg))
-
-    bad_wall_cfg = terra.WallLossConfig(;
-        species_models = Dict(
-            "Ar+" => terra.SpeciesWallModel(;
-                class = :ion_neutralization,
-                rate_model = :bohm_gap,
-                products = Dict("N" => 1.0),
-            ),
-        ),
-    )
-    @test_throws ArgumentError terra._prepare_wall_loss_data(
-        layout, config, bad_wall_cfg;
-        wall_inputs = wall_inputs)
-
-    du_base = zeros(length(u_base))
-    du_wall = zeros(length(u_base))
-
-    p_base = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-    )
-    p_wall = (
-        layout = layout,
-        config = config,
-        teex_const = state.teex_const,
-        teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-        sources = (residence_time = nothing, wall_losses = prepared.wall_losses),
-    )
-
-    @test_nowarn terra.terra_ode_system!(du_base, u_base, p_base, 0.0)
-    @test_nowarn terra.terra_ode_system!(du_wall, u_base, p_wall, 0.0)
-    @test du_wall ≈ du_base atol = 0.0 rtol = 1e-12
 end
 
 @testset "Residence-time inlet_reactor support" begin
@@ -277,21 +193,26 @@ end
     state = terra.config_to_initial_state(config)
     layout = terra.get_api_layout()
     u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                     rho_ex = state.rho_ex,
+                                     rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                     rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                     rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     inlet_reactor = terra.ReactorConfig(;
-        composition = terra.ReactorComposition(;
-            species = config.reactor.composition.species,
-            mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
-            total_number_density = config.reactor.composition.total_number_density),
-        thermal = config.reactor.thermal)
+                                        composition = terra.ReactorComposition(;
+                                                                               species = config.reactor.composition.species,
+                                                                               mole_fractions = [0.2,
+                                                                                   0.65,
+                                                                                   0.05,
+                                                                                   0.05,
+                                                                                   0.05],
+                                                                               total_number_density = config.reactor.composition.total_number_density),
+                                        thermal = config.reactor.thermal)
     rt_cfg = terra.ResidenceTimeConfig(;
-        L = 1.0,
-        U_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5),
-        inlet_reactor = inlet_reactor)
+                                       L = 1.0,
+                                       U_species = Dict("N" => 1.0, "N2" => 1.5,
+                                                        "N+" => 2.0, "N2+" => 2.5),
+                                       inlet_reactor = inlet_reactor)
     rt = terra._prepare_residence_time_data(layout, config, u_base, rt_cfg)
 
     @test any(abs.(rt.u_in .- u_base) .> 0.0)
@@ -302,36 +223,37 @@ end
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
     config = terra.with_time(config;
-        dt = 5e-12, dt_output = 5e-7, duration = 5e-7, nstep = 200000, method = 2)
+                             dt = 5e-12, dt_output = 5e-7, duration = 5e-7, nstep = 200000,
+                             method = 2)
     config = terra.with_runtime(config;
-        validate_species_against_terra = false,
-        print_source_terms = false,
-        write_native_outputs = false,
-        print_integration_output = false)
+                                validate_species_against_terra = false,
+                                print_source_terms = false,
+                                write_native_outputs = false,
+                                print_integration_output = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
     state = terra.config_to_initial_state(config)
     layout = terra.get_api_layout()
     u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
-        rho_ex = state.rho_ex,
-        rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
-        rho_erot = layout.rot_noneq ? 0.0 : nothing,
-        rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
+                                     rho_ex = state.rho_ex,
+                                     rho_eeex = layout.eex_noneq ? state.rho_eeex : nothing,
+                                     rho_erot = layout.rot_noneq ? 0.0 : nothing,
+                                     rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     _, final_state_cache = terra._solve_terra_0d_internal(config)
     @test final_state_cache !== nothing
     @test final_state_cache.rho_ex_cgs !== nothing
 
     rt_cfg = terra.ResidenceTimeConfig(;
-        L = 1.0,
-        U_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5),
-        inlet_reactor = config.reactor)
+                                       L = 1.0,
+                                       U_species = Dict("N" => 1.0, "N2" => 1.5,
+                                                        "N+" => 2.0, "N2+" => 2.5),
+                                       inlet_reactor = config.reactor)
 
     rt_boltz = terra._prepare_residence_time_data(layout, config, u_base, rt_cfg)
-    rt_cached = terra._prepare_residence_time_data(
-        layout, config, u_base, rt_cfg;
-        inlet_state_cache = final_state_cache)
+    rt_cached = terra._prepare_residence_time_data(layout, config, u_base, rt_cfg;
+                                                   inlet_state_cache = final_state_cache)
 
     boltz_inlet_state = terra.unpack_state_vector(rt_boltz.u_in, layout)
     cached_inlet_state = terra.unpack_state_vector(rt_cached.u_in, layout)

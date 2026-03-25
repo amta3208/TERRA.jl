@@ -1,9 +1,9 @@
 @testset "ReactorComposition" begin
     @testset "Valid Construction" begin
         composition = terra.ReactorComposition(;
-            species = ["N", "N2", "E-"],
-            mole_fractions = [0.1, 0.8, 0.1],
-            total_number_density = 1e13)
+                                               species = ["N", "N2", "E-"],
+                                               mole_fractions = [0.1, 0.8, 0.1],
+                                               total_number_density = 1e13)
         @test composition.species == ["N", "N2", "E-"]
         @test composition.mole_fractions == [0.1, 0.8, 0.1]
         @test composition.total_number_density == 1e13
@@ -11,21 +11,32 @@
 
     @testset "Invalid Construction" begin
         @test_throws ArgumentError terra.ReactorComposition(;
-            species = ["N", "N2"], mole_fractions = [0.5], total_number_density = 1e13)
+                                                            species = ["N", "N2"],
+                                                            mole_fractions = [0.5],
+                                                            total_number_density = 1e13)
         @test_throws ArgumentError terra.ReactorComposition(;
-            species = String[], mole_fractions = Float64[], total_number_density = 1e13)
+                                                            species = String[],
+                                                            mole_fractions = Float64[],
+                                                            total_number_density = 1e13)
         @test_throws ArgumentError terra.ReactorComposition(;
-            species = ["N", "N2"], mole_fractions = [0.3, 0.3], total_number_density = 1e13)
+                                                            species = ["N", "N2"],
+                                                            mole_fractions = [0.3, 0.3],
+                                                            total_number_density = 1e13)
         @test_throws ArgumentError terra.ReactorComposition(;
-            species = ["N", "N"], mole_fractions = [0.5, 0.5], total_number_density = 1e13)
+                                                            species = ["N", "N"],
+                                                            mole_fractions = [0.5, 0.5],
+                                                            total_number_density = 1e13)
         @test_throws ArgumentError terra.ReactorComposition(;
-            species = ["N", "N2"], mole_fractions = [0.5, 0.5], total_number_density = 0.0)
+                                                            species = ["N", "N2"],
+                                                            mole_fractions = [0.5, 0.5],
+                                                            total_number_density = 0.0)
     end
 end
 
 @testset "ReactorThermalState" begin
     @testset "Valid Construction" begin
-        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0, Te = 10000.0)
+        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0,
+                                            Te = 10000.0)
         @test thermal.Tt == 300.0
         @test thermal.Tv == 310.0
         @test thermal.Tee == 320.0
@@ -33,14 +44,17 @@ end
     end
 
     @testset "Invalid Construction" begin
-        @test_throws ArgumentError terra.ReactorThermalState(; Tt = 0.0, Tv = 310.0, Tee = 320.0, Te = 10000.0)
-        @test_throws ArgumentError terra.ReactorThermalState(; Tt = 300.0, Tv = -1.0, Tee = 320.0, Te = 10000.0)
+        @test_throws ArgumentError terra.ReactorThermalState(; Tt = 0.0, Tv = 310.0,
+                                                             Tee = 320.0, Te = 10000.0)
+        @test_throws ArgumentError terra.ReactorThermalState(; Tt = 300.0, Tv = -1.0,
+                                                             Tee = 320.0, Te = 10000.0)
     end
 end
 
 @testset "TimeConfig" begin
     @testset "Valid Construction" begin
-        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3, nstep = 1000, method = 2)
+        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3,
+                                nstep = 1000, method = 2)
         @test time.dt == 1e-6
         @test time.dt_output == 1e-4
         @test time.duration == 1e-3
@@ -49,19 +63,22 @@ end
     end
 
     @testset "Invalid Construction" begin
-        @test_throws ArgumentError terra.TimeConfig(; dt = -1e-6, dt_output = 1e-4, duration = 1e-3)
-        @test_throws ArgumentError terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 0.0)
-        @test_throws ArgumentError terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3, method = 9)
+        @test_throws ArgumentError terra.TimeConfig(; dt = -1e-6, dt_output = 1e-4,
+                                                    duration = 1e-3)
+        @test_throws ArgumentError terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4,
+                                                    duration = 0.0)
+        @test_throws ArgumentError terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4,
+                                                    duration = 1e-3, method = 9)
     end
 end
 
 @testset "ODESolverConfig" begin
     solver = terra.ODESolverConfig(;
-        reltol = 1e-8,
-        abstol_density = 1e-10,
-        saveat_count = 50,
-        ramp_understep_ratio = inv(64),
-        ramp_history_steps = 4)
+                                   reltol = 1e-8,
+                                   abstol_density = 1e-10,
+                                   saveat_count = 50,
+                                   ramp_understep_ratio = inv(64),
+                                   ramp_history_steps = 4)
     @test solver.reltol == 1e-8
     @test solver.abstol_density == 1e-10
     @test solver.saveat_count == 50
@@ -91,14 +108,12 @@ end
     @test physics.esc_model == 1
     @test physics.ar_et_model == 1
 
-    custom = terra.PhysicsConfig(
-        bbh_model = 2,
-        esc_model = 0,
-        ar_et_model = 2,
-        eex_noneq = 0,
-        ev_relax_set = 2,
-        et_relax_set = 2
-    )
+    custom = terra.PhysicsConfig(bbh_model = 2,
+                                 esc_model = 0,
+                                 ar_et_model = 2,
+                                 eex_noneq = 0,
+                                 ev_relax_set = 2,
+                                 et_relax_set = 2)
     @test custom.bbh_model == 2
     @test custom.esc_model == 0
     @test custom.ar_et_model == 2
@@ -112,15 +127,13 @@ end
     @test processes.consider_elec_bbe == 1
     @test processes.consider_rad == 0
 
-    custom = terra.ProcessConfig(
-        consider_elec_bbe = 0,
-        consider_elec_bfe = 0,
-        consider_elec_bbh = 0,
-        consider_elec_bfh = 0,
-        consider_rad = 1,
-        consider_rdr = 1,
-        consider_chem = 0
-    )
+    custom = terra.ProcessConfig(consider_elec_bbe = 0,
+                                 consider_elec_bfe = 0,
+                                 consider_elec_bbh = 0,
+                                 consider_elec_bfh = 0,
+                                 consider_rad = 1,
+                                 consider_rdr = 1,
+                                 consider_chem = 0)
     @test custom.consider_elec_bbe == 0
     @test custom.consider_elec_bfe == 0
     @test custom.consider_elec_bbh == 0
@@ -132,23 +145,31 @@ end
 
 @testset "Config (Nested)" begin
     reactor = terra.ReactorConfig(;
-        composition = terra.ReactorComposition(;
-            species = ["N", "N2", "E-"],
-            mole_fractions = [0.1, 0.8, 0.1],
-            total_number_density = 1e13),
-        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0))
+                                  composition = terra.ReactorComposition(;
+                                                                         species = ["N",
+                                                                             "N2",
+                                                                             "E-"],
+                                                                         mole_fractions = [0.1,
+                                                                             0.8,
+                                                                             0.1],
+                                                                         total_number_density = 1e13),
+                                  thermal = terra.ReactorThermalState(; Tt = 300.0,
+                                                                      Tv = 350.0,
+                                                                      Tee = 360.0,
+                                                                      Te = 10000.0))
     models = terra.ModelConfig()
     numerics = terra.NumericsConfig(;
-        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3))
+                                    time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4,
+                                                            duration = 1e-3))
     sources = terra.SourceTermsConfig()
     runtime = terra.RuntimeConfig(; case_path = pwd(), unit_system = :CGS)
 
     config = terra.Config(;
-        reactor = reactor,
-        models = models,
-        sources = sources,
-        numerics = numerics,
-        runtime = runtime)
+                          reactor = reactor,
+                          models = models,
+                          sources = sources,
+                          numerics = numerics,
+                          runtime = runtime)
 
     @test config.reactor == reactor
     @test config.models == models
@@ -160,34 +181,41 @@ end
 
 @testset "Config Modifiers" begin
     wall_cfg = terra.WallLossConfig(;
-        species_models = Dict(
-            "N+" => terra.SpeciesWallModel(;
-                class = :ion_neutralization,
-                rate_model = :bohm_gap,
-                products = Dict("N" => 1.0),
-            ),
-        ),
-    )
+                                    species_models = Dict("N+" => terra.SpeciesWallModel(;
+                                                                                         class = :ion_neutralization,
+                                                                                         rate_model = :bohm_gap,
+                                                                                         products = Dict("N" => 1.0),)),)
     config = terra.Config(;
-        reactor = terra.ReactorConfig(;
-            composition = terra.ReactorComposition(;
-                species = ["N", "N2", "E-"],
-                mole_fractions = [0.1, 0.8, 0.1],
-                total_number_density = 1e13),
-            thermal = terra.ReactorThermalState(;
-                Tt = 300.0, Tv = 350.0, Tee = 360.0, Te = 10000.0)),
-        numerics = terra.NumericsConfig(;
-            time = terra.TimeConfig(;
-                dt = 1e-6, dt_output = 1e-4, duration = 1e-3, nstep = 1234, method = 2)),
-        sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
-        runtime = terra.RuntimeConfig(;
-            database_path = ".",
-            case_path = pwd(),
-            unit_system = :CGS,
-            validate_species_against_terra = false,
-            print_source_terms = false,
-            write_native_outputs = false,
-            print_integration_output = false))
+                          reactor = terra.ReactorConfig(;
+                                                        composition = terra.ReactorComposition(;
+                                                                                               species = ["N",
+                                                                                                   "N2",
+                                                                                                   "E-"],
+                                                                                               mole_fractions = [0.1,
+                                                                                                   0.8,
+                                                                                                   0.1],
+                                                                                               total_number_density = 1e13),
+                                                        thermal = terra.ReactorThermalState(;
+                                                                                            Tt = 300.0,
+                                                                                            Tv = 350.0,
+                                                                                            Tee = 360.0,
+                                                                                            Te = 10000.0)),
+                          numerics = terra.NumericsConfig(;
+                                                          time = terra.TimeConfig(;
+                                                                                  dt = 1e-6,
+                                                                                  dt_output = 1e-4,
+                                                                                  duration = 1e-3,
+                                                                                  nstep = 1234,
+                                                                                  method = 2)),
+                          sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
+                          runtime = terra.RuntimeConfig(;
+                                                        database_path = ".",
+                                                        case_path = pwd(),
+                                                        unit_system = :CGS,
+                                                        validate_species_against_terra = false,
+                                                        print_source_terms = false,
+                                                        write_native_outputs = false,
+                                                        print_integration_output = false))
 
     temp_case = mktempdir()
     config_case = terra.with_case_path(config, temp_case)
@@ -204,9 +232,9 @@ end
     @test config_time.sources.wall_losses === config.sources.wall_losses
 
     config_runtime = terra.with_runtime(config;
-        unit_system = :SI,
-        print_source_terms = true,
-        write_native_outputs = true)
+                                        unit_system = :SI,
+                                        print_source_terms = true,
+                                        write_native_outputs = true)
     @test config_runtime.runtime.unit_system == :SI
     @test config_runtime.runtime.print_source_terms == true
     @test config_runtime.runtime.write_native_outputs == true
@@ -216,8 +244,10 @@ end
     @test_throws ArgumentError terra.with_case_path(config, joinpath(temp_case, "missing"))
     @test_throws ArgumentError terra.with_time(config; method = 9)
     @test_throws MethodError terra.NumericsConfig(;
-        time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3),
-        residence_time = nothing)
+                                                  time = terra.TimeConfig(; dt = 1e-6,
+                                                                          dt_output = 1e-4,
+                                                                          duration = 1e-3),
+                                                  residence_time = nothing)
 end
 
 @testset "SourceTermsConfig" begin
@@ -228,82 +258,85 @@ end
 
 @testset "SpeciesWallModel" begin
     model = terra.SpeciesWallModel(;
-        class = :ion_neutralization,
-        rate_model = :bohm_gap,
-        parameters = Dict("alpha" => 0.5),
-        products = Dict("N" => 1.0),
-    )
+                                   class = :ion_neutralization,
+                                   rate_model = :bohm_gap,
+                                   parameters = Dict("alpha" => 0.5),
+                                   products = Dict("N" => 1.0),)
     @test model.class == :ion_neutralization
     @test model.rate_model == :bohm_gap
     @test model.parameters["alpha"] == 0.5
     @test model.products["N"] == 1.0
 
     @test_throws ArgumentError terra.SpeciesWallModel(;
-        class = :unsupported,
-        rate_model = :bohm_gap)
+                                                      class = :unsupported,
+                                                      rate_model = :bohm_gap)
     @test_throws ArgumentError terra.SpeciesWallModel(;
-        class = :ion_neutralization,
-        rate_model = :unsupported)
+                                                      class = :ion_neutralization,
+                                                      rate_model = :unsupported)
     @test_throws ArgumentError terra.SpeciesWallModel(;
-        class = :ion_neutralization,
-        rate_model = :bohm_gap,
-        parameters = Dict("alpha" => -1.0))
+                                                      class = :ion_neutralization,
+                                                      rate_model = :bohm_gap,
+                                                      parameters = Dict("alpha" => -1.0))
 end
 
 @testset "WallLossConfig" begin
     cfg = terra.WallLossConfig(;
-        species_models = Dict(
-            "N+" => terra.SpeciesWallModel(;
-                class = :ion_neutralization,
-                rate_model = :bohm_gap,
-                products = Dict("N" => 1.0),
-            ),
-        ),
-    )
+                               species_models = Dict("N+" => terra.SpeciesWallModel(;
+                                                                                    class = :ion_neutralization,
+                                                                                    rate_model = :bohm_gap,
+                                                                                    products = Dict("N" => 1.0),)),)
     @test cfg.enabled == true
+    @test cfg.use_ion_losses == true
+    @test cfg.use_neutral_recombination == false
+    @test cfg.use_electronic_quenching == false
     @test haskey(cfg.species_models, "N+")
     @test_throws ArgumentError terra.WallLossConfig(;
-        species_models = Dict("" => cfg.species_models["N+"]))
+                                                    species_models = Dict("" => cfg.species_models["N+"]))
 end
 
 @testset "ChainWallProfile" begin
     wall_profile = terra.ChainWallProfile(;
-        a_wall_over_v_m_inv = [100.0, 101.0],
-        channel_gap_m = [0.02, 0.02],
-    )
+                                          a_wall_over_v_m_inv = [100.0, 101.0],
+                                          channel_gap_m = [0.02, 0.02],)
     @test wall_profile.channel_gap_m == [0.02, 0.02]
 
     inlet_composition = terra.ChainProfileInletComposition(;
-        species = ["N", "N2", "N+", "N2+", "E-"],
-        mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
-        total_number_density_m3 = 1e19,
-    )
+                                                           species = ["N",
+                                                               "N2",
+                                                               "N+",
+                                                               "N2+",
+                                                               "E-"],
+                                                           mole_fractions = [0.2,
+                                                               0.65,
+                                                               0.05,
+                                                               0.05,
+                                                               0.05],
+                                                           total_number_density_m3 = 1e19,)
     inlet = terra.ChainProfileInlet(;
-        composition = inlet_composition,
-        thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0, Tee = 500.0, Te = 20000.0),
-        source_compact_index = 1,
-    )
+                                    composition = inlet_composition,
+                                    thermal = terra.ReactorThermalState(; Tt = 500.0,
+                                                                        Tv = 500.0,
+                                                                        Tee = 500.0,
+                                                                        Te = 20000.0),
+                                    source_compact_index = 1,)
     profile = terra.AxialChainProfile(;
-        z_m = [0.0, 0.01],
-        dx_m = [0.01, 0.01],
-        te_K = [20000.0, 21000.0],
-        species_u_m_s = Dict(
-            "N" => [200.0, 210.0],
-            "N2" => [180.0, 181.0],
-            "N+" => [1000.0, 1100.0],
-            "N2+" => [900.0, 950.0],
-        ),
-        wall_profile = wall_profile,
-        inlet = inlet,
-    )
+                                      z_m = [0.0, 0.01],
+                                      dx_m = [0.01, 0.01],
+                                      te_K = [20000.0, 21000.0],
+                                      species_u_m_s = Dict("N" => [200.0, 210.0],
+                                                           "N2" => [180.0, 181.0],
+                                                           "N+" => [1000.0, 1100.0],
+                                                           "N2+" => [900.0, 950.0]),
+                                      wall_profile = wall_profile,
+                                      inlet = inlet,)
     @test profile.schema_version == "terra_chain_profile_v4"
     @test profile.wall_profile !== nothing
 
     @test_throws ArgumentError terra.ChainWallProfile(;
-        a_wall_over_v_m_inv = [100.0, -1.0])
+                                                      a_wall_over_v_m_inv = [100.0, -1.0])
     @test_throws ArgumentError terra.ChainWallProfile(;
-        a_wall_over_v_m_inv = [100.0, 101.0],
-        channel_gap_m = [0.02])
+                                                      a_wall_over_v_m_inv = [100.0, 101.0],
+                                                      channel_gap_m = [0.02])
 end
 
 @testset "ResidenceTimeConfig" begin
@@ -314,33 +347,34 @@ end
     @test rt_default.L == 1.0
     @test rt_default.U_species == u_species
 
-    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5, U_species = u_species,
-        U_energy = 3.0)
+    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5,
+                                            U_species = u_species,
+                                            U_energy = 3.0)
     @test rt_disabled.enabled == false
     @test rt_disabled.U_energy == 3.0
 
     inlet_config = terra.nitrogen_10ev_config(; isothermal = false)
 
     rt_inlet_reactor = terra.ResidenceTimeConfig(;
-        enabled = true,
-        L = 1.0,
-        U_species = u_species,
-        inlet_reactor = inlet_config.reactor)
+                                                 enabled = true,
+                                                 L = 1.0,
+                                                 U_species = u_species,
+                                                 inlet_reactor = inlet_config.reactor)
     @test rt_inlet_reactor.inlet_reactor == inlet_config.reactor
 
     rt_inlet_config_alias = terra.ResidenceTimeConfig(;
-        enabled = true,
-        L = 1.0,
-        U_species = u_species,
-        inlet_config = inlet_config)
+                                                      enabled = true,
+                                                      L = 1.0,
+                                                      U_species = u_species,
+                                                      inlet_config = inlet_config)
     @test rt_inlet_config_alias.inlet_reactor == inlet_config.reactor
 
     @test_throws ArgumentError terra.ResidenceTimeConfig(;
-        enabled = true,
-        L = 1.0,
-        U_species = u_species,
-        inlet_reactor = inlet_config.reactor,
-        inlet_config = inlet_config)
+                                                         enabled = true,
+                                                         L = 1.0,
+                                                         U_species = u_species,
+                                                         inlet_reactor = inlet_config.reactor,
+                                                         inlet_config = inlet_config)
 end
 
 @testset "AxialMarchingConfig" begin
@@ -353,11 +387,11 @@ end
     @test marching.is_isothermal_teex == true
 
     custom = terra.AxialMarchingConfig(;
-        handoff_mode = :full_state,
-        termination_mode = :steady_state,
-        override_tt_K = 900.0,
-        override_tv_K = 800.0,
-        is_isothermal_teex = false)
+                                       handoff_mode = :full_state,
+                                       termination_mode = :steady_state,
+                                       override_tt_K = 900.0,
+                                       override_tv_K = 800.0,
+                                       is_isothermal_teex = false)
     @test custom.handoff_mode == :full_state
     @test custom.termination_mode == :steady_state
     @test custom.override_tt_K == 900.0
@@ -373,24 +407,21 @@ end
 
 @testset "ReactorResult and ReactorFrame" begin
     frame1 = terra.ReactorFrame(;
-        t = 0.0,
-        species_densities = [1e-3, 1e-6, 1e-8],
-        temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
-        total_energy = 1e4,
-    )
+                                t = 0.0,
+                                species_densities = [1e-3, 1e-6, 1e-8],
+                                temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
+                                total_energy = 1e4,)
     frame2 = terra.ReactorFrame(;
-        t = 1.0,
-        species_densities = [2e-3, 2e-6, 2e-8],
-        temperatures = (tt = 320.0, te = 10500.0, tv = 315.0),
-        total_energy = 1.1e4,
-    )
+                                t = 1.0,
+                                species_densities = [2e-3, 2e-6, 2e-8],
+                                temperatures = (tt = 320.0, te = 10500.0, tv = 315.0),
+                                total_energy = 1.1e4,)
 
     reactor = terra.ReactorResult(;
-        t = [0.0, 1.0],
-        frames = [frame1, frame2],
-        success = true,
-        message = "ok",
-    )
+                                  t = [0.0, 1.0],
+                                  frames = [frame1, frame2],
+                                  success = true,
+                                  message = "ok",)
     @test reactor.success == true
     @test length(reactor.frames) == 2
     @test reactor.frames[1].t == 0.0
@@ -404,55 +435,63 @@ end
 
 @testset "ChainSimulationResult" begin
     reactor_cfg = terra.ReactorConfig(;
-        composition = terra.ReactorComposition(;
-            species = ["N", "N2", "E-"],
-            mole_fractions = [0.1, 0.8, 0.1],
-            total_number_density = 1e13),
-        thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0, Te = 10000.0))
+                                      composition = terra.ReactorComposition(;
+                                                                             species = ["N",
+                                                                                 "N2",
+                                                                                 "E-"],
+                                                                             mole_fractions = [0.1,
+                                                                                 0.8,
+                                                                                 0.1],
+                                                                             total_number_density = 1e13),
+                                      thermal = terra.ReactorThermalState(; Tt = 300.0,
+                                                                          Tv = 310.0,
+                                                                          Tee = 320.0,
+                                                                          Te = 10000.0))
 
     reactor = terra.ReactorResult(;
-        t = [0.0, 1.0],
-        frames = [
-            terra.ReactorFrame(;
-                t = 0.0,
-                species_densities = [1e-3, 1e-6, 1e-8],
-                temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
-                total_energy = 1e4,
-            ),
-            terra.ReactorFrame(;
-                t = 1.0,
-                species_densities = [1e-3, 1e-6, 1e-8],
-                temperatures = (tt = 301.0, te = 10000.0, tv = 311.0),
-                total_energy = 1.1e4,
-            ),
-        ],
-        success = true,
-        message = "ok",
-    )
+                                  t = [0.0, 1.0],
+                                  frames = [terra.ReactorFrame(;
+                                                               t = 0.0,
+                                                               species_densities = [1e-3,
+                                                                   1e-6,
+                                                                   1e-8],
+                                                               temperatures = (tt = 300.0,
+                                                                               te = 10000.0,
+                                                                               tv = 310.0),
+                                                               total_energy = 1e4,),
+                                      terra.ReactorFrame(;
+                                                         t = 1.0,
+                                                         species_densities = [1e-3,
+                                                             1e-6,
+                                                             1e-8],
+                                                         temperatures = (tt = 301.0,
+                                                                         te = 10000.0,
+                                                                         tv = 311.0),
+                                                         total_energy = 1.1e4,)],
+                                  success = true,
+                                  message = "ok",)
 
     cell = terra.ChainCellResult(;
-        compact_cell_index = 1,
-        source_cell_index = 13,
-        z_m = 0.0,
-        dx_m = 0.01,
-        te_K = 10000.0,
-        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
-        reactor = reactor,
-        endpoint_reactor = reactor_cfg,
-    )
+                                 compact_cell_index = 1,
+                                 source_cell_index = 13,
+                                 z_m = 0.0,
+                                 dx_m = 0.01,
+                                 te_K = 10000.0,
+                                 species_u_m_s = Dict("N" => 100.0, "N2" => 120.0,
+                                                      "N+" => 1000.0),
+                                 reactor = reactor,
+                                 endpoint_reactor = reactor_cfg,)
     metadata = terra.ChainMetadata(;
-        diagnostics = Dict{String, Any}("note" => "test"),
-        compact_to_source_index = [13],
-        retained_point_count = 1,
-    )
+                                   diagnostics = Dict{String, Any}("note" => "test"),
+                                   compact_to_source_index = [13],
+                                   retained_point_count = 1,)
 
     chain = terra.ChainSimulationResult(;
-        cells = [cell],
-        metadata = metadata,
-        success = true,
-        failed_cell = nothing,
-        message = "done",
-    )
+                                        cells = [cell],
+                                        metadata = metadata,
+                                        success = true,
+                                        failed_cell = nothing,
+                                        message = "done",)
 
     @test chain.success == true
     @test chain.failed_cell === nothing
@@ -463,58 +502,59 @@ end
 
 @testset "Nested Chain Cell Indexing" begin
     reactor = terra.ReactorResult(;
-        t = [0.0, 1.0],
-        frames = [
-            terra.ReactorFrame(;
-                t = 0.0,
-                species_densities = [1e-3, 1e-6, 1e-8],
-                temperatures = (tt = 300.0, te = 10000.0, tv = 310.0),
-                total_energy = 1e4,
-            ),
-            terra.ReactorFrame(;
-                t = 1.0,
-                species_densities = [1e-3, 1e-6, 1e-8],
-                temperatures = (tt = 301.0, te = 10000.0, tv = 311.0),
-                total_energy = 1.1e4,
-            ),
-        ],
-        success = true,
-        message = "ok",
-    )
+                                  t = [0.0, 1.0],
+                                  frames = [terra.ReactorFrame(;
+                                                               t = 0.0,
+                                                               species_densities = [1e-3,
+                                                                   1e-6,
+                                                                   1e-8],
+                                                               temperatures = (tt = 300.0,
+                                                                               te = 10000.0,
+                                                                               tv = 310.0),
+                                                               total_energy = 1e4,),
+                                      terra.ReactorFrame(;
+                                                         t = 1.0,
+                                                         species_densities = [1e-3,
+                                                             1e-6,
+                                                             1e-8],
+                                                         temperatures = (tt = 301.0,
+                                                                         te = 10000.0,
+                                                                         tv = 311.0),
+                                                         total_energy = 1.1e4,)],
+                                  success = true,
+                                  message = "ok",)
 
     cell1 = terra.ChainCellResult(;
-        compact_cell_index = 1,
-        source_cell_index = 13,
-        z_m = 0.0,
-        dx_m = 0.01,
-        te_K = 10000.0,
-        species_u_m_s = Dict("N" => 100.0, "N2" => 120.0, "N+" => 1000.0),
-        reactor = reactor
-    )
+                                  compact_cell_index = 1,
+                                  source_cell_index = 13,
+                                  z_m = 0.0,
+                                  dx_m = 0.01,
+                                  te_K = 10000.0,
+                                  species_u_m_s = Dict("N" => 100.0, "N2" => 120.0,
+                                                       "N+" => 1000.0),
+                                  reactor = reactor)
     cell2 = terra.ChainCellResult(;
-        compact_cell_index = 2,
-        source_cell_index = 14,
-        z_m = 0.01,
-        dx_m = 0.01,
-        te_K = 9500.0,
-        species_u_m_s = Dict("N" => 105.0, "N2" => 125.0, "N+" => 1200.0),
-        reactor = reactor
-    )
+                                  compact_cell_index = 2,
+                                  source_cell_index = 14,
+                                  z_m = 0.01,
+                                  dx_m = 0.01,
+                                  te_K = 9500.0,
+                                  species_u_m_s = Dict("N" => 105.0, "N2" => 125.0,
+                                                       "N+" => 1200.0),
+                                  reactor = reactor)
 
     metadata = terra.ChainMetadata(;
-        compact_to_source_index = [13, 14],
-        original_point_count = 102,
-        retained_point_count = 2,
-        diagnostics = Dict{String, Any}("trimmed_point_count" => 12)
-    )
+                                   compact_to_source_index = [13, 14],
+                                   original_point_count = 102,
+                                   retained_point_count = 2,
+                                   diagnostics = Dict{String, Any}("trimmed_point_count" => 12))
 
     chain = terra.ChainSimulationResult(;
-        cells = [cell1, cell2],
-        metadata = metadata,
-        success = true,
-        failed_cell = nothing,
-        message = "ok"
-    )
+                                        cells = [cell1, cell2],
+                                        metadata = metadata,
+                                        success = true,
+                                        failed_cell = nothing,
+                                        message = "ok")
 
     @test length(chain.cells) == 2
     @test chain.cells[1].source_cell_index == 13
