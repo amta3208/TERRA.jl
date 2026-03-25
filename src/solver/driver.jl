@@ -57,8 +57,13 @@ function initialize_terra(config::Config, case_path::String = config.runtime.cas
                        console = :never,
                        :case_path => case_path)
 
+        native_logging = _prepare_native_logging(runtime)
+
         # Initialize the API - get dimensions from Fortran
-        result = initialize_api_wrapper(case_path = case_path)
+        result = initialize_api_wrapper(case_path = case_path,
+                                        native_console_level = native_logging.console_level,
+                                        native_file_level = native_logging.file_level,
+                                        native_log_path = native_logging.log_path)
         num_species = result.num_species
         num_dimensions = result.num_dimensions
 
@@ -184,17 +189,13 @@ and result processing.
 function _solve_terra_0d_internal(config::Config;
                                   sources::Union{Nothing, SourceTermsConfig} = config.sources,
                                   wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                                  state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                                  state_cache::Union{Nothing, ReactorStateCache} = nothing,
+                                  presentation::Symbol = :standalone_0d)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
 
     try
-        _log_run_event(config.runtime, :info,
-                       "\n" * "="^11 * " TERRA 0D Simulation " * "="^11;
-                       console = :minimal,
-                       :species => config.reactor.composition.species)
-
         # Convert configuration to initial conditions (SI to CGS)
         initial_state = config_to_initial_state(config; state_cache = state_cache)
 
@@ -202,12 +203,8 @@ function _solve_terra_0d_internal(config::Config;
         results, final_state_cache = _integrate_0d_system(config, initial_state;
                                                           sources = sources,
                                                           wall_inputs = wall_inputs,
-                                                          inlet_state_cache = state_cache)
-
-        _log_run_event(config.runtime, :info, "="^43 * "\n";
-                       console = :minimal,
-                       :frames => length(results.frames),
-                       :success => results.success)
+                                                          inlet_state_cache = state_cache,
+                                                          presentation = presentation)
         return results, final_state_cache
 
     catch e

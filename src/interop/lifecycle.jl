@@ -12,7 +12,77 @@ Initialize the TERRA API system.
 # Throws
 - `ErrorException`: If case_path doesn't exist, input file is missing, or Fortran call fails
 """
-function initialize_api_wrapper(; case_path::String = pwd())
+const API_NATIVE_LOG_OFF = Int32(0)
+const API_NATIVE_LOG_MINIMAL = Int32(1)
+const API_NATIVE_LOG_VERBOSE = Int32(2)
+
+function _default_native_log_path(case_path::AbstractString)
+    return normpath(joinpath(case_path, "output", "logs", "native.log"))
+end
+
+function _prepare_native_log_file!(path::AbstractString)
+    mkpath(dirname(path))
+    open(path, "w") do io
+        write(io, "")
+    end
+    return String(path)
+end
+
+function set_api_console_verbosity_wrapper(level::Integer)
+    if !is_terra_loaded()
+        return nothing
+    end
+    ccall((:set_api_console_verbosity, get_terra_lib_path()), Cvoid, (Int32,), Int32(level))
+    return nothing
+end
+
+function set_api_file_verbosity_wrapper(level::Integer)
+    if !is_terra_loaded()
+        return nothing
+    end
+    ccall((:set_api_file_verbosity, get_terra_lib_path()), Cvoid, (Int32,), Int32(level))
+    return nothing
+end
+
+function set_api_log_path_wrapper(path::AbstractString)
+    if !is_terra_loaded()
+        return nothing
+    end
+    path_string = String(path)
+    path_bytes = Vector{UInt8}(codeunits(path_string))
+    ccall((:set_api_log_path, get_terra_lib_path()), Cvoid, (Ptr{UInt8}, Int32), path_bytes,
+          Int32(length(path_bytes)))
+    return nothing
+end
+
+function clear_api_log_path_wrapper()
+    if !is_terra_loaded()
+        return nothing
+    end
+    ccall((:clear_api_log_path, get_terra_lib_path()), Cvoid, ())
+    return nothing
+end
+
+function configure_api_logging_wrapper(; console_level::Integer = API_NATIVE_LOG_OFF,
+                                       file_level::Integer = API_NATIVE_LOG_VERBOSE,
+                                       log_path::Union{Nothing, AbstractString} = nothing)
+    set_api_console_verbosity_wrapper(console_level)
+    set_api_file_verbosity_wrapper(file_level)
+
+    if log_path === nothing || isempty(String(log_path))
+        clear_api_log_path_wrapper()
+    else
+        prepared_path = _prepare_native_log_file!(String(log_path))
+        set_api_log_path_wrapper(prepared_path)
+    end
+
+    return nothing
+end
+
+function initialize_api_wrapper(; case_path::String = pwd(),
+                                native_console_level::Union{Nothing, Integer} = nothing,
+                                native_file_level::Union{Nothing, Integer} = nothing,
+                                native_log_path::Union{Nothing, AbstractString} = nothing)
     # Reconcile Julia/Fortran state first to avoid mismatches in tests
     try
         TERRA_INITIALIZED[] = is_api_initialized_wrapper()
@@ -53,6 +123,20 @@ function initialize_api_wrapper(; case_path::String = pwd())
     if !isdir(states_dir)
         mkpath(states_dir)
     end
+
+    console_level = native_console_level === nothing ? API_NATIVE_LOG_OFF :
+                    Int32(native_console_level)
+    file_level = native_file_level === nothing ? API_NATIVE_LOG_VERBOSE :
+                 Int32(native_file_level)
+    resolved_log_path = if native_log_path === nothing
+        file_level == API_NATIVE_LOG_OFF ? nothing : _default_native_log_path(case_path)
+    else
+        String(native_log_path)
+    end
+
+    configure_api_logging_wrapper(; console_level = console_level,
+                                  file_level = file_level,
+                                  log_path = resolved_log_path)
 
     # If Fortran already initialized, skip reinitialization but still return dims
     if TERRA_INITIALIZED[]
@@ -119,6 +203,7 @@ function finalize_api_wrapper()
         ccall((:finalize_api, get_terra_lib_path()), Cvoid, ())
         TERRA_INITIALIZED[] = false
     end
+    clear_api_log_path_wrapper()
     TERRA_CASE_PATH[] = ""
     TERRA_OUTPUTS_OPEN[] = false
     return nothing

@@ -34,7 +34,6 @@
         terra.load_terra_library!()
 
         max_species = terra.get_max_number_of_species_wrapper()
-        println("Max species: ", max_species)
 
         # Check return type
         @test max_species isa Int32
@@ -115,7 +114,6 @@
 
         # Test atomic electronic states
         max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()
-        println("Max atomic electronic states: ", max_atomic_states)
 
         @test max_atomic_states isa Int32
         @test max_atomic_states > 0
@@ -123,7 +121,6 @@
 
         # Test molecular electronic states
         max_molecular_states = terra.get_max_number_of_molecular_electronic_states_wrapper()
-        println("Max molecular electronic states: ", max_molecular_states)
 
         @test max_molecular_states isa Int32
         @test max_molecular_states > 0

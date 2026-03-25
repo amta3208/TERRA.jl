@@ -104,6 +104,32 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
                      save_positions = (false, false))
 end
 
+const STANDALONE_0D_BANNER = "\n" * "="^11 * " TERRA 0D Simulation " * "="^11
+const STANDALONE_0D_FOOTER = "="^43
+
+function _integration_presentation_emits_banner(presentation::Symbol)
+    if presentation == :standalone_0d
+        return true
+    elseif presentation == :chain_segment
+        return false
+    end
+    throw(ArgumentError("Unsupported integration presentation: :$presentation"))
+end
+
+function _integration_start_message(presentation::Symbol)
+    if _integration_presentation_emits_banner(presentation)
+        return string(STANDALONE_0D_BANNER, "\n", "starting ODE integration...")
+    end
+    return "starting ODE integration..."
+end
+
+function _integration_completion_message(presentation::Symbol, message::AbstractString)
+    if _integration_presentation_emits_banner(presentation)
+        return string(message, "\n", STANDALONE_0D_FOOTER)
+    end
+    return String(message)
+end
+
 function integration_progress_condition(u, t, integrator)
     reporter = integrator.p.progress_reporter
     reporter === nothing && return false
@@ -163,14 +189,16 @@ function integrate_0d_system(config::Config, initial_state;
                              sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
     results, _ = _integrate_0d_system(config, initial_state;
-                                      sources = sources)
+                                      sources = sources,
+                                      presentation = :standalone_0d)
     return results
 end
 
 function _integrate_0d_system(config::Config, initial_state;
                               sources::Union{Nothing, SourceTermsConfig} = config.sources,
                               wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                              inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                              inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing,
+                              presentation::Symbol = :standalone_0d)
     runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -269,7 +297,7 @@ function _integrate_0d_system(config::Config, initial_state;
     callback = progress_reporter === nothing ? ramp_callback :
                CallbackSet(ramp_callback, integration_progress_callback())
 
-    _log_run_event(runtime, :info, "starting ODE integration..." * "\n";
+    _log_run_event(runtime, :info, _integration_start_message(presentation);
                    console = :minimal,
                    :reltol => solver_cfg.reltol,
                    :abstol_density => solver_cfg.abstol_density)
@@ -451,9 +479,10 @@ function _integrate_0d_system(config::Config, initial_state;
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
-        message = success ? "\n" * "success!" :
+        message = success ? "success!" :
                   "ODE integration terminated: $(rc)"
-        _log_run_event(runtime, success ? :info : :warn, message;
+        completion_message = _integration_completion_message(presentation, message)
+        _log_run_event(runtime, success ? :info : :warn, completion_message;
                        console = :minimal,
                        :retcode => sol.retcode,
                        :saved_points => n_times)
@@ -480,7 +509,10 @@ function _integrate_0d_system(config::Config, initial_state;
                              metadata = result_metadata,), final_state_cache
 
     catch e
-        _log_run_exception(runtime, :error, "ODE integration failed", e;
+        _log_run_exception(runtime, :error,
+                           _integration_completion_message(presentation,
+                                                           "ODE integration failed"),
+                           e;
                            console = :minimal)
         fallback_species = config.runtime.unit_system == :SI ?
                            convert_density_cgs_to_si(initial_state.rho_sp) :

@@ -486,7 +486,8 @@ function solve_terra_chain_steady(config::Config,
                                           requested_state_cache.rho_ex_cgs !== nothing
             local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
                                                                        wall_inputs = wall_inputs,
-                                                                       state_cache = requested_state_cache)
+                                                                       state_cache = requested_state_cache,
+                                                                       presentation = :chain_segment)
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"
             segment_results[k] = _failed_simulation_result(segment_messages[k])

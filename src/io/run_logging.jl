@@ -4,6 +4,14 @@ const ACTIVE_RUNTIME_FOR_LOGGING = Ref{Union{Nothing, RuntimeConfig}}(nothing)
 _stream_mode_writes_file(mode::Symbol) = mode == :file || mode == :both
 _stream_mode_writes_console(mode::Symbol) = mode == :console || mode == :both
 
+function _truncate_log_file(path::AbstractString)
+    mkpath(dirname(path))
+    open(path, "w") do io
+        write(io, "")
+    end
+    return String(path)
+end
+
 function _runtime_with_case_path(runtime::RuntimeConfig, case_path::AbstractString)
     runtime.case_path == case_path && return runtime
     return RuntimeConfig(; database_path = runtime.database_path,
@@ -48,6 +56,34 @@ function _write_run_log(runtime::RuntimeConfig, text::AbstractString)
     _ensure_log_dir(runtime)
     _append_log_text(_run_log_path(runtime), text)
     return nothing
+end
+
+function _native_console_level(runtime::RuntimeConfig)
+    logging = runtime.logging
+    if !_stream_mode_writes_console(logging.native_stream_mode) ||
+       logging.console_mode == :quiet
+        return API_NATIVE_LOG_OFF
+    elseif logging.console_mode == :verbose
+        return API_NATIVE_LOG_VERBOSE
+    end
+    return API_NATIVE_LOG_MINIMAL
+end
+
+function _native_file_level(runtime::RuntimeConfig)
+    return _stream_mode_writes_file(runtime.logging.native_stream_mode) ?
+           API_NATIVE_LOG_VERBOSE :
+           API_NATIVE_LOG_OFF
+end
+
+function _prepare_native_logging(runtime::RuntimeConfig)
+    console_level = _native_console_level(runtime)
+    file_level = _native_file_level(runtime)
+    log_path = nothing
+    if file_level != API_NATIVE_LOG_OFF
+        _ensure_log_dir(runtime)
+        log_path = _truncate_log_file(_native_log_path(runtime))
+    end
+    return (console_level = console_level, file_level = file_level, log_path = log_path)
 end
 
 function _format_run_log_line(level::Symbol, message::AbstractString, fields::Pair...)

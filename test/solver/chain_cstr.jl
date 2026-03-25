@@ -113,6 +113,33 @@
         cleanup_terra!()
     end
 
+    @testset "Chain solve does not emit standalone 0D banner" begin
+        config = build_chain_test_config()
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
+
+        chain_ref = Ref{Any}(nothing)
+        capture_pipe = Pipe()
+        redirect_stdout(capture_pipe) do
+            chain_ref[] = terra.solve_terra_chain_steady(config, profile)
+            nothing
+        end
+        close(Base.pipe_writer(capture_pipe))
+
+        console_text = read(capture_pipe, String)
+        chain = chain_ref[]::terra.ChainSimulationResult
+        @test chain.success == true
+        @test !occursin("=========== TERRA 0D Simulation ===========", console_text)
+
+        cleanup_terra!()
+    end
+
     @testset "Two-segment handoff and Te profile enforcement" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
