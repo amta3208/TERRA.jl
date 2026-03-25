@@ -22,8 +22,8 @@ function validate_species_against_terra_database(config::Config)
             if is_terra_loaded()
                 terra_species = get_species_names_wrapper()
                 composition = config.reactor.composition
-                validate_species_data(
-                    composition.species, terra_species, composition.mole_fractions)
+                validate_species_data(composition.species, terra_species,
+                                      composition.mole_fractions)
                 @info "Species validation against TERRA database passed"
             else
                 @warn "TERRA library not loaded. Cannot validate species against database."
@@ -185,15 +185,12 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
             throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
     end
     for i in 2:n
-        profile.z_m[i] > profile.z_m[i - 1] || throw(ArgumentError(
-            "AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."
-        ))
+        profile.z_m[i] > profile.z_m[i - 1] ||
+            throw(ArgumentError("AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."))
     end
 
-    for (name, values) in (
-        ("dx_m", profile.dx_m),
-        ("te_K", profile.te_K),
-    )
+    for (name, values) in (("dx_m", profile.dx_m),
+                           ("te_K", profile.te_K))
         for (i, value) in pairs(values)
             isfinite(value) ||
                 throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
@@ -202,18 +199,14 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
         end
     end
 
-    isempty(profile.species_u_m_s) && throw(ArgumentError(
-        "AxialChainProfile: species_u_m_s must contain at least one species."
-    ))
+    isempty(profile.species_u_m_s) &&
+        throw(ArgumentError("AxialChainProfile: species_u_m_s must contain at least one species."))
     for (name, values) in pairs(profile.species_u_m_s)
         lowered = lowercase(strip(name))
-        lowered in ("e", "e-", "electron") && throw(ArgumentError(
-            "AxialChainProfile: species_u_m_s must not include electron species."
-        ))
+        lowered in ("e", "e-", "electron") &&
+            throw(ArgumentError("AxialChainProfile: species_u_m_s must not include electron species."))
         if length(values) != n
-            throw(ArgumentError(
-                "AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."
-            ))
+            throw(ArgumentError("AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."))
         end
         for (i, value) in pairs(values)
             isfinite(value) ||
@@ -225,9 +218,7 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
 
     for (name, values) in pairs(profile.diagnostics)
         if length(values) != n
-            throw(ArgumentError(
-                "AxialChainProfile diagnostic `$name` length $(length(values)) does not match required profile length $n."
-            ))
+            throw(ArgumentError("AxialChainProfile diagnostic `$name` length $(length(values)) does not match required profile length $n."))
         end
         for (i, value) in pairs(values)
             isfinite(value) ||
@@ -235,10 +226,32 @@ function validate_axial_chain_profile(profile::AxialChainProfile)
         end
     end
 
+    if profile.wall_profile !== nothing
+        wall_profile = profile.wall_profile
+        length(wall_profile.a_wall_over_v_m_inv) == n ||
+            throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."))
+        for (i, value) in pairs(wall_profile.a_wall_over_v_m_inv)
+            isfinite(value) && value > 0.0 ||
+                throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv[$i] must be finite and strictly positive."))
+        end
+
+        for (name, values) in (("channel_gap_m", wall_profile.channel_gap_m),
+                               ("wall_temperature_K", wall_profile.wall_temperature_K),
+                               ("ion_edge_to_center_ratio",
+                                wall_profile.ion_edge_to_center_ratio))
+            values === nothing && continue
+            length(values) == n ||
+                throw(ArgumentError("AxialChainProfile: wall_profile.$name length $(length(values)) does not match required profile length $n."))
+            for (i, value) in pairs(values)
+                isfinite(value) && value > 0.0 ||
+                    throw(ArgumentError("AxialChainProfile: wall_profile.$name[$i] must be finite and strictly positive."))
+            end
+        end
+    end
+
     source_idx = profile.inlet.source_compact_index
-    source_idx <= n || throw(ArgumentError(
-        "AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."
-    ))
+    source_idx <= n ||
+        throw(ArgumentError("AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."))
 
     return true
 end
@@ -259,9 +272,7 @@ Validate an `AxialMarchingConfig` for the current chain solver capabilities.
 """
 function validate_axial_marching_config(marching::AxialMarchingConfig)
     if marching.termination_mode != :final_time
-        throw(ArgumentError(
-            "Axial chain solver currently supports termination_mode=:final_time only (got $(marching.termination_mode))."
-        ))
+        throw(ArgumentError("Axial chain solver currently supports termination_mode=:final_time only (got $(marching.termination_mode))."))
     end
     return true
 end

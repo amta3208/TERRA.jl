@@ -78,7 +78,7 @@
     )
 
     metadata = terra.ChainMetadata(;
-        schema_version = "terra_chain_profile_v3",
+        schema_version = "terra_chain_profile_v4",
         generator = Dict{String, Any}("tool" => "unit-test"),
         selection = Dict{String, Any}("trim_start_index" => 5),
         diagnostics = Dict{String, Any}(

@@ -74,8 +74,8 @@ function initialize_api_wrapper(; case_path::String = pwd())
 
         # Call Fortran function with correct parameter order
         ccall((:initialize_api, get_terra_lib_path()), Cvoid,
-            (Ref{Int32}, Ref{Int32}),
-            num_species_ref, num_dimensions_ref)
+              (Ref{Int32}, Ref{Int32}),
+              num_species_ref, num_dimensions_ref)
 
         # If we get here, the call succeeded
         TERRA_INITIALIZED[] = true
@@ -180,7 +180,8 @@ Write a snapshot of the current API state to the native TERRA output files, usin
 the `y` layout expected by `rhs_api`.
 """
 function write_api_outputs_wrapper(istep::Integer, time::Real, dt::Real,
-        state::AbstractVector{<:Real}; dist::Real = 0.0, dx::Real = 0.0)
+                                   state::AbstractVector{<:Real}; dist::Real = 0.0,
+                                   dx::Real = 0.0)
     if !TERRA_OUTPUTS_OPEN[]
         error("TERRA output files are not open. Call open_api_output_files_wrapper() first.")
     end
@@ -201,8 +202,8 @@ function write_api_outputs_wrapper(istep::Integer, time::Real, dt::Real,
         ptr = Base.unsafe_convert(Ptr{Float64}, state_vec)
         cd(case_path) do
             ccall((:write_api_outputs, get_terra_lib_path()), Cvoid,
-                (Int32, Float64, Float64, Float64, Float64, Int32, Ptr{Float64}),
-                istep32, time64, dt64, dist64, dx64, neq32, ptr)
+                  (Int32, Float64, Float64, Float64, Float64, Int32, Ptr{Float64}),
+                  istep32, time64, dt64, dist64, dx64, neq32, ptr)
         end
     end
 

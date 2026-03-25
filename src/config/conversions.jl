@@ -4,27 +4,28 @@ $(SIGNATURES)
 Return a copy of `config` with an updated runtime block.
 """
 function with_runtime(config::Config;
-        database_path::AbstractString = config.runtime.database_path,
-        case_path::AbstractString = config.runtime.case_path,
-        unit_system::Symbol = config.runtime.unit_system,
-        validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
-        print_source_terms::Bool = config.runtime.print_source_terms,
-        write_native_outputs::Bool = config.runtime.write_native_outputs,
-        print_integration_output::Bool = config.runtime.print_integration_output)
+                      database_path::AbstractString = config.runtime.database_path,
+                      case_path::AbstractString = config.runtime.case_path,
+                      unit_system::Symbol = config.runtime.unit_system,
+                      validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
+                      print_source_terms::Bool = config.runtime.print_source_terms,
+                      write_native_outputs::Bool = config.runtime.write_native_outputs,
+                      print_integration_output::Bool = config.runtime.print_integration_output)
     runtime = RuntimeConfig(;
-        database_path = String(database_path),
-        case_path = String(case_path),
-        unit_system = unit_system,
-        validate_species_against_terra = validate_species_against_terra,
-        print_source_terms = print_source_terms,
-        write_native_outputs = write_native_outputs,
-        print_integration_output = print_integration_output)
+                            database_path = String(database_path),
+                            case_path = String(case_path),
+                            unit_system = unit_system,
+                            validate_species_against_terra = validate_species_against_terra,
+                            print_source_terms = print_source_terms,
+                            write_native_outputs = write_native_outputs,
+                            print_integration_output = print_integration_output)
 
     return Config(;
-        reactor = config.reactor,
-        models = config.models,
-        numerics = config.numerics,
-        runtime = runtime)
+                  reactor = config.reactor,
+                  models = config.models,
+                  sources = config.sources,
+                  numerics = config.numerics,
+                  runtime = runtime)
 end
 
 """
@@ -42,27 +43,28 @@ $(SIGNATURES)
 Return a copy of `config` with updated time-integration controls.
 """
 function with_time(config::Config;
-        dt::Real = config.numerics.time.dt,
-        dt_output::Real = config.numerics.time.dt_output,
-        duration::Real = config.numerics.time.duration,
-        nstep::Integer = config.numerics.time.nstep,
-        method::Integer = config.numerics.time.method)
+                   dt::Real = config.numerics.time.dt,
+                   dt_output::Real = config.numerics.time.dt_output,
+                   duration::Real = config.numerics.time.duration,
+                   nstep::Integer = config.numerics.time.nstep,
+                   method::Integer = config.numerics.time.method)
     time = TimeConfig(;
-        dt = dt,
-        dt_output = dt_output,
-        duration = duration,
-        nstep = nstep,
-        method = method)
+                      dt = dt,
+                      dt_output = dt_output,
+                      duration = duration,
+                      nstep = nstep,
+                      method = method)
     numerics = NumericsConfig(;
-        time = time,
-        solver = config.numerics.solver,
-        space = config.numerics.space,
-        residence_time = config.numerics.residence_time)
+                              time = time,
+                              solver = config.numerics.solver,
+                              space = config.numerics.space)
+
     return Config(;
-        reactor = config.reactor,
-        models = config.models,
-        numerics = numerics,
-        runtime = config.runtime)
+                  reactor = config.reactor,
+                  models = config.models,
+                  sources = config.sources,
+                  numerics = numerics,
+                  runtime = config.runtime)
 end
 
 """
@@ -93,24 +95,25 @@ function convert_config_units(config::Config, target_unit_system::Symbol)
     end
 
     new_reactor = ReactorConfig(;
-        composition = ReactorComposition(;
-            species = composition.species,
-            mole_fractions = composition.mole_fractions,
-            total_number_density = new_total_number_density),
-        thermal = config.reactor.thermal)
+                                composition = ReactorComposition(;
+                                                                 species = composition.species,
+                                                                 mole_fractions = composition.mole_fractions,
+                                                                 total_number_density = new_total_number_density),
+                                thermal = config.reactor.thermal)
 
     new_runtime = RuntimeConfig(;
-        database_path = config.runtime.database_path,
-        case_path = config.runtime.case_path,
-        unit_system = target_unit_system,
-        validate_species_against_terra = config.runtime.validate_species_against_terra,
-        print_source_terms = config.runtime.print_source_terms,
-        write_native_outputs = config.runtime.write_native_outputs,
-        print_integration_output = config.runtime.print_integration_output)
+                                database_path = config.runtime.database_path,
+                                case_path = config.runtime.case_path,
+                                unit_system = target_unit_system,
+                                validate_species_against_terra = config.runtime.validate_species_against_terra,
+                                print_source_terms = config.runtime.print_source_terms,
+                                write_native_outputs = config.runtime.write_native_outputs,
+                                print_integration_output = config.runtime.print_integration_output)
 
     return Config(;
-        reactor = new_reactor,
-        models = config.models,
-        numerics = config.numerics,
-        runtime = new_runtime)
+                  reactor = new_reactor,
+                  models = config.models,
+                  sources = config.sources,
+                  numerics = config.numerics,
+                  runtime = new_runtime)
 end

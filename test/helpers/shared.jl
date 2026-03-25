@@ -1,3 +1,4 @@
+const TEST_PACKAGE_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const TEST_CASES_ROOT = normpath(joinpath(@__DIR__, "..", "cases"))
 const TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH = normpath(joinpath(
     TEST_CASES_ROOT, "terra_fortran", "reference_case"))
@@ -6,6 +7,18 @@ const TEST_HET_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
     TEST_CASES_ROOT, "hallthruster_jl", "chain_interface_case"))
 const TEST_TERRA_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
     TEST_CASES_ROOT, "terra_jl", "chain_interface_case"))
+const _HALLTHRUSTER_EXPORT_TOOL = Ref{Union{Nothing, Module}}(nothing)
+
+function hallthruster_export_tool()
+    tool = _HALLTHRUSTER_EXPORT_TOOL[]
+    if tool === nothing
+        tool = Module(gensym(:HallThrusterExportTool))
+        Base.include(tool, joinpath(
+            TEST_PACKAGE_ROOT, "tools", "hallthruster_jl", "export_chain_profile.jl"))
+        _HALLTHRUSTER_EXPORT_TOOL[] = tool
+    end
+    return tool::Module
+end
 
 """
 Reset the TERRA state (Fortran + Julia) and initialize from scratch.

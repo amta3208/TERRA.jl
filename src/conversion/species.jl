@@ -1,23 +1,21 @@
 const AVOGADRO = 6.02214076e23  # Avogadro's number (1/mol)
 
 # Common molecular weights (g/mol)
-const MOLECULAR_WEIGHT_DB = Dict{String, Float64}(
-    "N" => 14.007,
-    "N2" => 28.014,
-    "N+" => 14.007,
-    "N2+" => 28.014,
-    "E-" => 5.485799e-4,  # electron mass
-    "Ar" => 39.948,
-    "Ar+" => 39.948,
-    "Xe" => 131.293,
-    "Xe+" => 131.293,
-    "Kr" => 83.798,
-    "Kr+" => 83.798,
-    "O" => 15.999,
-    "O2" => 31.998,
-    "O+" => 15.999,
-    "O2+" => 31.998
-)
+const MOLECULAR_WEIGHT_DB = Dict{String, Float64}("N" => 14.007,
+                                                  "N2" => 28.014,
+                                                  "N+" => 14.007,
+                                                  "N2+" => 28.014,
+                                                  "E-" => 5.485799e-4,  # electron mass
+                                                  "Ar" => 39.948,
+                                                  "Ar+" => 39.948,
+                                                  "Xe" => 131.293,
+                                                  "Xe+" => 131.293,
+                                                  "Kr" => 83.798,
+                                                  "Kr+" => 83.798,
+                                                  "O" => 15.999,
+                                                  "O2" => 31.998,
+                                                  "O+" => 15.999,
+                                                  "O2+" => 31.998)
 
 """
 $(SIGNATURES)
@@ -56,8 +54,8 @@ Validate species data consistency between Julia and TERRA.
 - `true` if validation passes, throws error otherwise
 """
 function validate_species_data(species_names::Vector{String},
-        terra_species::Vector{String},
-        densities::Vector{Float64})
+                               terra_species::Vector{String},
+                               densities::Vector{Float64})
 
     # Check array lengths match
     if length(species_names) != length(densities)
@@ -103,20 +101,18 @@ function create_species_mapping(ht_species::Vector{String}, terra_species::Vecto
     mapping = Dict{String, String}()
 
     # Common mappings (this may need to be expanded based on actual usage)
-    common_mappings = Dict(
-        "N" => "N",
-        "N2" => "N2",
-        "N+" => "N+",
-        "N2+" => "N2+",
-        "e-" => "E-",
-        "E-" => "E-",
-        "Ar" => "Ar",
-        "Ar+" => "Ar+",
-        "Xe" => "Xe",
-        "Xe+" => "Xe+",
-        "Kr" => "Kr",
-        "Kr+" => "Kr+"
-    )
+    common_mappings = Dict("N" => "N",
+                           "N2" => "N2",
+                           "N+" => "N+",
+                           "N2+" => "N2+",
+                           "e-" => "E-",
+                           "E-" => "E-",
+                           "Ar" => "Ar",
+                           "Ar+" => "Ar+",
+                           "Xe" => "Xe",
+                           "Xe+" => "Xe+",
+                           "Kr" => "Kr",
+                           "Kr+" => "Kr+")
 
     for ht_name in ht_species
         if haskey(common_mappings, ht_name)
@@ -153,8 +149,8 @@ Convert mole fractions to mass densities.
 - Vector of mass densities (g/cm³)
 """
 function mole_fractions_to_mass_densities(mole_fractions::AbstractVector{<:Real},
-        molecular_weights::AbstractVector{<:Real},
-        total_number_density::Real)
+                                          molecular_weights::AbstractVector{<:Real},
+                                          total_number_density::Real)
     if length(mole_fractions) != length(molecular_weights)
         error("Mole fractions and molecular weights arrays must have same length")
     end
@@ -195,7 +191,7 @@ Convert mass densities to mole fractions.
 - Vector of mole fractions
 """
 function mass_densities_to_mole_fractions(mass_densities::AbstractVector{<:Real},
-        molecular_weights::AbstractVector{<:Real})
+                                          molecular_weights::AbstractVector{<:Real})
     if length(mass_densities) != length(molecular_weights)
         error("Mass densities and molecular weights arrays must have same length")
     end

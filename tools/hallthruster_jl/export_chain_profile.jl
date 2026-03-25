@@ -1,10 +1,10 @@
 using Dates
 using JSON
 
-const SCHEMA_VERSION = "terra_chain_profile_v3"
-const SCRIPT_VERSION = "0.4.0"
+const SCHEMA_VERSION = "terra_chain_profile_v4"
+const SCRIPT_VERSION = "0.5.0"
 const EV_TO_K = 11604.518121550082
-const DEFAULT_OUTPUT_BASENAME = "chain_profile_v3.json"
+const DEFAULT_OUTPUT_BASENAME = "chain_profile_v4.json"
 
 function usage()
     return """
@@ -14,7 +14,7 @@ function usage()
     Notes:
       - The HallThruster JSON input must already contain an `output.average` block.
       - For JSON inputs, `--average_start_time` is recorded as metadata only; this script does not recompute the time average.
-      - The output is written to `<terra_case_path>/input/chain_profile_v3.json`.
+      - The output is written to `<terra_case_path>/input/chain_profile_v4.json`.
       - Default ion-velocity handling is `trim_to_first_positive` with `u_ion_floor=0.0` and `min_consecutive_positive=3`.
       - All non-electron neutral and ion species present in HallThruster are exported.
     """
@@ -238,6 +238,26 @@ function trim_arrays_from_index(arrays::Dict{String, Vector{Float64}}, start_idx
         trimmed[key] = values[start_idx:end]
     end
     return trimmed
+end
+
+function build_wall_profile_arrays(source::AbstractDict, n_points::Integer)
+    input = require_dict(source, "input", "top-level JSON")
+    config = require_dict(input, "config", "input")
+    thruster = require_dict(config, "thruster", "input.config")
+    geometry = require_dict(thruster, "geometry", "input.config.thruster")
+
+    inner_radius_m = require_number(geometry, "inner_radius", "input.config.thruster.geometry")
+    outer_radius_m = require_number(geometry, "outer_radius", "input.config.thruster.geometry")
+    channel_gap_m = outer_radius_m - inner_radius_m
+    channel_gap_m > 0.0 || throw(ArgumentError(
+        "Thruster geometry must satisfy outer_radius > inner_radius; got inner_radius=$(inner_radius_m), outer_radius=$(outer_radius_m)."
+    ))
+
+    a_wall_over_v_m_inv = 2.0 / channel_gap_m
+    return Dict{String, Vector{Float64}}(
+        "a_wall_over_v_m_inv" => fill(a_wall_over_v_m_inv, n_points),
+        "channel_gap_m" => fill(channel_gap_m, n_points),
+    )
 end
 
 function validate_profile!(
@@ -573,6 +593,7 @@ function build_chain_profile(
     electric_field_V_m = require_number_array(average, "E", "output.average")
 
     original_point_count = length(z_m)
+    wall_profile_arrays = build_wall_profile_arrays(source, original_point_count)
     all_arrays = Dict{String, Vector{Float64}}(
         "z_m" => z_m,
         "tev_eV" => tev,
@@ -581,6 +602,9 @@ function build_chain_profile(
         "potential_V" => potential_V,
         "electric_field_V_m" => electric_field_V_m,
     )
+    for (name, values) in pairs(wall_profile_arrays)
+        all_arrays["wall_profile.$name"] = values
+    end
     for (species_name, values) in pairs(species_u_m_s)
         all_arrays["species_u_m_s.$(species_name)"] = values
     end
@@ -605,6 +629,10 @@ function build_chain_profile(
     channel_area_m2 = all_arrays["channel_area_m2"]
     potential_V = all_arrays["potential_V"]
     electric_field_V_m = all_arrays["electric_field_V_m"]
+    wall_profile_arrays = Dict{String, Vector{Float64}}(
+        "a_wall_over_v_m_inv" => all_arrays["wall_profile.a_wall_over_v_m_inv"],
+        "channel_gap_m" => all_arrays["wall_profile.channel_gap_m"],
+    )
 
     neutral_species = sort!(collect(keys(neutral_velocities)))
     species_u_m_s = Dict{String, Vector{Float64}}()
@@ -686,6 +714,9 @@ function build_chain_profile(
         "selection" => selection,
         "inlet" => inlet,
         "profile" => profile,
+        "wall_profile" => Dict{String, Any}(
+            name => wall_profile_arrays[name] for name in sort!(collect(keys(wall_profile_arrays)))
+        ),
         "diagnostics" => diagnostics,
     )
 

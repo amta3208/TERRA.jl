@@ -21,8 +21,8 @@ function calculate_rhs_api_wrapper!(dy::Vector{Float64}, y::Vector{Float64})
         y_ptr = Base.unsafe_convert(Ptr{Float64}, y)
         dy_ptr = Base.unsafe_convert(Ptr{Float64}, dy)
         ccall((:calculate_rhs_api, get_terra_lib_path()), Cvoid,
-            (Int32, Ptr{Float64}, Ptr{Float64}),
-            neq32, y_ptr, dy_ptr)
+              (Int32, Ptr{Float64}, Ptr{Float64}),
+              neq32, y_ptr, dy_ptr)
     end
 
     return nothing
@@ -40,12 +40,13 @@ the closed-form enthalpy→energy inversion used by the isothermal Teex API RHS.
 - Named tuple with `rho_etot`, `pressure`, and `tt` (all CGS units; `tt` in K).
 """
 function energy_from_enthalpy_isothermal_teex_wrapper(rho_enth::Float64,
-        rho_sp::Vector{Float64},
-        teex_const::Float64;
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        rho_erot::Float64 = 0.0,
-        rho_eeex::Float64 = 0.0,
-        rho_evib::Float64 = 0.0)
+                                                      rho_sp::Vector{Float64},
+                                                      teex_const::Float64;
+                                                      rho_ex::Union{Matrix{Float64},
+                                                                    Nothing} = nothing,
+                                                      rho_erot::Float64 = 0.0,
+                                                      rho_eeex::Float64 = 0.0,
+                                                      rho_evib::Float64 = 0.0)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -93,11 +94,11 @@ function energy_from_enthalpy_isothermal_teex_wrapper(rho_enth::Float64,
                      Ptr{Cvoid}(Base.unsafe_convert(Ptr{Float64}, rho_ex_full))
 
         ccall((:energy_from_enthalpy_isothermal_teex_api, get_terra_lib_path()), Cvoid,
-            (Float64, Ptr{Float64}, Ptr{Cvoid}, Float64, Float64, Float64, Float64,
-                Ref{Float64}, Ref{Float64}, Ref{Float64}),
-            rho_enth, rho_sp_full, rho_ex_ptr,
-            rho_erot, rho_eeex, rho_evib, teex_const,
-            rho_etot, pres, tt)
+              (Float64, Ptr{Float64}, Ptr{Cvoid}, Float64, Float64, Float64, Float64,
+               Ref{Float64}, Ref{Float64}, Ref{Float64}),
+              rho_enth, rho_sp_full, rho_ex_ptr,
+              rho_erot, rho_eeex, rho_evib, teex_const,
+              rho_etot, pres, tt)
     end
 
     return (rho_etot = rho_etot[], pressure = pres[], tt = tt[])
@@ -117,8 +118,8 @@ Optional inputs:
 - `tex`: per-species electronic temperatures passed to the Tvib inversion (length `nsp`)
 """
 function calculate_rhs_api_isothermal_teex_wrapper!(du::Vector{Float64}, u::Vector{Float64},
-        teex_const::Float64;
-        tex = nothing)
+                                                    teex_const::Float64;
+                                                    tex = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -141,8 +142,8 @@ function calculate_rhs_api_isothermal_teex_wrapper!(du::Vector{Float64}, u::Vect
                   Ptr{Cvoid}(Base.unsafe_convert(Ptr{Float64}, tex))
 
         ccall((:calculate_rhs_api_isothermal_teex, get_terra_lib_path()), Cvoid,
-            (Int32, Ptr{Float64}, Ptr{Float64}, Float64, Ptr{Cvoid}, Ptr{Cvoid}),
-            neq32, u_ptr, du_ptr, teex_const, C_NULL, tex_ptr)
+              (Int32, Ptr{Float64}, Ptr{Float64}, Float64, Ptr{Cvoid}, Ptr{Cvoid}),
+              neq32, u_ptr, du_ptr, teex_const, C_NULL, tex_ptr)
     end
 
     return nothing

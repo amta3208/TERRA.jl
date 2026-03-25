@@ -95,11 +95,11 @@ Convert a complete state vector from SI to CGS units for TERRA input.
 - Named tuple with all quantities converted to CGS units
 """
 function convert_state_si_to_cgs(rho_sp_si::AbstractVector{<:Real},
-        rho_etot_si::Real,
-        number_density_si::Real;
-        rho_erot_si::Union{Real, Nothing} = nothing,
-        rho_eeex_si::Union{Real, Nothing} = nothing,
-        rho_evib_si::Union{Real, Nothing} = nothing)
+                                 rho_etot_si::Real,
+                                 number_density_si::Real;
+                                 rho_erot_si::Union{Real, Nothing} = nothing,
+                                 rho_eeex_si::Union{Real, Nothing} = nothing,
+                                 rho_evib_si::Union{Real, Nothing} = nothing)
     rho_sp_cgs = convert_density_si_to_cgs(rho_sp_si)
     rho_etot_cgs = convert_energy_density_si_to_cgs(rho_etot_si)
     number_density_cgs = convert_number_density_si_to_cgs(number_density_si)
@@ -112,11 +112,11 @@ function convert_state_si_to_cgs(rho_sp_si::AbstractVector{<:Real},
                    nothing
 
     return (rho_sp = rho_sp_cgs,
-        rho_etot = rho_etot_cgs,
-        number_density = number_density_cgs,
-        rho_erot = rho_erot_cgs,
-        rho_eeex = rho_eeex_cgs,
-        rho_evib = rho_evib_cgs)
+            rho_etot = rho_etot_cgs,
+            number_density = number_density_cgs,
+            rho_erot = rho_erot_cgs,
+            rho_eeex = rho_eeex_cgs,
+            rho_evib = rho_evib_cgs)
 end
 
 """
@@ -133,10 +133,10 @@ Convert a complete state vector from CGS to SI units from TERRA output.
 - Named tuple with all quantities converted to SI units
 """
 function convert_state_cgs_to_si(rho_sp_cgs::AbstractVector{<:Real},
-        rho_etot_cgs::Real;
-        rho_erot_cgs::Union{Real, Nothing} = nothing,
-        rho_eeex_cgs::Union{Real, Nothing} = nothing,
-        rho_evib_cgs::Union{Real, Nothing} = nothing)
+                                 rho_etot_cgs::Real;
+                                 rho_erot_cgs::Union{Real, Nothing} = nothing,
+                                 rho_eeex_cgs::Union{Real, Nothing} = nothing,
+                                 rho_evib_cgs::Union{Real, Nothing} = nothing)
     rho_sp_si = convert_density_cgs_to_si(rho_sp_cgs)
     rho_etot_si = convert_energy_density_cgs_to_si(rho_etot_cgs)
 
@@ -148,10 +148,10 @@ function convert_state_cgs_to_si(rho_sp_cgs::AbstractVector{<:Real},
                   convert_energy_density_cgs_to_si(rho_evib_cgs) : nothing
 
     return (rho_sp = rho_sp_si,
-        rho_etot = rho_etot_si,
-        rho_erot = rho_erot_si,
-        rho_eeex = rho_eeex_si,
-        rho_evib = rho_evib_si)
+            rho_etot = rho_etot_si,
+            rho_erot = rho_erot_si,
+            rho_eeex = rho_eeex_si,
+            rho_evib = rho_evib_si)
 end
 
 """
@@ -168,10 +168,10 @@ Convert source terms from CGS to SI units.
 - Named tuple with all source terms converted to SI units
 """
 function convert_sources_cgs_to_si(drho_sp_cgs::AbstractVector{<:Real},
-        drho_etot_cgs::Real;
-        drho_erot_cgs::Union{Real, Nothing} = nothing,
-        drho_eeex_cgs::Union{Real, Nothing} = nothing,
-        drho_evib_cgs::Union{Real, Nothing} = nothing)
+                                   drho_etot_cgs::Real;
+                                   drho_erot_cgs::Union{Real, Nothing} = nothing,
+                                   drho_eeex_cgs::Union{Real, Nothing} = nothing,
+                                   drho_evib_cgs::Union{Real, Nothing} = nothing)
 
     # Source terms have units of [quantity]/time, so same conversion as state
     drho_sp_si = convert_density_cgs_to_si(drho_sp_cgs)
@@ -185,8 +185,8 @@ function convert_sources_cgs_to_si(drho_sp_cgs::AbstractVector{<:Real},
                    convert_energy_density_cgs_to_si(drho_evib_cgs) : nothing
 
     return (drho_sp = drho_sp_si,
-        drho_etot = drho_etot_si,
-        drho_erot = drho_erot_si,
-        drho_eeex = drho_eeex_si,
-        drho_evib = drho_evib_si)
+            drho_etot = drho_etot_si,
+            drho_erot = drho_erot_si,
+            drho_eeex = drho_eeex_si,
+            drho_evib = drho_evib_si)
 end

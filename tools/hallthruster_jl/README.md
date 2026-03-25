@@ -5,7 +5,7 @@ Standalone HallThruster.jl to TERRA.jl coupling scripts live here.
 Current tool:
 1. `export_chain_profile.jl`
    Converts a HallThruster JSON output file with an existing `output.average` block into the
-   reduced TERRA chain-profile artifact at `<terra_case_path>/input/chain_profile_v3.json`.
+   reduced TERRA chain-profile artifact at `<terra_case_path>/input/chain_profile_v4.json`.
 
 Recommended invocation:
 ```bash
