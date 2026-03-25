@@ -24,8 +24,8 @@
                 unit_system = :SI,
                 validate_species_against_terra = base.runtime.validate_species_against_terra,
                 print_source_terms = base.runtime.print_source_terms,
-                write_native_outputs = base.runtime.write_native_outputs,
-                print_integration_output = base.runtime.print_integration_output))
+                write_native_state_files = base.runtime.write_native_state_files,
+                logging = base.runtime.logging))
 
         converted = terra.convert_config_units(config_si, :CGS)
         @test converted.runtime.unit_system == :CGS
@@ -33,7 +33,9 @@
         @test converted.reactor.composition.species == config_si.reactor.composition.species
         @test converted.reactor.composition.mole_fractions ==
               config_si.reactor.composition.mole_fractions
-        @test converted.runtime.write_native_outputs == config_si.runtime.write_native_outputs
+        @test converted.runtime.write_native_state_files ==
+              config_si.runtime.write_native_state_files
+        @test converted.runtime.logging == config_si.runtime.logging
         @test converted.sources.residence_time === config_si.sources.residence_time
         @test converted.sources.wall_losses === config_si.sources.wall_losses
     end
@@ -47,7 +49,9 @@
         @test converted.reactor.composition.species == config_cgs.reactor.composition.species
         @test converted.reactor.composition.mole_fractions ==
               config_cgs.reactor.composition.mole_fractions
-        @test converted.runtime.write_native_outputs == config_cgs.runtime.write_native_outputs
+        @test converted.runtime.write_native_state_files ==
+              config_cgs.runtime.write_native_state_files
+        @test converted.runtime.logging == config_cgs.runtime.logging
         @test converted.sources.residence_time === config_cgs.sources.residence_time
         @test converted.sources.wall_losses === config_cgs.sources.wall_losses
     end

@@ -287,13 +287,14 @@ end
 
 function _build_segment_runtime(base_runtime::RuntimeConfig,
                                 segment_case_path::AbstractString)
+    segment_logging = _segment_logging_config(base_runtime, segment_case_path)
     return RuntimeConfig(database_path = base_runtime.database_path,
                          case_path = String(segment_case_path),
                          unit_system = base_runtime.unit_system,
                          validate_species_against_terra = base_runtime.validate_species_against_terra,
                          print_source_terms = base_runtime.print_source_terms,
-                         write_native_outputs = base_runtime.write_native_outputs,
-                         print_integration_output = base_runtime.print_integration_output)
+                         write_native_state_files = base_runtime.write_native_state_files,
+                         logging = segment_logging)
 end
 
 function _build_chain_segment_config(base_config::Config,

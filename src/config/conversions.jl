@@ -1,6 +1,28 @@
 """
 $(SIGNATURES)
 
+Return a copy of `config` with an updated logging block.
+"""
+function with_logging(config::Config;
+                      console_mode::Symbol = config.runtime.logging.console_mode,
+                      progress_mode::Symbol = config.runtime.logging.progress_mode,
+                      native_stream_mode::Symbol = config.runtime.logging.native_stream_mode,
+                      integration_detail_mode::Symbol = config.runtime.logging.integration_detail_mode,
+                      chain_detail_mode::Symbol = config.runtime.logging.chain_detail_mode,
+                      log_dir::Union{Nothing, AbstractString} = config.runtime.logging.log_dir)
+    logging = _with_logging_config(config.runtime.logging;
+                                   console_mode = console_mode,
+                                   progress_mode = progress_mode,
+                                   native_stream_mode = native_stream_mode,
+                                   integration_detail_mode = integration_detail_mode,
+                                   chain_detail_mode = chain_detail_mode,
+                                   log_dir = log_dir)
+    return with_runtime(config; logging = logging)
+end
+
+"""
+$(SIGNATURES)
+
 Return a copy of `config` with an updated runtime block.
 """
 function with_runtime(config::Config;
@@ -9,15 +31,20 @@ function with_runtime(config::Config;
                       unit_system::Symbol = config.runtime.unit_system,
                       validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
                       print_source_terms::Bool = config.runtime.print_source_terms,
-                      write_native_outputs::Bool = config.runtime.write_native_outputs,
-                      print_integration_output::Bool = config.runtime.print_integration_output)
+                      write_native_state_files::Bool = config.runtime.write_native_state_files,
+                      logging::LoggingConfig = config.runtime.logging,
+                      write_native_outputs::Union{Nothing, Bool} = nothing,
+                      print_integration_output::Union{Nothing, Bool} = nothing)
+    native_state_files = write_native_outputs === nothing ? write_native_state_files :
+                         write_native_outputs
     runtime = RuntimeConfig(;
                             database_path = String(database_path),
                             case_path = String(case_path),
                             unit_system = unit_system,
                             validate_species_against_terra = validate_species_against_terra,
                             print_source_terms = print_source_terms,
-                            write_native_outputs = write_native_outputs,
+                            write_native_state_files = native_state_files,
+                            logging = logging,
                             print_integration_output = print_integration_output)
 
     return Config(;
@@ -107,8 +134,8 @@ function convert_config_units(config::Config, target_unit_system::Symbol)
                                 unit_system = target_unit_system,
                                 validate_species_against_terra = config.runtime.validate_species_against_terra,
                                 print_source_terms = config.runtime.print_source_terms,
-                                write_native_outputs = config.runtime.write_native_outputs,
-                                print_integration_output = config.runtime.print_integration_output)
+                                write_native_state_files = config.runtime.write_native_state_files,
+                                logging = config.runtime.logging)
 
     return Config(;
                   reactor = new_reactor,

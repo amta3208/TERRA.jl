@@ -24,6 +24,7 @@ include("config/types.jl")
 include("config/validation.jl")
 include("config/conversions.jl")
 
+include("io/log_paths.jl")
 include("io/prob_setup_writer.jl")
 include("io/sources_setup_writer.jl")
 include("io/tau_scaling_writer.jl")
@@ -45,13 +46,14 @@ include("solver/chain_cstr.jl")
 export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
-export NumericsConfig, RuntimeConfig, ResidenceTimeConfig, SourceTermsConfig
+export NumericsConfig, LoggingConfig, RuntimeConfig, ResidenceTimeConfig,
+       SourceTermsConfig
 export SpeciesWallModel, WallLossConfig, ChainWallProfile
 export ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata
 export ChainSimulationResult, load_chain_profile
-export with_case_path, with_time, with_runtime
+export with_case_path, with_time, with_runtime, with_logging
 export solve_terra_0d, nitrogen_10ev_example, save_results, load_results_chain
 export solve_terra_chain_steady
 
