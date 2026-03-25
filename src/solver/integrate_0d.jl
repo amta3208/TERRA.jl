@@ -104,6 +104,40 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
                      save_positions = (false, false))
 end
 
+function integration_progress_condition(u, t, integrator)
+    reporter = integrator.p.progress_reporter
+    reporter === nothing && return false
+    reporter.next_fraction <= 1.0 || return false
+    reporter.tlim > 0.0 || return false
+
+    fraction = Float64(t) / reporter.tlim
+    return fraction + 1e-12 >= reporter.next_fraction
+end
+
+function integration_progress_affect!(integrator)
+    reporter = integrator.p.progress_reporter
+    reporter === nothing && return u_modified!(integrator, false)
+
+    _report_progress!(integrator.p.config.runtime, reporter, integrator.t)
+
+    fraction = reporter.tlim > 0.0 ?
+               clamp(Float64(integrator.t) / reporter.tlim, 0.0,
+                     1.0) : 1.0
+    while reporter.next_fraction <= 1.0 && fraction + 1e-12 >= reporter.next_fraction
+        reporter.next_fraction += reporter.fraction_step
+    end
+    if reporter.next_fraction > 1.0
+        reporter.next_fraction = Inf
+    end
+
+    u_modified!(integrator, false)
+end
+
+function integration_progress_callback()
+    return DiscreteCallback(integration_progress_condition, integration_progress_affect!;
+                            save_positions = (false, false))
+end
+
 function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
                                       p,
                                       layout::ApiLayout,
@@ -137,14 +171,19 @@ function _integrate_0d_system(config::Config, initial_state;
                               sources::Union{Nothing, SourceTermsConfig} = config.sources,
                               wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
                               inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+    runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
     solver_cfg = config.numerics.solver
 
-    @info "Setting up ODE integration" tlim=tlim
+    _log_run_event(runtime, :info, "Preparing ODE integration";
+                   console = :never,
+                   :tlim => tlim,
+                   :dt => dt,
+                   :saveat_count => solver_cfg.saveat_count)
 
-    native_outputs_requested = config.runtime.write_native_outputs
-    print_integration_output = config.runtime.print_integration_output
+    native_outputs_requested = runtime.write_native_state_files
+    integration_detail_requested = runtime.logging.integration_detail_mode != :off
     outputs_opened = false
 
     layout = get_api_layout()
@@ -163,7 +202,7 @@ function _integrate_0d_system(config::Config, initial_state;
 
     electronic_state_counts = zeros(Int, n_species)
     has_electronic_states = falses(n_species)
-    if print_integration_output && layout.is_elec_sts
+    if integration_detail_requested && layout.is_elec_sts
         meta = _electronic_state_print_metadata(initial_state.rho_ex, n_species)
         electronic_state_counts = meta.electronic_state_counts
         has_electronic_states = meta.has_electronic_states
@@ -185,7 +224,11 @@ function _integrate_0d_system(config::Config, initial_state;
                            rho_erot = rho_erot0,
                            rho_evib = rho_evib0)
 
-    @info "Initial state vector created" length_u0=length(u0) neq=layout.neq n_species=n_species
+    _log_run_event(runtime, :info, "Initial state vector prepared";
+                   console = :never,
+                   :length_u0 => length(u0),
+                   :neq => layout.neq,
+                   :n_species => n_species)
 
     tspan = (0.0, tlim)
 
@@ -205,6 +248,9 @@ function _integrate_0d_system(config::Config, initial_state;
                                                   inlet_state_cache = inlet_state_cache)
     result_metadata = _source_terms_result_metadata(prepared_sources)
 
+    progress_reporter = _progress_mode_enabled(runtime.logging) ?
+                        FractionProgressReporter(tlim) : nothing
+
     p = (layout = layout,
          config = config,
          molecular_weights = molecular_weights,
@@ -213,14 +259,20 @@ function _integrate_0d_system(config::Config, initial_state;
          teex_const = initial_state.teex_const,
          teex_const_vec = teex_const_vec,
          work_u = work_u,
-         sources = prepared_sources)
+         sources = prepared_sources,
+         progress_reporter = progress_reporter)
 
     prob = ODEProblem(terra_ode_system!, u0, tspan, p)
     ramp_callback = native_ramp_callback(dt;
                                          understep_ratio = solver_cfg.ramp_understep_ratio,
                                          history_steps = solver_cfg.ramp_history_steps)
+    callback = progress_reporter === nothing ? ramp_callback :
+               CallbackSet(ramp_callback, integration_progress_callback())
 
-    @info "ODE problem created, starting integration..."
+    _log_run_event(runtime, :info, "starting ODE integration..." * "\n";
+                   console = :minimal,
+                   :reltol => solver_cfg.reltol,
+                   :abstol_density => solver_cfg.abstol_density)
 
     # Component-wise tolerances (CGS). The compact state mixes densities (g/cm^3)
     # and energies (erg/cm^3). A scalar abstol tends to make the energy equation
@@ -269,7 +321,7 @@ function _integrate_0d_system(config::Config, initial_state;
         sol = solve(prob;
                     alg_hints = [:stiff],
                     dt = dt,
-                    callback = ramp_callback,
+                    callback = callback,
                     isoutofdomain = (u, _p, _t) -> (!_compact_nonnegative_ok(u, layout) ||
                                                     any(!isfinite, u)),
                     reltol = local_reltol,
@@ -277,8 +329,6 @@ function _integrate_0d_system(config::Config, initial_state;
                               local_abstol_vec),
                     saveat = range(0.0, tlim; length = solver_cfg.saveat_count),
                     save_everystep = false)
-
-        @info "ODE integration completed" retcode=sol.retcode
 
         # Native output snapshots (optional)
         if outputs_opened
@@ -327,15 +377,16 @@ function _integrate_0d_system(config::Config, initial_state;
                 temperatures_te[i] = temps.teex
                 temperatures_tv[i] = temps.tvib
 
-                if print_integration_output
-                    _print_terra_integration_output(t, local_dt, work_rho_sp,
-                                                    molecular_weights, temps,
-                                                    iso.rho_etot;
-                                                    rho_ex = rho_ex_arg,
-                                                    rho_eeex = iso.rho_eeex,
-                                                    rho_evib = iso.rho_evib,
-                                                    has_electronic_states = has_electronic_states,
-                                                    electronic_state_counts = electronic_state_counts)
+                if integration_detail_requested
+                    detail_text = _format_terra_integration_output(t, local_dt, work_rho_sp,
+                                                                   molecular_weights, temps,
+                                                                   iso.rho_etot;
+                                                                   rho_ex = rho_ex_arg,
+                                                                   rho_eeex = iso.rho_eeex,
+                                                                   rho_evib = iso.rho_evib,
+                                                                   has_electronic_states = has_electronic_states,
+                                                                   electronic_state_counts = electronic_state_counts)
+                    _emit_integration_detail(runtime, detail_text)
                 end
             else
                 _reconstruct_rho_sp_rho_ex_from_compact!(work_rho_sp, rho_ex_arg, ui,
@@ -360,19 +411,22 @@ function _integrate_0d_system(config::Config, initial_state;
                 temperatures_te[i] = temps.teex
                 temperatures_tv[i] = temps.tvib
 
-                if print_integration_output
-                    _print_terra_integration_output(t, local_dt, work_rho_sp,
-                                                    molecular_weights, temps,
-                                                    rho_etot;
-                                                    rho_ex = rho_ex_arg,
-                                                    rho_eeex = layout.idx_eeex == 0 ?
-                                                               nothing :
-                                                               Float64(ui[layout.idx_eeex]),
-                                                    rho_evib = layout.idx_evib == 0 ?
-                                                               nothing :
-                                                               Float64(ui[layout.idx_evib]),
-                                                    has_electronic_states = has_electronic_states,
-                                                    electronic_state_counts = electronic_state_counts)
+                if integration_detail_requested
+                    detail_text = _format_terra_integration_output(t, local_dt, work_rho_sp,
+                                                                   molecular_weights, temps,
+                                                                   rho_etot;
+                                                                   rho_ex = rho_ex_arg,
+                                                                   rho_eeex = layout.idx_eeex ==
+                                                                              0 ?
+                                                                              nothing :
+                                                                              Float64(ui[layout.idx_eeex]),
+                                                                   rho_evib = layout.idx_evib ==
+                                                                              0 ?
+                                                                              nothing :
+                                                                              Float64(ui[layout.idx_evib]),
+                                                                   has_electronic_states = has_electronic_states,
+                                                                   electronic_state_counts = electronic_state_counts)
+                    _emit_integration_detail(runtime, detail_text)
                 end
             end
         end
@@ -397,8 +451,12 @@ function _integrate_0d_system(config::Config, initial_state;
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
-        message = success ? "ODE integration completed successfully" :
+        message = success ? "\n" * "success!" :
                   "ODE integration terminated: $(rc)"
+        _log_run_event(runtime, success ? :info : :warn, message;
+                       console = :minimal,
+                       :retcode => sol.retcode,
+                       :saved_points => n_times)
         frames = Vector{ReactorFrame}(undef, n_times)
         for i in 1:n_times
             frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i],
@@ -422,7 +480,8 @@ function _integrate_0d_system(config::Config, initial_state;
                              metadata = result_metadata,), final_state_cache
 
     catch e
-        @error "ODE integration failed" exception=e
+        _log_run_exception(runtime, :error, "ODE integration failed", e;
+                           console = :minimal)
         fallback_species = config.runtime.unit_system == :SI ?
                            convert_density_cgs_to_si(initial_state.rho_sp) :
                            copy(initial_state.rho_sp)
@@ -450,7 +509,10 @@ function _integrate_0d_system(config::Config, initial_state;
             try
                 close_api_output_files_wrapper()
             catch close_err
-                @warn "Failed to close native TERRA outputs after integration" exception=close_err
+                _log_run_exception(runtime, :warn,
+                                   "Failed to close native TERRA outputs after integration",
+                                   close_err;
+                                   console = :never)
             end
             outputs_opened = false
         end

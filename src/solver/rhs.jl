@@ -520,19 +520,21 @@ function _electronic_state_print_metadata(rho_ex_initial::AbstractMatrix{<:Real}
             has_electronic_states = has_electronic_states)
 end
 
-function _print_terra_integration_output(t::Float64,
-                                         dt::Float64,
-                                         rho_sp::Vector{Float64},
-                                         molecular_weights::Vector{Float64},
-                                         temps,
-                                         rho_etot::Float64;
-                                         rho_ex::Union{Nothing, Matrix{Float64}} = nothing,
-                                         rho_eeex::Union{Nothing, Float64} = nothing,
-                                         rho_evib::Union{Nothing, Float64} = nothing,
-                                         has_electronic_states::Union{Nothing,
-                                                                      AbstractVector{Bool}} = nothing,
-                                         electronic_state_counts::Union{Nothing,
-                                                                        AbstractVector{Int}} = nothing)
+function _format_terra_integration_output(t::Float64,
+                                          dt::Float64,
+                                          rho_sp::Vector{Float64},
+                                          molecular_weights::Vector{Float64},
+                                          temps,
+                                          rho_etot::Float64;
+                                          rho_ex::Union{Nothing, Matrix{Float64}} = nothing,
+                                          rho_eeex::Union{Nothing, Float64} = nothing,
+                                          rho_evib::Union{Nothing, Float64} = nothing,
+                                          has_electronic_states::Union{Nothing,
+                                                                       AbstractVector{Bool}} = nothing,
+                                          electronic_state_counts::Union{Nothing,
+                                                                         AbstractVector{Int}} = nothing)
+    out = IOBuffer()
+
     # Mass fraction sum error
     rho_total = sum(rho_sp)
     ysum = 0.0
@@ -540,7 +542,7 @@ function _print_terra_integration_output(t::Float64,
         ysum += val / rho_total
     end
     yerr = abs(ysum - 1.0)
-    println(@sprintf(" Ytot,err   = % .3E", yerr))
+    println(out, @sprintf(" Ytot,err   = % .3E", yerr))
 
     # Relative enthalpy change (%) at current Tt vs reconstructed energy
     Ecomp = calculate_total_energy_wrapper(temps.tt, rho_sp;
@@ -548,15 +550,15 @@ function _print_terra_integration_output(t::Float64,
                                            rho_eeex = rho_eeex,
                                            rho_evib = rho_evib)
     dEnth = 100.0 * (Ecomp - rho_etot) / rho_etot
-    println(@sprintf(" dEnth (%%)  = % .5E", dEnth))
+    println(out, @sprintf(" dEnth (%%)  = % .5E", dEnth))
 
     t_us = t * 1e6
     dt_us = dt * 1e6
-    println(@sprintf(" time       = % .2E mu-s ", t_us))
-    println(@sprintf(" dt         = % .2E mu-s", dt_us))
-    println(@sprintf(" T(t,e,r,v) = % .3E % .3E % .3E % .3E K",
-                     Float64(temps.tt), Float64(temps.teex), Float64(temps.trot),
-                     Float64(temps.tvib)))
+    println(out, @sprintf(" time       = % .2E mu-s ", t_us))
+    println(out, @sprintf(" dt         = % .2E mu-s", dt_us))
+    println(out, @sprintf(" T(t,e,r,v) = % .3E % .3E % .3E % .3E K",
+                          Float64(temps.tt), Float64(temps.teex), Float64(temps.trot),
+                          Float64(temps.tvib)))
 
     # Mole fractions
     denom = 0.0
@@ -569,7 +571,7 @@ function _print_terra_integration_output(t::Float64,
         xi = (rho_sp[i] / molecular_weights[i]) / denom
         print(xbuf, @sprintf(" % .3E", xi))
     end
-    println(String(take!(xbuf)))
+    println(out, String(take!(xbuf)))
 
     tex = hasproperty(temps, :tex) ? temps.tex : nothing
     if rho_ex !== nothing && has_electronic_states !== nothing &&
@@ -584,9 +586,9 @@ function _print_terra_integration_output(t::Float64,
                 continue
             end
             if isp < 10
-                println(@sprintf(" Tex(%d)     = % .3E", isp, Float64(tex[isp])))
+                println(out, @sprintf(" Tex(%d)     = % .3E", isp, Float64(tex[isp])))
             else
-                println(@sprintf(" Tex(%d)    = % .3E", isp, Float64(tex[isp])))
+                println(out, @sprintf(" Tex(%d)    = % .3E", isp, Float64(tex[isp])))
             end
 
             states_to_show = min(mex, 7)
@@ -601,10 +603,10 @@ function _print_terra_integration_output(t::Float64,
                 nval = Float64(rho_ex[iex, isp]) / molecular_weights[isp] * AVOGADRO
                 print(nbuf, @sprintf(" % .3E", nval))
             end
-            println(String(take!(nbuf)))
+            println(out, String(take!(nbuf)))
         end
     end
 
-    println()
-    return nothing
+    println(out)
+    return String(take!(out))
 end

@@ -1,10 +1,12 @@
 module TERRA
 
+using Dates
 using DocStringExtensions
 using Libdl
 using JSON
 using OrdinaryDiffEq
-using SciMLBase: ODEProblem, solve, DiscreteCallback, set_proposed_dt!, u_modified!
+using SciMLBase: ODEProblem, solve, DiscreteCallback, CallbackSet, set_proposed_dt!,
+                 u_modified!
 using Printf
 
 const PACKAGE_ROOT = joinpath(splitpath(@__DIR__)[1:(end - 1)]...)
@@ -25,6 +27,7 @@ include("config/validation.jl")
 include("config/conversions.jl")
 
 include("io/log_paths.jl")
+include("io/run_logging.jl")
 include("io/prob_setup_writer.jl")
 include("io/sources_setup_writer.jl")
 include("io/tau_scaling_writer.jl")
