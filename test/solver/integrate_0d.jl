@@ -39,8 +39,7 @@ end
         dt = 5e-12, dt_output = 1e-6, duration = 1e-6, nstep = 500000, method = 2)
     config = terra.with_runtime(config;
         validate_species_against_terra = false,
-        print_source_terms = false,
-        print_integration_output = false)
+        print_source_terms = false)
 
     # Initialize the Fortran API using a temporary case generated from this config
     @test_nowarn reset_and_init!(temp_case_path; config = config)
@@ -65,8 +64,7 @@ end
         dt = 5e-12, dt_output = 1e-6, duration = 1e-6, nstep = 500000, method = 2)
     config = terra.with_runtime(config;
         validate_species_against_terra = false,
-        print_source_terms = false,
-        print_integration_output = false)
+        print_source_terms = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
@@ -92,8 +90,7 @@ end
         dt = 5e-12, dt_output = 1e-6, duration = 1e-3, nstep = 500000, method = 2)
     config = terra.with_runtime(config;
         validate_species_against_terra = false,
-        print_source_terms = false,
-        print_integration_output = false)
+        print_source_terms = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
@@ -132,8 +129,7 @@ end
         dt = 5e-12, dt_output = 1e-6, duration = 5e-5, nstep = 500000, method = 2)
     config = terra.with_runtime(config;
         validate_species_against_terra = false,
-        print_source_terms = false,
-        print_integration_output = false)
+        print_source_terms = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 

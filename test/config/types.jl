@@ -111,6 +111,12 @@ end
     @test logging.chain_detail_mode == :file
     @test logging.log_dir === nothing
 
+    @test_throws ArgumentError terra.LoggingConfig(; console_mode = :loud)
+    @test_throws ArgumentError terra.LoggingConfig(; native_stream_mode = :mirror)
+    @test_throws ArgumentError terra.LoggingConfig(; log_dir = "   ")
+end
+
+@testset "Legacy RuntimeConfig compatibility" begin
     runtime = terra.RuntimeConfig(; case_path = pwd(),
                                   write_native_outputs = true,
                                   print_integration_output = true)
@@ -118,10 +124,6 @@ end
     @test runtime.write_native_outputs == true
     @test runtime.logging.integration_detail_mode == :console
     @test runtime.print_integration_output == true
-
-    @test_throws ArgumentError terra.LoggingConfig(; console_mode = :loud)
-    @test_throws ArgumentError terra.LoggingConfig(; native_stream_mode = :mirror)
-    @test_throws ArgumentError terra.LoggingConfig(; log_dir = "   ")
 end
 
 @testset "PhysicsConfig" begin

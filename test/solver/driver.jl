@@ -47,9 +47,7 @@ end
                                                         case_path = case_path,
                                                         unit_system = base.runtime.unit_system,
                                                         validate_species_against_terra = false,
-                                                        print_source_terms = false,
-                                                        write_native_outputs = false,
-                                                        print_integration_output = false))
+                                                        print_source_terms = false))
 
     @test_nowarn reset_and_init!(case_path; config = config)
     initial_state = terra.config_to_initial_state(config)
@@ -90,8 +88,7 @@ end
     config = terra.with_runtime(config;
                                 validate_species_against_terra = false,
                                 print_source_terms = false,
-                                write_native_outputs = true,
-                                print_integration_output = false)
+                                write_native_state_files = true)
 
     # Fresh initialization that preserves the generated case directory
     try
@@ -152,8 +149,7 @@ end
                              method = 2)
     config = terra.with_runtime(config;
                                 validate_species_against_terra = false,
-                                print_source_terms = false,
-                                write_native_outputs = false)
+                                print_source_terms = false)
     config = terra.with_logging(config;
                                 console_mode = :quiet,
                                 progress_mode = :summary,
@@ -191,8 +187,7 @@ end
                              method = 2)
     config = terra.with_runtime(config;
                                 validate_species_against_terra = false,
-                                print_source_terms = false,
-                                write_native_outputs = false)
+                                print_source_terms = false)
     config = terra.with_logging(config;
                                 console_mode = :minimal,
                                 progress_mode = :summary,

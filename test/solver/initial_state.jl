@@ -22,9 +22,7 @@ end
     config = terra.with_case_path(config, temp_case_path)
     config = terra.with_runtime(config;
         validate_species_against_terra = false,
-        print_source_terms = false,
-        write_native_outputs = false,
-        print_integration_output = false)
+        print_source_terms = false)
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
