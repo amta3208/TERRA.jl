@@ -48,8 +48,8 @@ function get_max_number_of_atomic_electronic_states_wrapper()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    return ccall(
-        (:get_max_number_of_atomic_electronic_states, get_terra_lib_path()), Int32, ())
+    return ccall((:get_max_number_of_atomic_electronic_states, get_terra_lib_path()), Int32,
+                 ())
 end
 
 """
@@ -68,8 +68,8 @@ function get_max_number_of_molecular_electronic_states_wrapper()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
 
-    return ccall(
-        (:get_max_number_of_molecular_electronic_states, get_terra_lib_path()), Int32, ())
+    return ccall((:get_max_number_of_molecular_electronic_states, get_terra_lib_path()),
+                 Int32, ())
 end
 
 """
@@ -166,16 +166,14 @@ function get_runtime_flags()
     has_elec_bfh = ccall((:get_consider_elec_bfh, get_terra_lib_path()), Int32, ())
     has_elec_bbe = ccall((:get_consider_elec_bbe, get_terra_lib_path()), Int32, ())
 
-    return (
-        ev_relax_set = Int(ev_relax_set),
-        vib_noneq = Int(vib_noneq),
-        eex_noneq = Int(eex_noneq),
-        rot_noneq = Int(rot_noneq),
-        consider_elec_bfe = Int(has_elec_bfe),
-        consider_elec_bbh = Int(has_elec_bbh),
-        consider_elec_bfh = Int(has_elec_bfh),
-        consider_elec_bbe = Int(has_elec_bbe)
-    )
+    return (ev_relax_set = Int(ev_relax_set),
+            vib_noneq = Int(vib_noneq),
+            eex_noneq = Int(eex_noneq),
+            rot_noneq = Int(rot_noneq),
+            consider_elec_bfe = Int(has_elec_bfe),
+            consider_elec_bbh = Int(has_elec_bbh),
+            consider_elec_bfh = Int(has_elec_bfh),
+            consider_elec_bbe = Int(has_elec_bbe))
 end
 
 """
@@ -233,22 +231,23 @@ function get_api_layout_wrapper()
     spwt_full = zeros(Float64, max_species)
 
     ccall((:get_api_layout, get_terra_lib_path()), Cvoid,
-        (Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
-            Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
-            Ref{Int32},
-            Ref{Int32}, Ref{Int32}, Ref{Int32},
-            Ref{Int32}, Ref{Int32},
-            Ref{Int32}, Ref{Int32},
-            Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
-            Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Float64}),
-        layout_version, mnsp_out, mnex_out, mmnex_out, mnv_out, mneq_out,
-        nsp_out, nd_out, neq_out, esp_out,
-        get_electron_density_by_charge_balance_out,
-        eex_noneq_out, rot_noneq_out, vib_noneq_out,
-        is_isothermal_out, is_isothermal_teex_out,
-        is_elec_sts_out, is_vib_sts_out,
-        n_eq_vib_out, n_eq_elec_out, n_eq_sp_out, n_eq_mom_out, n_eq_energy_out,
-        ih_full, ie_full, ies_full, mex_full, ivs_full, mv_full, spwt_full)
+          (Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+           Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+           Ref{Int32},
+           Ref{Int32}, Ref{Int32}, Ref{Int32},
+           Ref{Int32}, Ref{Int32},
+           Ref{Int32}, Ref{Int32},
+           Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32},
+           Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32}, Ptr{Int32},
+           Ptr{Float64}),
+          layout_version, mnsp_out, mnex_out, mmnex_out, mnv_out, mneq_out,
+          nsp_out, nd_out, neq_out, esp_out,
+          get_electron_density_by_charge_balance_out,
+          eex_noneq_out, rot_noneq_out, vib_noneq_out,
+          is_isothermal_out, is_isothermal_teex_out,
+          is_elec_sts_out, is_vib_sts_out,
+          n_eq_vib_out, n_eq_elec_out, n_eq_sp_out, n_eq_mom_out, n_eq_energy_out,
+          ih_full, ie_full, ies_full, mex_full, ivs_full, mv_full, spwt_full)
 
     if layout_version[] == 0
         error("get_api_layout() returned layout_version=0 (Fortran API not initialized). Call initialize_api_wrapper() first.")
@@ -263,38 +262,36 @@ function get_api_layout_wrapper()
     mv = copy(@view mv_full[1:nsp, :])
     spwt = copy(@view spwt_full[1:nsp])
 
-    return (
-        layout_version = Int(layout_version[]),
-        mnsp = Int(mnsp_out[]),
-        mnex = Int(mnex_out[]),
-        mmnex = Int(mmnex_out[]),
-        mnv = Int(mnv_out[]),
-        mneq = Int(mneq_out[]),
-        nsp = nsp,
-        nd = Int(nd_out[]),
-        neq = Int(neq_out[]),
-        esp = Int(esp_out[]),
-        get_electron_density_by_charge_balance = Int(get_electron_density_by_charge_balance_out[]),
-        eex_noneq = Int(eex_noneq_out[]),
-        rot_noneq = Int(rot_noneq_out[]),
-        vib_noneq = Int(vib_noneq_out[]),
-        is_isothermal = Int(is_isothermal_out[]),
-        is_isothermal_teex = Int(is_isothermal_teex_out[]),
-        is_elec_sts = Int(is_elec_sts_out[]),
-        is_vib_sts = Int(is_vib_sts_out[]),
-        n_eq_vib = Int(n_eq_vib_out[]),
-        n_eq_elec = Int(n_eq_elec_out[]),
-        n_eq_sp = Int(n_eq_sp_out[]),
-        n_eq_mom = Int(n_eq_mom_out[]),
-        n_eq_energy = Int(n_eq_energy_out[]),
-        ih = ih,
-        ie = ie,
-        ies = ies,
-        mex = mex,
-        ivs = ivs,
-        mv = mv,
-        spwt = spwt
-    )
+    return (layout_version = Int(layout_version[]),
+            mnsp = Int(mnsp_out[]),
+            mnex = Int(mnex_out[]),
+            mmnex = Int(mmnex_out[]),
+            mnv = Int(mnv_out[]),
+            mneq = Int(mneq_out[]),
+            nsp = nsp,
+            nd = Int(nd_out[]),
+            neq = Int(neq_out[]),
+            esp = Int(esp_out[]),
+            get_electron_density_by_charge_balance = Int(get_electron_density_by_charge_balance_out[]),
+            eex_noneq = Int(eex_noneq_out[]),
+            rot_noneq = Int(rot_noneq_out[]),
+            vib_noneq = Int(vib_noneq_out[]),
+            is_isothermal = Int(is_isothermal_out[]),
+            is_isothermal_teex = Int(is_isothermal_teex_out[]),
+            is_elec_sts = Int(is_elec_sts_out[]),
+            is_vib_sts = Int(is_vib_sts_out[]),
+            n_eq_vib = Int(n_eq_vib_out[]),
+            n_eq_elec = Int(n_eq_elec_out[]),
+            n_eq_sp = Int(n_eq_sp_out[]),
+            n_eq_mom = Int(n_eq_mom_out[]),
+            n_eq_energy = Int(n_eq_energy_out[]),
+            ih = ih,
+            ie = ie,
+            ies = ies,
+            mex = mex,
+            ivs = ivs,
+            mv = mv,
+            spwt = spwt)
 end
 
 """
@@ -355,7 +352,7 @@ function get_species_gas_constants_wrapper()
     buffer = zeros(Float64, max_species)
 
     ccall((:get_species_gas_constants, get_terra_lib_path()), Cvoid,
-        (Ptr{Float64},), buffer)
+          (Ptr{Float64},), buffer)
 
     n_active = get_number_of_active_species_wrapper()
     if n_active <= 0

@@ -19,15 +19,15 @@ Calculate nonequilibrium source terms.
 - `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_sources_wrapper(rho_sp::Vector{Float64},
-        rho_etot::Float64;
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
-        rho_u::Union{Float64, Nothing} = nothing,
-        rho_v::Union{Float64, Nothing} = nothing,
-        rho_w::Union{Float64, Nothing} = nothing,
-        rho_erot::Union{Float64, Nothing} = nothing,
-        rho_eeex::Union{Float64, Nothing} = nothing,
-        rho_evib::Union{Float64, Nothing} = nothing)
+                                   rho_etot::Float64;
+                                   rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+                                   rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
+                                   rho_u::Union{Float64, Nothing} = nothing,
+                                   rho_v::Union{Float64, Nothing} = nothing,
+                                   rho_w::Union{Float64, Nothing} = nothing,
+                                   rho_erot::Union{Float64, Nothing} = nothing,
+                                   rho_eeex::Union{Float64, Nothing} = nothing,
+                                   rho_evib::Union{Float64, Nothing} = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -118,12 +118,12 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
             throw(ArgumentError("rho_vx size $(size(rho_vx)) exceeds library maxima ($(max_vibrational_quantum_number + 1), $(max_molecular_electronic_states), $(max_species))"))
         end
         rho_vx_full = zeros(Float64, max_vibrational_quantum_number + 1,
-            max_molecular_electronic_states, max_species)
+                            max_molecular_electronic_states, max_species)
         m1 = min(size(rho_vx, 1), max_vibrational_quantum_number + 1)
         m2 = min(size(rho_vx, 2), max_molecular_electronic_states)
         m3 = min(size(rho_vx, 3), max_species)
-        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[
-            1:m1, 1:m2, 1:m3]
+        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[1:m1, 1:m2,
+                                                                               1:m3]
     end
 
     # Outputs: full buffers for Fortran
@@ -133,7 +133,7 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
                    zeros(Float64, max_atomic_electronic_states, max_species) : nothing
     drho_vx_full = rho_vx !== nothing ?
                    zeros(Float64, max_vibrational_quantum_number + 1,
-        max_molecular_electronic_states, max_species) : nothing
+                         max_molecular_electronic_states, max_species) : nothing
     # Always request scalar energy-mode derivatives to avoid positional ambiguity
     drho_erot_ref = Ref{Float64}(0.0)
     drho_eeex_ref = Ref{Float64}(0.0)
@@ -158,40 +158,40 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
                                                                                                                                                                                                                      nothing) flags=flags_dbg
         end
         ccall((:calculate_nonequilibrium_sources, get_terra_lib_path()), Cvoid,
-            (Ptr{Float64},                                    # rho_sp
-                Ptr{Cvoid},                                      # rho_ex (optional)
-                Ptr{Cvoid},                                      # rho_vx (optional)
-                Ptr{Cvoid},                                      # rho_u (optional)
-                Ptr{Cvoid},                                      # rho_v (optional)
-                Ptr{Cvoid},                                      # rho_w (optional)
-                Ref{Float64},                                    # rho_etot
-                Ptr{Cvoid},                                      # rho_erot (optional)
-                Ptr{Cvoid},                                      # rho_eeex (optional)
-                Ptr{Cvoid},                                      # rho_evib (optional)
-                Ptr{Float64},                                    # drho_sp
-                Ptr{Cvoid},                                      # drho_ex (optional)
-                Ptr{Cvoid},                                      # drho_vx (optional)
-                Ref{Float64},                                    # drho_etot
-                Ptr{Cvoid},                                      # drho_erot (optional)
-                Ptr{Cvoid},                                      # drho_eeex (optional)
-                Ptr{Cvoid}),                                     # drho_evib (optional)
-            rho_sp_full,
-            rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
-            rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
-            rho_u !== nothing ? Ref{Float64}(rho_u) : C_NULL,
-            rho_v !== nothing ? Ref{Float64}(rho_v) : C_NULL,
-            rho_w !== nothing ? Ref{Float64}(rho_w) : C_NULL,
-            rho_etot,
-            rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
-            rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
-            rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL,
-            drho_sp_full,
-            drho_ex_full !== nothing ? (drho_ex_full::Matrix{Float64}) : C_NULL,
-            drho_vx_full !== nothing ? (drho_vx_full::Array{Float64, 3}) : C_NULL,
-            drho_etot,
-            drho_erot_ref,
-            drho_eeex_ref,
-            drho_evib_ref)
+              (Ptr{Float64},                                    # rho_sp
+               Ptr{Cvoid},                                      # rho_ex (optional)
+               Ptr{Cvoid},                                      # rho_vx (optional)
+               Ptr{Cvoid},                                      # rho_u (optional)
+               Ptr{Cvoid},                                      # rho_v (optional)
+               Ptr{Cvoid},                                      # rho_w (optional)
+               Ref{Float64},                                    # rho_etot
+               Ptr{Cvoid},                                      # rho_erot (optional)
+               Ptr{Cvoid},                                      # rho_eeex (optional)
+               Ptr{Cvoid},                                      # rho_evib (optional)
+               Ptr{Float64},                                    # drho_sp
+               Ptr{Cvoid},                                      # drho_ex (optional)
+               Ptr{Cvoid},                                      # drho_vx (optional)
+               Ref{Float64},                                    # drho_etot
+               Ptr{Cvoid},                                      # drho_erot (optional)
+               Ptr{Cvoid},                                      # drho_eeex (optional)
+               Ptr{Cvoid}),                                     # drho_evib (optional)
+              rho_sp_full,
+              rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
+              rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
+              rho_u !== nothing ? Ref{Float64}(rho_u) : C_NULL,
+              rho_v !== nothing ? Ref{Float64}(rho_v) : C_NULL,
+              rho_w !== nothing ? Ref{Float64}(rho_w) : C_NULL,
+              rho_etot,
+              rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
+              rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
+              rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL,
+              drho_sp_full,
+              drho_ex_full !== nothing ? (drho_ex_full::Matrix{Float64}) : C_NULL,
+              drho_vx_full !== nothing ? (drho_vx_full::Array{Float64, 3}) : C_NULL,
+              drho_etot,
+              drho_erot_ref,
+              drho_eeex_ref,
+              drho_evib_ref)
     catch e
         error("Failed to calculate source terms: $(e)")
     end
@@ -216,12 +216,12 @@ function calculate_sources_wrapper(rho_sp::Vector{Float64},
     end
 
     return (drho_sp = drho_sp,
-        drho_etot = drho_etot[],
-        drho_ex = drho_ex_out,
-        drho_vx = drho_vx_out,
-        drho_erot = drho_erot_ref[],
-        drho_eeex = drho_eeex_ref[],
-        drho_evib = drho_evib_ref[])
+            drho_etot = drho_etot[],
+            drho_ex = drho_ex_out,
+            drho_vx = drho_vx_out,
+            drho_erot = drho_erot_ref[],
+            drho_eeex = drho_eeex_ref[],
+            drho_evib = drho_evib_ref[])
 end
 
 """
@@ -241,15 +241,15 @@ Calculate temperatures from thermodynamic state.
 - `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
-        rho_etot::Float64;
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
-        rho_u::Union{Float64, Nothing} = nothing,
-        rho_v::Union{Float64, Nothing} = nothing,
-        rho_w::Union{Float64, Nothing} = nothing,
-        rho_erot::Union{Float64, Nothing} = nothing,
-        rho_eeex::Union{Float64, Nothing} = nothing,
-        rho_evib::Union{Float64, Nothing} = nothing)
+                                        rho_etot::Float64;
+                                        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+                                        rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
+                                        rho_u::Union{Float64, Nothing} = nothing,
+                                        rho_v::Union{Float64, Nothing} = nothing,
+                                        rho_w::Union{Float64, Nothing} = nothing,
+                                        rho_erot::Union{Float64, Nothing} = nothing,
+                                        rho_eeex::Union{Float64, Nothing} = nothing,
+                                        rho_evib::Union{Float64, Nothing} = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -320,12 +320,12 @@ function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
             throw(ArgumentError("rho_vx size $(size(rho_vx)) exceeds library maxima ($(max_vibrational_quantum_number + 1), $(max_molecular_electronic_states), $(max_species))"))
         end
         rho_vx_full = zeros(Float64, max_vibrational_quantum_number + 1,
-            max_molecular_electronic_states, max_species)
+                            max_molecular_electronic_states, max_species)
         m1 = min(size(rho_vx, 1), max_vibrational_quantum_number + 1)
         m2 = min(size(rho_vx, 2), max_molecular_electronic_states)
         m3 = min(size(rho_vx, 3), max_species)
-        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[
-            1:m1, 1:m2, 1:m3]
+        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[1:m1, 1:m2,
+                                                                               1:m3]
     end
 
     tex = zeros(Float64, max_species)
@@ -355,44 +355,44 @@ function calculate_temperatures_wrapper(rho_sp::Vector{Float64},
     # Call Fortran subroutine with proper optional argument handling
     try
         ccall((:calculate_temperatures, get_terra_lib_path()), Cvoid,
-            (Ptr{Float64},                                    # rho_sp
-                Ptr{Cvoid},                                      # rho_ex (optional)
-                Ptr{Cvoid},                                      # rho_vx (optional)
-                Ptr{Cvoid},                                      # rho_u (optional)
-                Ptr{Cvoid},                                      # rho_v (optional)
-                Ptr{Cvoid},                                      # rho_w (optional)
-                Ref{Float64},                                    # rho_etot
-                Ptr{Cvoid},                                      # rho_erot (optional)
-                Ptr{Cvoid},                                      # rho_eeex (optional)
-                Ptr{Cvoid},                                      # rho_evib (optional)
-                Ref{Float64},                                    # tt
-                Ref{Float64},                                    # trot
-                Ref{Float64},                                    # teex
-                Ref{Float64},                                    # tvib
-                Ptr{Float64},                                    # tex
-                Ptr{Float64}),                                   # tvx
-            rho_sp_full,
-            rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
-            rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
-            rho_u !== nothing ? Ref{Float64}(rho_u) : C_NULL,
-            rho_v !== nothing ? Ref{Float64}(rho_v) : C_NULL,
-            rho_w !== nothing ? Ref{Float64}(rho_w) : C_NULL,
-            rho_etot,
-            rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
-            rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
-            rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL,
-            tt,
-            trot,
-            teex,
-            tvib,
-            tex,
-            tvx)
+              (Ptr{Float64},                                    # rho_sp
+               Ptr{Cvoid},                                      # rho_ex (optional)
+               Ptr{Cvoid},                                      # rho_vx (optional)
+               Ptr{Cvoid},                                      # rho_u (optional)
+               Ptr{Cvoid},                                      # rho_v (optional)
+               Ptr{Cvoid},                                      # rho_w (optional)
+               Ref{Float64},                                    # rho_etot
+               Ptr{Cvoid},                                      # rho_erot (optional)
+               Ptr{Cvoid},                                      # rho_eeex (optional)
+               Ptr{Cvoid},                                      # rho_evib (optional)
+               Ref{Float64},                                    # tt
+               Ref{Float64},                                    # trot
+               Ref{Float64},                                    # teex
+               Ref{Float64},                                    # tvib
+               Ptr{Float64},                                    # tex
+               Ptr{Float64}),                                   # tvx
+              rho_sp_full,
+              rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
+              rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
+              rho_u !== nothing ? Ref{Float64}(rho_u) : C_NULL,
+              rho_v !== nothing ? Ref{Float64}(rho_v) : C_NULL,
+              rho_w !== nothing ? Ref{Float64}(rho_w) : C_NULL,
+              rho_etot,
+              rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
+              rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
+              rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL,
+              tt,
+              trot,
+              teex,
+              tvib,
+              tex,
+              tvx)
     catch e
         error("Failed to calculate temperatures: $(e)")
     end
 
     return (tt = tt[], trot = trot[], teex = teex[], tvib = tvib[],
-        tex = tex, tvx = tvx)
+            tex = tex, tvx = tvx)
 end
 
 """
@@ -419,15 +419,15 @@ Calculate total energy from state variables.
 - `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_total_energy_wrapper(tt::Float64,
-        rho_sp::Vector{Float64};
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
-        u::Union{Float64, Nothing} = nothing,
-        v::Union{Float64, Nothing} = nothing,
-        w::Union{Float64, Nothing} = nothing,
-        rho_erot::Union{Float64, Nothing} = nothing,
-        rho_eeex::Union{Float64, Nothing} = nothing,
-        rho_evib::Union{Float64, Nothing} = nothing)
+                                        rho_sp::Vector{Float64};
+                                        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+                                        rho_vx::Union{Array{Float64, 3}, Nothing} = nothing,
+                                        u::Union{Float64, Nothing} = nothing,
+                                        v::Union{Float64, Nothing} = nothing,
+                                        w::Union{Float64, Nothing} = nothing,
+                                        rho_erot::Union{Float64, Nothing} = nothing,
+                                        rho_eeex::Union{Float64, Nothing} = nothing,
+                                        rho_evib::Union{Float64, Nothing} = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -500,39 +500,39 @@ function calculate_total_energy_wrapper(tt::Float64,
             throw(ArgumentError("rho_vx size $(size(rho_vx)) exceeds library maxima ($(max_vibrational_quantum_number + 1), $(max_molecular_electronic_states), $(max_species))"))
         end
         rho_vx_full = zeros(Float64, max_vibrational_quantum_number + 1,
-            max_molecular_electronic_states, max_species)
+                            max_molecular_electronic_states, max_species)
         m1 = min(size(rho_vx, 1), max_vibrational_quantum_number + 1)
         m2 = min(size(rho_vx, 2), max_molecular_electronic_states)
         m3 = min(size(rho_vx, 3), max_species)
-        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[
-            1:m1, 1:m2, 1:m3]
+        @inbounds (rho_vx_full::Array{Float64, 3})[1:m1, 1:m2, 1:m3] .= rho_vx[1:m1, 1:m2,
+                                                                               1:m3]
     end
 
     # Call Fortran subroutine with proper optional argument handling
     try
         ccall((:calculate_total_energy, get_terra_lib_path()), Cvoid,
-            (Ref{Float64},                                    # rho_etot (output)
-                Ref{Float64},                                    # tt
-                Ptr{Float64},                                    # rho_sp
-                Ptr{Cvoid},                                      # rho_ex (optional)
-                Ptr{Cvoid},                                      # rho_vx (optional)
-                Ptr{Cvoid},                                      # u (optional)
-                Ptr{Cvoid},                                      # v (optional)
-                Ptr{Cvoid},                                      # w (optional)
-                Ptr{Cvoid},                                      # rho_erot (optional)
-                Ptr{Cvoid},                                      # rho_eeex (optional)
-                Ptr{Cvoid}),                                     # rho_evib (optional)
-            rho_etot,
-            tt,
-            rho_sp_full,
-            rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
-            rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
-            u !== nothing ? Ref{Float64}(u) : C_NULL,
-            v !== nothing ? Ref{Float64}(v) : C_NULL,
-            w !== nothing ? Ref{Float64}(w) : C_NULL,
-            rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
-            rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
-            rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL)
+              (Ref{Float64},                                    # rho_etot (output)
+               Ref{Float64},                                    # tt
+               Ptr{Float64},                                    # rho_sp
+               Ptr{Cvoid},                                      # rho_ex (optional)
+               Ptr{Cvoid},                                      # rho_vx (optional)
+               Ptr{Cvoid},                                      # u (optional)
+               Ptr{Cvoid},                                      # v (optional)
+               Ptr{Cvoid},                                      # w (optional)
+               Ptr{Cvoid},                                      # rho_erot (optional)
+               Ptr{Cvoid},                                      # rho_eeex (optional)
+               Ptr{Cvoid}),                                     # rho_evib (optional)
+              rho_etot,
+              tt,
+              rho_sp_full,
+              rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
+              rho_vx_full !== nothing ? (rho_vx_full::Array{Float64, 3}) : C_NULL,
+              u !== nothing ? Ref{Float64}(u) : C_NULL,
+              v !== nothing ? Ref{Float64}(v) : C_NULL,
+              w !== nothing ? Ref{Float64}(w) : C_NULL,
+              rho_erot !== nothing ? Ref{Float64}(rho_erot) : C_NULL,
+              rho_eeex !== nothing ? Ref{Float64}(rho_eeex) : C_NULL,
+              rho_evib !== nothing ? Ref{Float64}(rho_evib) : C_NULL)
     catch e
         error("Failed to calculate total energy: $(e)")
     end
@@ -559,10 +559,10 @@ Calculate vibrational energy from state variables.
 - `ErrorException`: If TERRA library is not loaded or not initialized
 """
 function calculate_vibrational_energy_wrapper(tvib::Float64,
-        rho_sp::Vector{Float64};
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        tex::Union{Vector{Float64}, Nothing} = nothing,
-        teex::Union{Float64, Nothing} = nothing)
+                                              rho_sp::Vector{Float64};
+                                              rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+                                              tex::Union{Vector{Float64}, Nothing} = nothing,
+                                              teex::Union{Float64, Nothing} = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -605,18 +605,18 @@ function calculate_vibrational_energy_wrapper(tvib::Float64,
     # Call Fortran subroutine with proper optional argument handling
     try
         ccall((:calculate_vibrational_energy, get_terra_lib_path()), Cvoid,
-            (Ref{Float64},                                    # rho_evib (output)
-                Ref{Float64},                                    # tvib
-                Ptr{Float64},                                    # rho_sp
-                Ptr{Cvoid},                                      # rho_ex (optional)
-                Ptr{Cvoid},                                      # tex (optional)
-                Ptr{Cvoid}),                                     # teex (optional)
-            rho_evib,
-            tvib,
-            rho_sp_full,
-            rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
-            tex_full !== nothing ? (tex_full::Vector{Float64}) : C_NULL,
-            teex !== nothing ? Ref{Float64}(teex) : C_NULL)
+              (Ref{Float64},                                    # rho_evib (output)
+               Ref{Float64},                                    # tvib
+               Ptr{Float64},                                    # rho_sp
+               Ptr{Cvoid},                                      # rho_ex (optional)
+               Ptr{Cvoid},                                      # tex (optional)
+               Ptr{Cvoid}),                                     # teex (optional)
+              rho_evib,
+              tvib,
+              rho_sp_full,
+              rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
+              tex_full !== nothing ? (tex_full::Vector{Float64}) : C_NULL,
+              teex !== nothing ? Ref{Float64}(teex) : C_NULL)
     catch e
         error("Failed to calculate vibrational energy: $(e)")
     end
@@ -643,9 +643,9 @@ Calculate vibrational temperature from vibrational energy density and species de
 - `ArgumentError`: If inputs are invalid or dimensions exceed library maxima
 """
 function calculate_vibrational_temperature_wrapper(rho_evib::Float64,
-        rho_sp::Vector{Float64};
-        rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
-        tex::Union{Vector{Float64}, Nothing} = nothing)
+                                                   rho_sp::Vector{Float64};
+                                                   rho_ex::Union{Matrix{Float64}, Nothing} = nothing,
+                                                   tex::Union{Vector{Float64}, Nothing} = nothing)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -701,16 +701,16 @@ function calculate_vibrational_temperature_wrapper(rho_evib::Float64,
     # Call Fortran subroutine
     try
         ccall((:calculate_vibrational_temperature, get_terra_lib_path()), Cvoid,
-            (Ref{Float64},                                    # tvib (output)
-                Ref{Float64},                                    # rho_evib
-                Ptr{Float64},                                    # rho_sp
-                Ptr{Cvoid},                                      # rho_ex (optional)
-                Ptr{Cvoid}),                                     # tex (optional)
-            tvib_ref,
-            rho_evib,
-            rho_sp_full,
-            rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
-            tex_full !== nothing ? (tex_full::Vector{Float64}) : C_NULL)
+              (Ref{Float64},                                    # tvib (output)
+               Ref{Float64},                                    # rho_evib
+               Ptr{Float64},                                    # rho_sp
+               Ptr{Cvoid},                                      # rho_ex (optional)
+               Ptr{Cvoid}),                                     # tex (optional)
+              tvib_ref,
+              rho_evib,
+              rho_sp_full,
+              rho_ex_full !== nothing ? (rho_ex_full::Matrix{Float64}) : C_NULL,
+              tex_full !== nothing ? (tex_full::Vector{Float64}) : C_NULL)
     catch e
         error("Failed to calculate vibrational temperature: $(e)")
     end
@@ -736,7 +736,8 @@ Calculate electron-electronic energy from state variables.
 - `ArgumentError`: If teex ≤ 0, tvib ≤ 0, or arrays are invalid
 """
 function calculate_electron_electronic_energy_wrapper(teex::Float64,
-        tvib::Float64, rho_sp::Vector{Float64})
+                                                      tvib::Float64,
+                                                      rho_sp::Vector{Float64})
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -768,14 +769,14 @@ function calculate_electron_electronic_energy_wrapper(teex::Float64,
     # Call Fortran subroutine
     try
         ccall((:calculate_electron_electronic_energy, get_terra_lib_path()), Cvoid,
-            (Ref{Float64},                                    # rho_eeex (output)
-                Ref{Float64},                                    # teex
-                Ref{Float64},                                    # tvib
-                Ptr{Float64}),                                   # rho_sp
-            rho_eeex,
-            teex,
-            tvib,
-            rho_sp_full)
+              (Ref{Float64},                                    # rho_eeex (output)
+               Ref{Float64},                                    # teex
+               Ref{Float64},                                    # tvib
+               Ptr{Float64}),                                   # rho_sp
+              rho_eeex,
+              teex,
+              tvib,
+              rho_sp_full)
     catch e
         error("Failed to calculate electron-electronic energy: $(e)")
     end
@@ -801,7 +802,7 @@ Set electronic state densities to Boltzmann distribution.
 - `ArgumentError`: If temperatures ≤ 0 or arrays are invalid
 """
 function set_electronic_boltzmann_wrapper(rho_sp::Vector{Float64},
-        tex::Float64, trot::Float64, tvib::Float64)
+                                          tex::Float64, trot::Float64, tvib::Float64)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -837,16 +838,16 @@ function set_electronic_boltzmann_wrapper(rho_sp::Vector{Float64},
     # Call Fortran subroutine
     try
         ccall((:set_electronic_boltzmann, get_terra_lib_path()), Cvoid,
-            (Ptr{Float64},                                    # rho_ex (output)
-                Ptr{Float64},                                    # rho_sp
-                Ref{Float64},                                    # tex
-                Ref{Float64},                                    # trot
-                Ref{Float64}),                                  # tvib
-            rho_ex,
-            rho_sp_full,
-            tex,
-            trot,
-            tvib)
+              (Ptr{Float64},                                    # rho_ex (output)
+               Ptr{Float64},                                    # rho_sp
+               Ref{Float64},                                    # tex
+               Ref{Float64},                                    # trot
+               Ref{Float64}),                                  # tvib
+              rho_ex,
+              rho_sp_full,
+              tex,
+              trot,
+              tvib)
     catch e
         error("Failed to set electronic Boltzmann distribution: $(e)")
     end
@@ -873,7 +874,7 @@ Set vibrational state densities to a Boltzmann distribution given rho_ex.
 - `ArgumentError`: If temperatures ≤ 0 or arrays are invalid
 """
 function set_vibrational_boltzmann_wrapper(rho_ex::Matrix{Float64},
-        tex::Float64, trot::Float64, tvib::Float64)
+                                           tex::Float64, trot::Float64, tvib::Float64)
     if !is_terra_loaded()
         error("TERRA library not loaded. Set $(TERRA_ENV_VAR_NAME) or call load_terra_library!(path) first.")
     end
@@ -900,21 +901,21 @@ function set_vibrational_boltzmann_wrapper(rho_ex::Matrix{Float64},
     @inbounds rho_ex_full[1:m1, 1:m2] .= rho_ex[1:m1, 1:m2]
 
     rho_vx = zeros(Float64, max_vibrational_quantum_number + 1,
-        max_molecular_electronic_states, max_species)
+                   max_molecular_electronic_states, max_species)
 
     # Call Fortran subroutine
     try
         ccall((:set_vibrational_boltzmann, get_terra_lib_path()), Cvoid,
-            (Ptr{Float64},                                    # rho_vx (output)
-                Ptr{Float64},                                    # rho_ex
-                Ref{Float64},                                    # tex
-                Ref{Float64},                                    # trot
-                Ref{Float64}),                                   # tvib
-            rho_vx,
-            rho_ex_full,
-            tex,
-            trot,
-            tvib)
+              (Ptr{Float64},                                    # rho_vx (output)
+               Ptr{Float64},                                    # rho_ex
+               Ref{Float64},                                    # tex
+               Ref{Float64},                                    # trot
+               Ref{Float64}),                                   # tvib
+              rho_vx,
+              rho_ex_full,
+              tex,
+              trot,
+              tvib)
     catch e
         error("Failed to set vibrational Boltzmann distribution: $(e)")
     end

@@ -1,10 +1,10 @@
 function _build_residence_time_continuity_indices(layout::ApiLayout,
-        species_names::AbstractVector{<:AbstractString})
-    length(species_names) == layout.nsp || throw(ArgumentError(
-        "Residence-time species ordering length ($(length(species_names))) does not match layout.nsp ($(layout.nsp))."
-    ))
+                                                  species_names::AbstractVector{<:AbstractString})
+    length(species_names) == layout.nsp ||
+        throw(ArgumentError("Residence-time species ordering length ($(length(species_names))) does not match layout.nsp ($(layout.nsp))."))
 
-    species_order = String[String(species_names[isp]) for isp in 1:layout.nsp if isp != layout.esp]
+    species_order = String[String(species_names[isp])
+                           for isp in 1:(layout.nsp) if isp != layout.esp]
     species_indices = Dict(name => Int[] for name in species_order)
 
     idx = 1
@@ -93,35 +93,33 @@ end
 end
 
 function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
-        species_order::Vector{String})
-    missing_species = String[name for name in species_order if !haskey(rt_cfg.U_species, name)]
-    extra_species = sort!(String[
-        name for name in keys(rt_cfg.U_species) if !(name in species_order)
-    ])
+                                          species_order::Vector{String})
+    missing_species = String[name
+                             for name in species_order if !haskey(rt_cfg.U_species, name)]
+    extra_species = sort!(String[name
+                                 for name in keys(rt_cfg.U_species)
+                                 if !(name in species_order)])
 
     if !isempty(missing_species) || !isempty(extra_species)
-        throw(ArgumentError(
-            "ResidenceTimeConfig U_species keys must match the non-electron TERRA species ordering. " *
-            "Missing: $(isempty(missing_species) ? "none" : join(missing_species, ", ")); " *
-            "Extra: $(isempty(extra_species) ? "none" : join(extra_species, ", "))."
-        ))
+        throw(ArgumentError("ResidenceTimeConfig U_species keys must match the non-electron TERRA species ordering. " *
+                            "Missing: $(isempty(missing_species) ? "none" : join(missing_species, ", ")); " *
+                            "Extra: $(isempty(extra_species) ? "none" : join(extra_species, ", "))."))
     end
 end
 
 function _prepare_residence_time_data(layout::ApiLayout, config::Config,
-        u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig;
-        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
-    continuity = _build_residence_time_continuity_indices(
-        layout, config.reactor.composition.species)
+                                      u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig;
+                                      inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+    continuity = _build_residence_time_continuity_indices(layout,
+                                                          config.reactor.composition.species)
     species_order = continuity.species_order
     species_indices = continuity.species_indices
     _validate_residence_time_species(rt_cfg, species_order)
 
-    inv_tau_species = Dict(
-        name => rt_cfg.U_species[name] / rt_cfg.L for name in species_order
-    )
-    energy_indices = _build_residence_time_energy_indices(
-        layout, config.models.physics.is_isothermal_teex)
+    inv_tau_species = Dict(name => rt_cfg.U_species[name] / rt_cfg.L
+                           for name in species_order)
+    energy_indices = _build_residence_time_energy_indices(layout,
+                                                          config.models.physics.is_isothermal_teex)
 
     u_in = if rt_cfg.inlet_reactor === nothing
         copy(u0)
@@ -131,14 +129,14 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
             error("ResidenceTimeConfig inlet_reactor species must match the initialized TERRA species ordering.")
         end
         inlet_config = Config(;
-            reactor = inlet_reactor,
-            models = config.models,
-            sources = config.sources,
-            numerics = config.numerics,
-            runtime = config.runtime)
+                              reactor = inlet_reactor,
+                              models = config.models,
+                              sources = config.sources,
+                              numerics = config.numerics,
+                              runtime = config.runtime)
 
         inlet_state = config_to_initial_state(inlet_config;
-            state_cache = inlet_state_cache)
+                                              state_cache = inlet_state_cache)
         energy_scalar_in = config.models.physics.is_isothermal_teex ? inlet_state.rho_rem :
                            inlet_state.rho_energy
         rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing
@@ -147,13 +145,13 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         rho_evib_in = layout.vib_noneq ? inlet_state.rho_evib : nothing
 
         pack_state_vector(layout, inlet_state.rho_sp, energy_scalar_in;
-            rho_ex = rho_ex_in,
-            rho_u = layout.nd >= 1 ? 0.0 : nothing,
-            rho_v = layout.nd >= 2 ? 0.0 : nothing,
-            rho_w = layout.nd >= 3 ? 0.0 : nothing,
-            rho_eeex = rho_eeex_in,
-            rho_erot = rho_erot_in,
-            rho_evib = rho_evib_in)
+                          rho_ex = rho_ex_in,
+                          rho_u = layout.nd >= 1 ? 0.0 : nothing,
+                          rho_v = layout.nd >= 2 ? 0.0 : nothing,
+                          rho_w = layout.nd >= 3 ? 0.0 : nothing,
+                          rho_eeex = rho_eeex_in,
+                          rho_erot = rho_erot_in,
+                          rho_evib = rho_evib_in)
     end
 
     inlet_state = unpack_state_vector(u_in, layout)
@@ -161,7 +159,7 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
     U_energy = if rt_cfg.U_energy === nothing
         rho_weighted_u = 0.0
         rho_total = 0.0
-        @inbounds for isp in 1:layout.nsp
+        @inbounds for isp in 1:(layout.nsp)
             if isp == layout.esp
                 continue
             end
@@ -180,12 +178,10 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
 
     inv_tau_energy = U_energy / rt_cfg.L
 
-    return (
-        u_in = u_in,
-        species_order = species_order,
-        species_indices = species_indices,
-        energy_indices = energy_indices,
-        inv_tau_species = inv_tau_species,
-        inv_tau_energy = inv_tau_energy
-    )
+    return (u_in = u_in,
+            species_order = species_order,
+            species_indices = species_indices,
+            energy_indices = energy_indices,
+            inv_tau_species = inv_tau_species,
+            inv_tau_energy = inv_tau_energy)
 end

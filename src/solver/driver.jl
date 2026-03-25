@@ -136,9 +136,9 @@ and result processing.
 - `ErrorException` if TERRA not initialized or simulation fails
 """
 function _solve_terra_0d_internal(config::Config;
-        sources::Union{Nothing, SourceTermsConfig} = config.sources,
-        wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-        state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                                  sources::Union{Nothing, SourceTermsConfig} = config.sources,
+                                  wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
+                                  state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
@@ -151,9 +151,9 @@ function _solve_terra_0d_internal(config::Config;
 
         # Run the time integration
         results, final_state_cache = _integrate_0d_system(config, initial_state;
-            sources = sources,
-            wall_inputs = wall_inputs,
-            inlet_state_cache = state_cache)
+                                                          sources = sources,
+                                                          wall_inputs = wall_inputs,
+                                                          inlet_state_cache = state_cache)
 
         @info "TERRA simulation completed successfully"
         return results, final_state_cache
@@ -161,20 +161,19 @@ function _solve_terra_0d_internal(config::Config;
     catch e
         @error "TERRA simulation failed" exception=e
         return ReactorResult(;
-            t = Float64[],
-            frames = ReactorFrame[],
-            source_terms = nothing,
-            success = false,
-            message = "Simulation failed: $(string(e))"
-        ), nothing
+                             t = Float64[],
+                             frames = ReactorFrame[],
+                             source_terms = nothing,
+                             success = false,
+                             message = "Simulation failed: $(string(e))"), nothing
     end
 end
 
 function solve_terra_0d(config::Config;
-        sources::Union{Nothing, SourceTermsConfig} = config.sources)
+                        sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
     results, _ = _solve_terra_0d_internal(config;
-        sources = sources)
+                                          sources = sources)
     return results
 end
 
@@ -195,9 +194,9 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     total_number_density = 1.0e13  # 1/cm³
 
     composition = ReactorComposition(;
-        species = species,
-        mole_fractions = mole_fractions,
-        total_number_density = total_number_density)
+                                     species = species,
+                                     mole_fractions = mole_fractions,
+                                     total_number_density = total_number_density)
     thermal = ReactorThermalState(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
     reactor = ReactorConfig(; composition = composition, thermal = thermal)
 
@@ -211,13 +210,14 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     #   dtm  = 5.0   microseconds   -> 5e-6  seconds
     #   tlim = 1.0e3 microseconds   -> 1e-3  seconds
     time = TimeConfig(;
-        dt = 5e-12, dt_output = 5e-6, duration = 1e-3, nstep = 500000, method = 2)
+                      dt = 5e-12, dt_output = 5e-6, duration = 1e-3, nstep = 500000,
+                      method = 2)
 
     # Resolve database path relative to package root for portability.
     # This file lives in src/solver, so package root is two levels up.
     pkg_root = normpath(joinpath(@__DIR__, "..", ".."))
-    database_path = abspath(joinpath(
-        pkg_root, "database", "n2", "elec_sts_expanded_electron_fits"))
+    database_path = abspath(joinpath(pkg_root, "database", "n2",
+                                     "elec_sts_expanded_electron_fits"))
 
     # Validate that required paths exist
     resolve_terra_library_path()
@@ -239,11 +239,11 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
     runtime = RuntimeConfig(; database_path = database_path)
 
     return Config(;
-        reactor = reactor,
-        models = models,
-        sources = sources,
-        numerics = numerics,
-        runtime = runtime)
+                  reactor = reactor,
+                  models = models,
+                  sources = sources,
+                  numerics = numerics,
+                  runtime = runtime)
 end
 
 """
@@ -267,7 +267,7 @@ results = nitrogen_10ev_example()
 ```
 """
 function nitrogen_10ev_example(case_path::String = mktempdir();
-        isothermal::Bool = false)
+                               isothermal::Bool = false)
     # Create configuration for the example case
     config = nitrogen_10ev_config(; isothermal = isothermal)
 

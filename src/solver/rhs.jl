@@ -23,10 +23,10 @@ Compute the mixture pressure using translational and electron temperatures.
 - `Float64`: Mixture pressure consistent with TERRA conventions
 """
 function compute_mixture_pressure(rho_sp::AbstractVector{<:Real},
-        gas_constants::AbstractVector{<:Real},
-        species_names::AbstractVector{<:AbstractString},
-        molecular_weights::AbstractVector{<:Real},
-        tt::Real, te::Real)
+                                  gas_constants::AbstractVector{<:Real},
+                                  species_names::AbstractVector{<:AbstractString},
+                                  molecular_weights::AbstractVector{<:Real},
+                                  tt::Real, te::Real)
     @assert length(rho_sp) == length(gas_constants) == length(species_names) ==
             length(molecular_weights)
 
@@ -58,11 +58,12 @@ Convert total energy density into enthalpy density using the ideal-gas closure.
 - `Tuple{Float64, Float64}`: Enthalpy density and corresponding pressure
 """
 function enthalpy_from_energy(rho_etot::Float64, rho_sp::AbstractVector{<:Real},
-        gas_constants::AbstractVector{<:Real}, species_names::AbstractVector{<:AbstractString},
-        molecular_weights::AbstractVector{<:Real},
-        tt::Real, te::Real)
-    pressure = compute_mixture_pressure(
-        rho_sp, gas_constants, species_names, molecular_weights, tt, te)
+                              gas_constants::AbstractVector{<:Real},
+                              species_names::AbstractVector{<:AbstractString},
+                              molecular_weights::AbstractVector{<:Real},
+                              tt::Real, te::Real)
+    pressure = compute_mixture_pressure(rho_sp, gas_constants, species_names,
+                                        molecular_weights, tt, te)
     return rho_etot + pressure, pressure
 end
 
@@ -91,7 +92,8 @@ end
     return true
 end
 
-@inline function _compact_density_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
+@inline function _compact_density_nonnegative_ok(u::AbstractVector{<:Real},
+                                                 layout::ApiLayout)
     if any(@view(u[layout.vib_range]) .< 0.0)
         return false
     end
@@ -104,7 +106,8 @@ end
     return true
 end
 
-@inline function _compact_energy_nonnegative_ok(u::AbstractVector{<:Real}, layout::ApiLayout)
+@inline function _compact_energy_nonnegative_ok(u::AbstractVector{<:Real},
+                                                layout::ApiLayout)
     if u[layout.idx_etot] < 0.0
         return false
     end
@@ -121,8 +124,8 @@ end
 end
 
 @inline function _compact_project_density_nonnegative!(u_work::Vector{Float64},
-        u::AbstractVector{<:Real},
-        layout::ApiLayout)
+                                                       u::AbstractVector{<:Real},
+                                                       layout::ApiLayout)
     copyto!(u_work, u)
 
     density_stop = layout.mom_range.start - 1
@@ -167,8 +170,8 @@ end
 end
 
 @inline function _compact_apply_shampine_positivity!(du::AbstractVector{<:Real},
-        u::AbstractVector{<:Real},
-        layout::ApiLayout)
+                                                     u::AbstractVector{<:Real},
+                                                     layout::ApiLayout)
     density_stop = layout.mom_range.start - 1
     if density_stop <= 0
         return nothing
@@ -182,9 +185,9 @@ end
 end
 
 function _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp::Vector{Float64},
-        rho_ex::Union{Nothing, Matrix{Float64}},
-        u::Vector{Float64},
-        layout::ApiLayout)
+                                                  rho_ex::Union{Nothing, Matrix{Float64}},
+                                                  u::Vector{Float64},
+                                                  layout::ApiLayout)
     fill!(rho_sp, 0.0)
     if rho_ex !== nothing
         fill!(rho_ex, 0.0)
@@ -267,8 +270,8 @@ function _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp::Vector{Float64},
 end
 
 function _reconstruct_drho_sp_from_compact!(drho_sp::Vector{Float64},
-        dy::AbstractVector{<:Real},
-        layout::ApiLayout)
+                                            dy::AbstractVector{<:Real},
+                                            layout::ApiLayout)
     fill!(drho_sp, 0.0)
 
     idx = 1
@@ -351,11 +354,11 @@ end
 @inline _config_is_isothermal_teex(config::Config) = config.models.physics.is_isothermal_teex
 
 function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
-        rho_sp::Vector{Float64},
-        rho_ex::Union{Nothing, Matrix{Float64}},
-        u::Vector{Float64},
-        p,
-        layout::ApiLayout)
+                                                  rho_sp::Vector{Float64},
+                                                  rho_ex::Union{Nothing, Matrix{Float64}},
+                                                  u::Vector{Float64},
+                                                  p,
+                                                  layout::ApiLayout)
     config = p.config
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
     teex_const = hasproperty(p, :teex_const) ? p.teex_const :
@@ -365,8 +368,8 @@ function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
 
     rho_evib = u[layout.idx_evib]
     tvib = calculate_vibrational_temperature_wrapper(rho_evib, rho_sp;
-        rho_ex = rho_ex,
-        tex = teex_vec)
+                                                     rho_ex = rho_ex,
+                                                     tex = teex_vec)
     rho_eeex_eff = calculate_electron_electronic_energy_wrapper(teex_const, tvib, rho_sp)
 
     electron_idx = layout.esp
@@ -378,11 +381,12 @@ function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
     rho_rem = u[layout.idx_etot]
     rho_enthalpy_total = rho_rem + rho_eeex_eff + electron_enthalpy
     rho_erot = layout.idx_erot == 0 ? 0.0 : Float64(u[layout.idx_erot])
-    conversion = energy_from_enthalpy_isothermal_teex_wrapper(rho_enthalpy_total, rho_sp, teex_const;
-        rho_ex = rho_ex,
-        rho_eeex = rho_eeex_eff,
-        rho_erot = rho_erot,
-        rho_evib = rho_evib)
+    conversion = energy_from_enthalpy_isothermal_teex_wrapper(rho_enthalpy_total, rho_sp,
+                                                              teex_const;
+                                                              rho_ex = rho_ex,
+                                                              rho_eeex = rho_eeex_eff,
+                                                              rho_erot = rho_erot,
+                                                              rho_evib = rho_evib)
     rho_etot = conversion.rho_etot
 
     copyto!(y_work, u)
@@ -390,20 +394,19 @@ function _compact_isothermal_fill_fortran_y_work!(y_work::Vector{Float64},
     y_work[layout.idx_etot] = rho_etot
 
     temps_raw = calculate_temperatures_wrapper(rho_sp, rho_etot;
-        rho_ex = rho_ex,
-        rho_erot = layout.idx_erot == 0 ? nothing : rho_erot,
-        rho_eeex = rho_eeex_eff,
-        rho_evib = rho_evib)
+                                               rho_ex = rho_ex,
+                                               rho_erot = layout.idx_erot == 0 ? nothing :
+                                                          rho_erot,
+                                               rho_eeex = rho_eeex_eff,
+                                               rho_evib = rho_evib)
     temps = (; temps_raw..., teex = teex_const)
 
-    return (
-        teex_const = teex_const,
-        rho_eeex = rho_eeex_eff,
-        rho_evib = rho_evib,
-        temps = temps,
-        rho_etot = rho_etot,
-        pressure = conversion.pressure
-    )
+    return (teex_const = teex_const,
+            rho_eeex = rho_eeex_eff,
+            rho_evib = rho_evib,
+            temps = temps,
+            rho_etot = rho_etot,
+            pressure = conversion.pressure)
 end
 
 """
@@ -483,7 +486,7 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     teex_vec = hasproperty(p, :teex_const_vec) ? p.teex_const_vec : nothing
 
     calculate_rhs_api_isothermal_teex_wrapper!(du, u_eval, teex_const;
-        tex = teex_vec)
+                                               tex = teex_vec)
 
     if hasproperty(p, :sources)
         _apply_source_terms!(du, u_eval, p.sources)
@@ -496,8 +499,8 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
 end
 
 function _electronic_state_print_metadata(rho_ex_initial::AbstractMatrix{<:Real},
-        n_species::Int;
-        ex_tol::Float64 = 1e-80)
+                                          n_species::Int;
+                                          ex_tol::Float64 = 1e-80)
     electronic_state_counts = zeros(Int, n_species)
     has_electronic_states = falses(n_species)
 
@@ -514,20 +517,22 @@ function _electronic_state_print_metadata(rho_ex_initial::AbstractMatrix{<:Real}
     end
 
     return (electronic_state_counts = electronic_state_counts,
-        has_electronic_states = has_electronic_states)
+            has_electronic_states = has_electronic_states)
 end
 
 function _print_terra_integration_output(t::Float64,
-        dt::Float64,
-        rho_sp::Vector{Float64},
-        molecular_weights::Vector{Float64},
-        temps,
-        rho_etot::Float64;
-        rho_ex::Union{Nothing, Matrix{Float64}} = nothing,
-        rho_eeex::Union{Nothing, Float64} = nothing,
-        rho_evib::Union{Nothing, Float64} = nothing,
-        has_electronic_states::Union{Nothing, AbstractVector{Bool}} = nothing,
-        electronic_state_counts::Union{Nothing, AbstractVector{Int}} = nothing)
+                                         dt::Float64,
+                                         rho_sp::Vector{Float64},
+                                         molecular_weights::Vector{Float64},
+                                         temps,
+                                         rho_etot::Float64;
+                                         rho_ex::Union{Nothing, Matrix{Float64}} = nothing,
+                                         rho_eeex::Union{Nothing, Float64} = nothing,
+                                         rho_evib::Union{Nothing, Float64} = nothing,
+                                         has_electronic_states::Union{Nothing,
+                                                                      AbstractVector{Bool}} = nothing,
+                                         electronic_state_counts::Union{Nothing,
+                                                                        AbstractVector{Int}} = nothing)
     # Mass fraction sum error
     rho_total = sum(rho_sp)
     ysum = 0.0
@@ -539,9 +544,9 @@ function _print_terra_integration_output(t::Float64,
 
     # Relative enthalpy change (%) at current Tt vs reconstructed energy
     Ecomp = calculate_total_energy_wrapper(temps.tt, rho_sp;
-        rho_ex = rho_ex,
-        rho_eeex = rho_eeex,
-        rho_evib = rho_evib)
+                                           rho_ex = rho_ex,
+                                           rho_eeex = rho_eeex,
+                                           rho_evib = rho_evib)
     dEnth = 100.0 * (Ecomp - rho_etot) / rho_etot
     println(@sprintf(" dEnth (%%)  = % .5E", dEnth))
 
@@ -550,7 +555,8 @@ function _print_terra_integration_output(t::Float64,
     println(@sprintf(" time       = % .2E mu-s ", t_us))
     println(@sprintf(" dt         = % .2E mu-s", dt_us))
     println(@sprintf(" T(t,e,r,v) = % .3E % .3E % .3E % .3E K",
-        Float64(temps.tt), Float64(temps.teex), Float64(temps.trot), Float64(temps.tvib)))
+                     Float64(temps.tt), Float64(temps.teex), Float64(temps.trot),
+                     Float64(temps.tvib)))
 
     # Mole fractions
     denom = 0.0

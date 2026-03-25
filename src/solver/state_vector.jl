@@ -4,26 +4,26 @@ $(SIGNATURES)
 Pack state components into the `y` vector ordering used by Fortran `rhs_api`.
 """
 function pack_state_vector(layout::ApiLayout,
-        rho_sp::AbstractVector{<:Real},
-        rho_etot::Real;
-        rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
-        rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
-        rho_u::Union{Real, Nothing} = nothing,
-        rho_v::Union{Real, Nothing} = nothing,
-        rho_w::Union{Real, Nothing} = nothing,
-        rho_erot::Union{Real, Nothing} = nothing,
-        rho_eeex::Union{Real, Nothing} = nothing,
-        rho_evib::Union{Real, Nothing} = nothing)
+                           rho_sp::AbstractVector{<:Real},
+                           rho_etot::Real;
+                           rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
+                           rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
+                           rho_u::Union{Real, Nothing} = nothing,
+                           rho_v::Union{Real, Nothing} = nothing,
+                           rho_w::Union{Real, Nothing} = nothing,
+                           rho_erot::Union{Real, Nothing} = nothing,
+                           rho_eeex::Union{Real, Nothing} = nothing,
+                           rho_evib::Union{Real, Nothing} = nothing)
     y = Vector{Float64}(undef, layout.neq)
     pack_state_vector!(y, layout, rho_sp, rho_etot;
-        rho_ex = rho_ex,
-        rho_vx = rho_vx,
-        rho_u = rho_u,
-        rho_v = rho_v,
-        rho_w = rho_w,
-        rho_erot = rho_erot,
-        rho_eeex = rho_eeex,
-        rho_evib = rho_evib)
+                       rho_ex = rho_ex,
+                       rho_vx = rho_vx,
+                       rho_u = rho_u,
+                       rho_v = rho_v,
+                       rho_w = rho_w,
+                       rho_erot = rho_erot,
+                       rho_eeex = rho_eeex,
+                       rho_evib = rho_evib)
     return y
 end
 
@@ -33,17 +33,17 @@ $(SIGNATURES)
 In-place variant of `pack_state_vector`.
 """
 function pack_state_vector!(y::Vector{Float64},
-        layout::ApiLayout,
-        rho_sp::AbstractVector{<:Real},
-        rho_etot::Real;
-        rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
-        rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
-        rho_u::Union{Real, Nothing} = nothing,
-        rho_v::Union{Real, Nothing} = nothing,
-        rho_w::Union{Real, Nothing} = nothing,
-        rho_erot::Union{Real, Nothing} = nothing,
-        rho_eeex::Union{Real, Nothing} = nothing,
-        rho_evib::Union{Real, Nothing} = nothing)
+                            layout::ApiLayout,
+                            rho_sp::AbstractVector{<:Real},
+                            rho_etot::Real;
+                            rho_ex::Union{AbstractMatrix{<:Real}, Nothing} = nothing,
+                            rho_vx::Union{AbstractArray{<:Real, 3}, Nothing} = nothing,
+                            rho_u::Union{Real, Nothing} = nothing,
+                            rho_v::Union{Real, Nothing} = nothing,
+                            rho_w::Union{Real, Nothing} = nothing,
+                            rho_erot::Union{Real, Nothing} = nothing,
+                            rho_eeex::Union{Real, Nothing} = nothing,
+                            rho_evib::Union{Real, Nothing} = nothing)
     if length(y) != layout.neq
         throw(DimensionMismatch("y length ($(length(y))) does not match layout.neq ($(layout.neq))"))
     end
@@ -297,16 +297,14 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         rho_sp[layout.esp] = spgam_e * rho_total * AVOGADRO * layout.spwt[layout.esp]
     end
 
-    return (
-        rho_sp = rho_sp,
-        rho_etot = rho_etot,
-        rho_ex = rho_ex,
-        rho_vx = rho_vx,
-        rho_u = rho_u,
-        rho_v = rho_v,
-        rho_w = rho_w,
-        rho_erot = rho_erot,
-        rho_eeex = rho_eeex,
-        rho_evib = rho_evib
-    )
+    return (rho_sp = rho_sp,
+            rho_etot = rho_etot,
+            rho_ex = rho_ex,
+            rho_vx = rho_vx,
+            rho_u = rho_u,
+            rho_v = rho_v,
+            rho_w = rho_w,
+            rho_erot = rho_erot,
+            rho_eeex = rho_eeex,
+            rho_evib = rho_evib)
 end
