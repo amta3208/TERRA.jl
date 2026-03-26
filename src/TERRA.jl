@@ -28,6 +28,7 @@ include("config/conversions.jl")
 
 include("io/log_paths.jl")
 include("io/run_logging.jl")
+include("io/chain_logging.jl")
 include("io/prob_setup_writer.jl")
 include("io/sources_setup_writer.jl")
 include("io/tau_scaling_writer.jl")

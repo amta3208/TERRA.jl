@@ -107,6 +107,83 @@
                                                                                                config.runtime.unit_system),
                                                             marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
+        chain_log_path = joinpath(config.runtime.case_path, "output", "logs", "chain.log")
+        @test isfile(chain_log_path)
+        chain_log = read(chain_log_path, String)
+        @test occursin("chain:", chain_log)
+        @test occursin("segments: 1", chain_log)
+        @test occursin("segment 1/1:", chain_log)
+        @test occursin("species_u_m_s:", chain_log)
+        @test occursin("number_density_m3:", chain_log)
+        @test occursin("result:", chain_log)
+        run_log_path = joinpath(config.runtime.case_path, "output", "logs", "run.log")
+        @test isfile(run_log_path)
+        run_log = read(run_log_path, String)
+        @test occursin("TERRA 1D Chain Simulation", run_log)
+        @test occursin("segments: 1", run_log)
+        @test occursin("===== Segment 1/1 0D Simulation =====", run_log)
+        @test occursin("chain success!", run_log)
+        @test !occursin("Initializing TERRA", run_log)
+
+        cleanup_terra!()
+    end
+
+    @testset "Chain detail logging can be disabled" begin
+        config = build_chain_test_config()
+        config = terra.with_logging(config;
+                                    console_mode = :quiet,
+                                    chain_detail_mode = :off)
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
+
+        chain = terra.solve_terra_chain_steady(config, profile)
+        @test chain.success == true
+        @test !isfile(joinpath(config.runtime.case_path, "output", "logs", "chain.log"))
+        run_log_path = joinpath(config.runtime.case_path, "output", "logs", "run.log")
+        @test isfile(run_log_path)
+        run_log = read(run_log_path, String)
+        @test occursin("TERRA 1D Chain Simulation", run_log)
+        @test occursin("===== Segment 1/1 0D Simulation =====", run_log)
+        @test occursin("chain success!", run_log)
+
+        cleanup_terra!()
+    end
+
+    @testset "Chain detail logging can mirror to console and file" begin
+        config = build_chain_test_config()
+        config = terra.with_logging(config;
+                                    console_mode = :quiet,
+                                    chain_detail_mode = :both)
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
+
+        chain_ref = Ref{Any}(nothing)
+        capture_pipe = Pipe()
+        redirect_stdout(capture_pipe) do
+            chain_ref[] = terra.solve_terra_chain_steady(config, profile)
+            nothing
+        end
+        close(Base.pipe_writer(capture_pipe))
+
+        console_text = read(capture_pipe, String)
+        chain = chain_ref[]::terra.ChainSimulationResult
+        @test chain.success == true
+        @test occursin("chain:", console_text)
+        @test occursin("segment 1/1:", console_text)
+        @test occursin("result:", console_text)
+        @test isfile(joinpath(config.runtime.case_path, "output", "logs", "chain.log"))
 
         cleanup_terra!()
     end
@@ -133,9 +210,38 @@
         console_text = read(capture_pipe, String)
         chain = chain_ref[]::terra.ChainSimulationResult
         @test chain.success == true
-        @test !occursin("=========== TERRA 0D Simulation ===========", console_text)
+        @test occursin("TERRA 1D Chain Simulation", console_text)
+        @test occursin("===== Segment 1/1 0D Simulation =====", console_text)
+        @test occursin("starting ODE integration...", console_text)
+        @test occursin("chain success!", console_text)
 
         cleanup_terra!()
+    end
+
+    @testset "Chain solve restores the top-level active runtime" begin
+        config = build_chain_test_config()
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
+
+        chain = terra.solve_terra_chain_steady(config, profile)
+
+        @test chain.success == true
+        active_runtime = terra._active_runtime_for_logging()
+        @test active_runtime !== nothing
+        @test active_runtime.case_path == config.runtime.case_path
+
+        terra.finalize_terra()
+
+        run_log_path = joinpath(config.runtime.case_path, "output", "logs", "run.log")
+        run_log = read(run_log_path, String)
+        @test occursin("Finalizing TERRA", run_log)
+        @test occursin("TERRA finalized successfully", run_log)
     end
 
     @testset "Two-segment handoff and Te profile enforcement" begin

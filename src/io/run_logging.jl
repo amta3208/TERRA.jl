@@ -30,6 +30,11 @@ function _set_active_runtime_for_logging!(runtime::RuntimeConfig)
     return runtime
 end
 
+function _restore_active_runtime_for_logging!(runtime::Union{Nothing, RuntimeConfig})
+    ACTIVE_RUNTIME_FOR_LOGGING[] = runtime
+    return runtime
+end
+
 function _clear_active_runtime_for_logging!()
     ACTIVE_RUNTIME_FOR_LOGGING[] = nothing
     return nothing

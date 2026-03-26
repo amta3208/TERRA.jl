@@ -442,6 +442,8 @@ function solve_terra_chain_steady(config::Config,
     validate_axial_marching_config(marching)
     _validate_profile_species(profile, config)
     _validate_profile_inlet(profile, config)
+    chain_runtime = config.runtime
+    _set_active_runtime_for_logging!(chain_runtime)
 
     # Chain marching repeatedly reinitializes the Fortran API; keep MPI
     # finalization disabled to avoid shutting down MPI mid-process.
@@ -456,6 +458,13 @@ function solve_terra_chain_steady(config::Config,
 
     n_segments = length(profile.z_m)
     compact_to_source_index = _resolve_compact_to_source_index(profile)
+    _prepare_chain_logging(chain_runtime)
+    _emit_chain_summary(chain_runtime, :info,
+                        _chain_summary_header_text(profile, marching);
+                        console = :minimal)
+    _emit_chain_detail(chain_runtime,
+                       _chain_log_header_text(config, profile, marching,
+                                              compact_to_source_index))
     segment_end_reactors = [config.reactor for _ in 1:n_segments]
     segment_success = fill(false, n_segments)
     segment_messages = fill("Not executed.", n_segments)
@@ -469,12 +478,18 @@ function solve_terra_chain_steady(config::Config,
     for k in 1:n_segments
         local_result = nothing
         local_state_cache = nothing
+        segment_case_path = _segment_case_path(config.runtime.case_path, k)
+        _emit_chain_summary(chain_runtime, :info,
+                            _chain_summary_segment_text(k, n_segments);
+                            console = :minimal)
         try
             segment_config = _build_chain_segment_config(config, profile, k, inlet_reactor,
                                                          marching)
             wall_inputs = _build_segment_wall_inputs(profile, k,
                                                      segment_config.sources.wall_losses)
-            initialize_terra(segment_config, segment_config.runtime.case_path)
+            initialize_terra(segment_config, segment_config.runtime.case_path;
+                             lifecycle_console = :never,
+                             preserve_active_runtime = false)
             if marching.handoff_mode == :full_state &&
                full_state_handoff_supported === nothing
                 full_state_handoff_supported = has_electronic_sts_wrapper()
@@ -491,6 +506,12 @@ function solve_terra_chain_steady(config::Config,
         catch e
             segment_messages[k] = "Segment setup/integration threw exception: $(e)"
             segment_results[k] = _failed_simulation_result(segment_messages[k])
+            _emit_chain_detail(chain_runtime,
+                               _chain_log_segment_text(config, profile,
+                                                       compact_to_source_index, k,
+                                                       segment_case_path,
+                                                       segment_results[k];
+                                                       state_cache_used = segment_state_cache_used[k]))
             diagnostics = _build_chain_diagnostics(config, profile, marching,
                                                    segment_end_reactors,
                                                    segment_state_cache_used,
@@ -499,12 +520,17 @@ function solve_terra_chain_steady(config::Config,
                                        segment_end_reactors, segment_success,
                                        segment_messages, segment_results)
             metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
-            return ChainSimulationResult(;
-                                         cells = cells,
-                                         metadata = metadata,
-                                         success = false,
-                                         failed_cell = k,
-                                         message = "Chain failed at segment $k during setup/integration.",)
+            chain_result = ChainSimulationResult(;
+                                                 cells = cells,
+                                                 metadata = metadata,
+                                                 success = false,
+                                                 failed_cell = k,
+                                                 message = "Chain failed at segment $k during setup/integration.",)
+            _emit_chain_detail(chain_runtime, _chain_log_result_text(chain_result))
+            _emit_chain_summary(chain_runtime, :warn,
+                                _chain_summary_result_text(chain_result);
+                                console = :minimal)
+            return chain_result
         end
 
         segment_results[k] = local_result
@@ -512,6 +538,11 @@ function solve_terra_chain_steady(config::Config,
         segment_messages[k] = local_result.message
 
         if !local_result.success
+            _emit_chain_detail(chain_runtime,
+                               _chain_log_segment_text(config, profile,
+                                                       compact_to_source_index, k,
+                                                       segment_case_path, local_result;
+                                                       state_cache_used = segment_state_cache_used[k]))
             diagnostics = _build_chain_diagnostics(config, profile, marching,
                                                    segment_end_reactors,
                                                    segment_state_cache_used,
@@ -520,16 +551,27 @@ function solve_terra_chain_steady(config::Config,
                                        segment_end_reactors, segment_success,
                                        segment_messages, segment_results)
             metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
-            return ChainSimulationResult(;
-                                         cells = cells,
-                                         metadata = metadata,
-                                         success = false,
-                                         failed_cell = k,
-                                         message = "Chain failed at segment $k: $(local_result.message)",)
+            chain_result = ChainSimulationResult(;
+                                                 cells = cells,
+                                                 metadata = metadata,
+                                                 success = false,
+                                                 failed_cell = k,
+                                                 message = "Chain failed at segment $k: $(local_result.message)",)
+            _emit_chain_detail(chain_runtime, _chain_log_result_text(chain_result))
+            _emit_chain_summary(chain_runtime, :warn,
+                                _chain_summary_result_text(chain_result);
+                                console = :minimal)
+            return chain_result
         end
 
         endpoint_reactor = _extract_segment_endpoint_reactor(config, local_result)
         segment_end_reactors[k] = endpoint_reactor
+        _emit_chain_detail(chain_runtime,
+                           _chain_log_segment_text(config, profile,
+                                                   compact_to_source_index, k,
+                                                   segment_case_path, local_result;
+                                                   endpoint_reactor = endpoint_reactor,
+                                                   state_cache_used = segment_state_cache_used[k]))
         inlet_reactor = endpoint_reactor
         upstream_state_cache = local_state_cache
     end
@@ -541,12 +583,16 @@ function solve_terra_chain_steady(config::Config,
                                segment_end_reactors, segment_success, segment_messages,
                                segment_results)
     metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
-    return ChainSimulationResult(;
-                                 cells = cells,
-                                 metadata = metadata,
-                                 success = true,
-                                 failed_cell = nothing,
-                                 message = "Chain integration completed successfully.",)
+    chain_result = ChainSimulationResult(;
+                                         cells = cells,
+                                         metadata = metadata,
+                                         success = true,
+                                         failed_cell = nothing,
+                                         message = "\nchain success!",)
+    _emit_chain_detail(chain_runtime, _chain_log_result_text(chain_result))
+    _emit_chain_summary(chain_runtime, :info, _chain_summary_result_text(chain_result);
+                        console = :minimal)
+    return chain_result
 end
 
 """

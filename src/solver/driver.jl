@@ -18,13 +18,16 @@ the `TERRA_LIB_PATH` environment variable when it is not already loaded.
 # Throws
 - `ErrorException` if initialization fails
 """
-function initialize_terra(config::Config, case_path::String = config.runtime.case_path)
+function initialize_terra(config::Config, case_path::String = config.runtime.case_path;
+                          lifecycle_console::Symbol = :minimal,
+                          preserve_active_runtime::Bool = true)
     runtime = _runtime_with_case_path(config.runtime, case_path)
+    previous_runtime = _active_runtime_for_logging()
     _set_active_runtime_for_logging!(runtime)
 
     try
         _log_run_event(runtime, :info, "Initializing TERRA";
-                       console = :minimal,
+                       console = lifecycle_console,
                        :case_path => case_path)
 
         # Ensure the shared library is loaded
@@ -75,7 +78,7 @@ function initialize_terra(config::Config, case_path::String = config.runtime.cas
         end
 
         _log_run_event(runtime, :info, "TERRA initialized successfully";
-                       console = :minimal,
+                       console = lifecycle_console,
                        :num_species => num_species,
                        :num_dimensions => num_dimensions)
 
@@ -104,6 +107,10 @@ function initialize_terra(config::Config, case_path::String = config.runtime.cas
         _log_run_exception(runtime, :error, "Failed to initialize TERRA", e;
                            console = :minimal)
         rethrow(e)
+    finally
+        if !preserve_active_runtime
+            _restore_active_runtime_for_logging!(previous_runtime)
+        end
     end
 end
 

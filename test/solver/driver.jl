@@ -173,9 +173,9 @@ end
     run_log_path = joinpath(temp_case_path, "output", "logs", "run.log")
     @test isfile(run_log_path)
     run_log = read(run_log_path, String)
-    @test occursin("=========== TERRA 0D Simulation ===========", run_log)
+    @test occursin("============ TERRA 0D Simulation ============", run_log)
     @test occursin("success!", run_log)
-    @test occursin("===========================================", run_log)
+    @test occursin("=============================================", run_log)
 end
 
 @testset "0D Console Progress Routing" begin

@@ -104,8 +104,8 @@ function native_ramp_callback(initial_dt; understep_ratio = inv(128), history_st
                      save_positions = (false, false))
 end
 
-const STANDALONE_0D_BANNER = "\n" * "="^11 * " TERRA 0D Simulation " * "="^11
-const STANDALONE_0D_FOOTER = "="^43
+const STANDALONE_0D_BANNER = "\n" * "="^12 * " TERRA 0D Simulation " * "="^12
+const STANDALONE_0D_FOOTER = "="^(length(STANDALONE_0D_BANNER) - 1)
 
 function _integration_presentation_emits_banner(presentation::Symbol)
     if presentation == :standalone_0d
@@ -128,6 +128,15 @@ function _integration_completion_message(presentation::Symbol, message::Abstract
         return string(message, "\n", STANDALONE_0D_FOOTER)
     end
     return String(message)
+end
+
+function _integration_completion_console_visibility(presentation::Symbol, success::Bool)
+    if presentation == :standalone_0d
+        return :minimal
+    elseif presentation == :chain_segment
+        return success ? :verbose : :minimal
+    end
+    throw(ArgumentError("Unsupported integration presentation: :$presentation"))
 end
 
 function integration_progress_condition(u, t, integrator)
@@ -483,7 +492,8 @@ function _integrate_0d_system(config::Config, initial_state;
                   "ODE integration terminated: $(rc)"
         completion_message = _integration_completion_message(presentation, message)
         _log_run_event(runtime, success ? :info : :warn, completion_message;
-                       console = :minimal,
+                       console = _integration_completion_console_visibility(presentation,
+                                                                            success),
                        :retcode => sol.retcode,
                        :saved_points => n_times)
         frames = Vector{ReactorFrame}(undef, n_times)
