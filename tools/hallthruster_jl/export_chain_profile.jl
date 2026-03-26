@@ -741,6 +741,12 @@ function write_chain_profile(payload::Dict{String, Any}, terra_case_path::Abstra
     return output_path
 end
 
+function log_export_summary(options, payload::Dict{String, Any}, output_path::AbstractString)
+    selection = payload["selection"]
+    @info "HallThruster.jl chain profile export completed." input_file=options.hallthruster_input output_file=output_path average_start_time_s=options.average_start_time_s exported_species=selection["exported_species"] ion_velocity_policy=options.ion_velocity_policy u_ion_floor=options.u_ion_floor min_consecutive_positive=options.min_consecutive_positive trim_start_index=selection["trim_start_index"] trimmed_point_count=selection["trimmed_point_count"] write_source_snapshot=options.write_source_snapshot
+    return nothing
+end
+
 function export_chain_profile(args::Vector{String} = ARGS)
     options = parse_options(args)
     options === nothing && return nothing
@@ -750,19 +756,7 @@ function export_chain_profile(args::Vector{String} = ARGS)
     source = load_source_json(options.hallthruster_input)
     payload = build_chain_profile(source, options)
     output_path = write_chain_profile(payload, options.terra_case_path)
-
-    println("HallThruster chain profile export completed.")
-    println("input_file: ", options.hallthruster_input)
-    println("output_file: ", output_path)
-    println("average_start_time_s: ", options.average_start_time_s)
-    println("exported_species: ", join(payload["selection"]["exported_species"], ", "))
-    println("ion_velocity_policy: ", options.ion_velocity_policy)
-    println("u_ion_floor: ", options.u_ion_floor)
-    println("min_consecutive_positive: ", options.min_consecutive_positive)
-    println("trim_start_index: ", payload["selection"]["trim_start_index"])
-    println("trimmed_point_count: ", payload["selection"]["trimmed_point_count"])
-    println("write_source_snapshot: ", options.write_source_snapshot)
-
+    log_export_summary(options, payload, output_path)
     return output_path
 end
 
