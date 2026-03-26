@@ -22,9 +22,20 @@ include("interop/lifecycle.jl")
 include("interop/thermo.jl")
 include("interop/rhs_api.jl")
 
-include("config/types.jl")
+include("config/reactor.jl")
+include("config/models.jl")
+include("config/numerics.jl")
+include("config/runtime.jl")
+include("config/sources.jl")
+include("config/config.jl")
 include("config/validation.jl")
 include("config/conversions.jl")
+
+include("results/reactor.jl")
+include("results/chain.jl")
+
+include("chain/profile.jl")
+include("chain/marching.jl")
 
 include("io/logging.jl")
 include("io/prob_setup_writer.jl")
