@@ -1,94 +1,5 @@
 # Results serialization, deserialization, and validation utilities.
 
-function _result_species_density_matrix(results::ReactorResult)
-    n_times = length(results.frames)
-    if n_times == 0
-        return zeros(0, 0)
-    end
-
-    n_species = length(results.frames[1].species_densities)
-    densities = Matrix{Float64}(undef, n_species, n_times)
-    for i in 1:n_times
-        frame = results.frames[i]
-        length(frame.species_densities) == n_species ||
-            throw(ArgumentError("ReactorResult frame $i has inconsistent species_densities length."))
-        densities[:, i] = frame.species_densities
-    end
-    return densities
-end
-
-function _result_temperature_history(results::ReactorResult)
-    n_times = length(results.frames)
-    tt = Vector{Float64}(undef, n_times)
-    te = Vector{Float64}(undef, n_times)
-    tv = Vector{Float64}(undef, n_times)
-
-    for i in 1:n_times
-        temperatures = results.frames[i].temperatures
-        tt[i] = temperatures.tt
-        te[i] = temperatures.te
-        tv[i] = temperatures.tv
-    end
-
-    return (tt = tt, te = te, tv = tv)
-end
-
-function _result_total_energy_history(results::ReactorResult)
-    return Float64[frame.total_energy for frame in results.frames]
-end
-
-"""
-$(SIGNATURES)
-
-Validate simulation results for physical consistency.
-
-# Arguments
-- `results::ReactorResult`: Simulation results to validate
-
-# Returns
-- `true` if results pass validation, `false` otherwise
-"""
-function validate_results(results::ReactorResult)
-    if !results.success
-        @warn "Simulation was not successful"
-        return false
-    end
-
-    species_densities = _result_species_density_matrix(results)
-    temperatures = _result_temperature_history(results)
-
-    # Check for negative densities
-    if any(species_densities .< 0)
-        @warn "Negative species densities found"
-        return false
-    end
-
-    # Check for NaN or Inf values
-    if any(isnan.(species_densities)) || any(isinf.(species_densities))
-        @warn "NaN or Inf values found in species densities"
-        return false
-    end
-
-    if any(isnan.(temperatures.tt)) || any(isinf.(temperatures.tt))
-        @warn "NaN or Inf values found in temperatures"
-        return false
-    end
-
-    # Check temperature ranges (should be positive and reasonable)
-    if any(temperatures.tt .<= 0) || any(temperatures.tt .> 1e6)
-        @warn "Unreasonable translational temperatures found"
-        return false
-    end
-
-    if any(temperatures.te .<= 0) || any(temperatures.te .> 1e6)
-        @warn "Unreasonable electron temperatures found"
-        return false
-    end
-
-    @info "Results validation passed"
-    return true
-end
-
 """
 $(SIGNATURES)
 
@@ -103,9 +14,9 @@ Save TERRA results to file.
 """
 function save_results(results::ReactorResult, filename::String)
     try
-        species_densities = _result_species_density_matrix(results)
-        temperatures = _result_temperature_history(results)
-        total_energy = _result_total_energy_history(results)
+        species_densities = species_density_matrix(results)
+        temperatures = temperature_history(results)
+        total_energy = total_energy_history(results)
 
         # Prepare data for CSV output
         n_times = length(results.t)

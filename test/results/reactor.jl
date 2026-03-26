@@ -19,6 +19,17 @@
     @test length(reactor.frames) == 2
     @test reactor.frames[1].t == 0.0
     @test reactor.frames[2].temperatures.te == 10500.0
+    @test terra.validate_results(reactor)
+
+    densities = terra.species_density_matrix(reactor)
+    temperatures = terra.temperature_history(reactor)
+    total_energy = terra.total_energy_history(reactor)
+    @test size(densities) == (3, 2)
+    @test densities[:, 2] == [2e-3, 2e-6, 2e-8]
+    @test temperatures.tt == [300.0, 320.0]
+    @test temperatures.te == [10000.0, 10500.0]
+    @test temperatures.tv == [310.0, 315.0]
+    @test total_energy == [1e4, 1.1e4]
 
     single = reactor[2]
     @test length(single.t) == 1

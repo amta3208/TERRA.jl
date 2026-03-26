@@ -56,26 +56,20 @@ end
     @test rt_disabled.enabled == false
     @test rt_disabled.U_energy == 3.0
 
-    inlet_config = terra.nitrogen_10ev_config(; isothermal = false)
+    base_config = terra.nitrogen_10ev_config(; isothermal = false)
 
     rt_inlet_reactor = terra.ResidenceTimeConfig(;
                                                  enabled = true,
                                                  L = 1.0,
                                                  U_species = u_species,
-                                                 inlet_reactor = inlet_config.reactor)
-    @test rt_inlet_reactor.inlet_reactor == inlet_config.reactor
+                                                 inlet_reactor = base_config.reactor)
+    @test rt_inlet_reactor.inlet_reactor == base_config.reactor
 
-    rt_inlet_config_alias = terra.ResidenceTimeConfig(;
-                                                      enabled = true,
-                                                      L = 1.0,
-                                                      U_species = u_species,
-                                                      inlet_config = inlet_config)
-    @test rt_inlet_config_alias.inlet_reactor == inlet_config.reactor
-
-    @test_throws ArgumentError terra.ResidenceTimeConfig(;
-                                                         enabled = true,
-                                                         L = 1.0,
-                                                         U_species = u_species,
-                                                         inlet_reactor = inlet_config.reactor,
-                                                         inlet_config = inlet_config)
+    @test_throws MethodError terra.ResidenceTimeConfig(;
+                                                       enabled = true,
+                                                       L = 1.0,
+                                                       U_species = u_species,
+                                                       inlet_config = base_config)
+    @test_throws ArgumentError terra.ResidenceTimeConfig(1.0, u_species, nothing,
+                                                         base_config)
 end

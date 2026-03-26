@@ -32,9 +32,23 @@
                                                            "N+" => [1000.0, 1100.0],
                                                            "N2+" => [900.0, 950.0]),
                                       wall_profile = wall_profile,
-                                      inlet = inlet,)
+                                      inlet = inlet,
+                                      selection = Dict("trim_start_index" => 5,
+                                                       "original_point_count" => 7),)
     @test profile.schema_version == "terra_chain_profile_v4"
     @test profile.wall_profile !== nothing
+    @test terra._resolve_compact_to_source_index(profile) == [5, 6]
+    @test terra._resolve_original_point_count(profile) == 7
+
+    inlet_reactor_si = terra._build_profile_inlet_reactor(profile, :SI)
+    @test inlet_reactor_si.composition.total_number_density == 1e19
+    inlet_reactor_cgs = terra._build_profile_inlet_reactor(profile, :CGS)
+    @test inlet_reactor_cgs.composition.total_number_density ≈
+          terra.convert_number_density_si_to_cgs(1e19)
+
+    wall_values = terra._segment_wall_profile_values(profile, 2)
+    @test wall_values.a_wall_over_v_m_inv == 101.0
+    @test wall_values.channel_gap_m == 0.02
 
     @test_throws ArgumentError terra.ChainWallProfile(;
                                                       a_wall_over_v_m_inv = [100.0, -1.0])

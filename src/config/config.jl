@@ -18,5 +18,3 @@ struct Config
         return new(reactor, models, sources, numerics, runtime)
     end
 end
-
-_coerce_residence_time_inlet_reactor(inlet::Config) = inlet.reactor

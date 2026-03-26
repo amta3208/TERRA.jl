@@ -24,8 +24,6 @@ function _normalize_log_dir(log_dir::Union{Nothing, AbstractString})
     return normpath(expanduser(path))
 end
 
-_legacy_integration_detail_mode(flag::Bool) = flag ? :console : :off
-_logging_mode_emits_console(mode::Symbol) = mode == :console || mode == :both
 _logging_mode_file_only(mode::Symbol) = mode == :off ? :off : :file
 
 """
@@ -101,9 +99,7 @@ struct RuntimeConfig
                            validate_species_against_terra::Bool = false,
                            print_source_terms::Bool = true,
                            write_native_state_files::Bool = false,
-                           logging::LoggingConfig = LoggingConfig(),
-                           write_native_outputs::Union{Nothing, Bool} = nothing,
-                           print_integration_output::Union{Nothing, Bool} = nothing)
+                           logging::LoggingConfig = LoggingConfig())
         if !isdir(case_path)
             throw(ArgumentError("Case path directory does not exist: $case_path"))
         end
@@ -111,36 +107,8 @@ struct RuntimeConfig
             throw(ArgumentError("Unit system must be :SI or :CGS, got :$unit_system"))
         end
 
-        native_state_files = write_native_outputs === nothing ? write_native_state_files :
-                             write_native_outputs
-        logging_cfg = print_integration_output === nothing ? logging :
-                      _with_logging_config(logging;
-                                           integration_detail_mode = _legacy_integration_detail_mode(print_integration_output))
-
         return new(database_path, case_path, unit_system,
                    validate_species_against_terra, print_source_terms,
-                   native_state_files, logging_cfg)
+                   write_native_state_files, logging)
     end
-end
-
-function Base.getproperty(runtime::RuntimeConfig, name::Symbol)
-    if name === :write_native_outputs
-        return getfield(runtime, :write_native_state_files)
-    elseif name === :print_integration_output
-        logging = getfield(runtime, :logging)
-        return _logging_mode_emits_console(getfield(logging, :integration_detail_mode))
-    end
-    return getfield(runtime, name)
-end
-
-function Base.propertynames(::RuntimeConfig, private::Bool = false)
-    return (:database_path,
-            :case_path,
-            :unit_system,
-            :validate_species_against_terra,
-            :print_source_terms,
-            :write_native_state_files,
-            :logging,
-            :write_native_outputs,
-            :print_integration_output)
 end

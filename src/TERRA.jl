@@ -26,6 +26,8 @@ include("config/reactor.jl")
 include("config/models.jl")
 include("config/numerics.jl")
 include("config/runtime.jl")
+include("config/residence.jl")
+include("config/wall.jl")
 include("config/sources.jl")
 include("config/config.jl")
 include("config/validation.jl")
@@ -66,6 +68,7 @@ export ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata
 export ChainSimulationResult, load_chain_profile
+export species_density_matrix, temperature_history, total_energy_history
 export with_case_path, with_time, with_runtime, with_logging
 export solve_terra_0d, nitrogen_10ev_example, save_results, load_results_chain
 export solve_terra_chain_steady

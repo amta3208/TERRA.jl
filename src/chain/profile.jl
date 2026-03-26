@@ -1,3 +1,92 @@
+function _validated_positive_profile_vector(values,
+                                            field_name::AbstractString,
+                                            context::AbstractString;
+                                            expected_length::Union{Nothing, Integer} = nothing,
+                                            allow_empty::Bool = false)
+    values_vec = Float64.(values)
+    isempty(values_vec) && !allow_empty &&
+        throw(ArgumentError("$context: $field_name must be non-empty."))
+    expected_length !== nothing && length(values_vec) != expected_length &&
+        throw(ArgumentError("$context: $field_name length $(length(values_vec)) does not match required length $expected_length."))
+    for (i, value) in pairs(values_vec)
+        isfinite(value) ||
+            throw(ArgumentError("$context: $field_name[$i] must be finite."))
+        value > 0.0 ||
+            throw(ArgumentError("$context: $field_name[$i] must be strictly positive."))
+    end
+    return values_vec
+end
+
+function _validated_optional_positive_profile_vector(values,
+                                                     field_name::AbstractString,
+                                                     context::AbstractString,
+                                                     expected_length::Integer)
+    values === nothing && return nothing
+    return _validated_positive_profile_vector(values, field_name, context;
+                                              expected_length = expected_length)
+end
+
+function _validate_strictly_increasing(values::AbstractVector{<:Real},
+                                       field_name::AbstractString,
+                                       context::AbstractString)
+    for i in 2:length(values)
+        values[i] > values[i - 1] ||
+            throw(ArgumentError("$context: $field_name must be strictly increasing (failed at indices $(i - 1), $i)."))
+    end
+    return values
+end
+
+function _validated_profile_species_velocity_dict(species_u_m_s::AbstractDict,
+                                                  n::Integer)
+    species_u_dict = Dict{String, Vector{Float64}}()
+    for (name, values) in pairs(species_u_m_s)
+        name_str = String(name)
+        isempty(strip(name_str)) &&
+            throw(ArgumentError("AxialChainProfile: species_u_m_s keys must be non-empty."))
+        lowercase(strip(name_str)) in ("e", "e-", "electron") &&
+            throw(ArgumentError("AxialChainProfile: species_u_m_s must not include electron species."))
+        species_u_dict[name_str] = _validated_positive_profile_vector(values,
+                                                                      "species_u_m_s[$name_str]",
+                                                                      "AxialChainProfile";
+                                                                      expected_length = n)
+    end
+    isempty(species_u_dict) &&
+        throw(ArgumentError("AxialChainProfile: species_u_m_s must contain at least one species."))
+    return species_u_dict
+end
+
+function _validated_profile_diagnostics_dict(diagnostics::AbstractDict, n::Integer)
+    diagnostics_dict = Dict{String, Vector{Float64}}()
+    for (key, values) in pairs(diagnostics)
+        key_str = String(key)
+        values_vec = Float64.(values)
+        length(values_vec) == n ||
+            throw(ArgumentError("AxialChainProfile: diagnostic `$(key_str)` length $(length(values_vec)) does not match required profile length $n."))
+        for (i, value) in pairs(values_vec)
+            isfinite(value) ||
+                throw(ArgumentError("AxialChainProfile: diagnostic `$(key_str)[$i]` must be finite."))
+        end
+        diagnostics_dict[key_str] = values_vec
+    end
+    return diagnostics_dict
+end
+
+function _validate_wall_profile_length(wall_profile, n::Integer)
+    length(wall_profile.a_wall_over_v_m_inv) == n ||
+        throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."))
+
+    for (field_name, values) in (("channel_gap_m", wall_profile.channel_gap_m),
+                                 ("wall_temperature_K", wall_profile.wall_temperature_K),
+                                 ("ion_edge_to_center_ratio",
+                                  wall_profile.ion_edge_to_center_ratio))
+        values === nothing && continue
+        length(values) == n ||
+            throw(ArgumentError("AxialChainProfile: wall_profile.$field_name length $(length(values)) does not match required profile length $n."))
+    end
+
+    return wall_profile
+end
+
 """
 $(SIGNATURES)
 
@@ -11,28 +100,11 @@ struct ChainProfileInletComposition
     function ChainProfileInletComposition(; species,
                                           mole_fractions,
                                           total_number_density_m3)
-        species_vec = String.(species)
-        mole_frac_vec = Float64.(mole_fractions)
-        n_tot = Float64(total_number_density_m3)
-
-        if length(species_vec) != length(mole_frac_vec)
-            throw(ArgumentError("ChainProfileInletComposition: species and mole_fractions arrays must have same length."))
-        end
-        isempty(species_vec) &&
-            throw(ArgumentError("ChainProfileInletComposition: at least one species must be specified."))
-        any(mole_frac_vec .< 0) &&
-            throw(ArgumentError("ChainProfileInletComposition: mole fractions must be non-negative."))
-        abs(sum(mole_frac_vec) - 1.0) > 1e-10 &&
-            throw(ArgumentError("ChainProfileInletComposition: mole fractions must sum to 1.0, got $(sum(mole_frac_vec))."))
-        n_tot > 0.0 ||
-            throw(ArgumentError("ChainProfileInletComposition: total_number_density_m3 must be positive."))
-        length(unique(species_vec)) == length(species_vec) ||
-            throw(ArgumentError("ChainProfileInletComposition: duplicate species names found."))
-        for name in species_vec
-            isempty(strip(name)) &&
-                throw(ArgumentError("ChainProfileInletComposition: species names cannot be empty."))
-        end
-
+        species_vec, mole_frac_vec, n_tot = _validated_species_composition(species,
+                                                                           mole_fractions,
+                                                                           total_number_density_m3;
+                                                                           context = "ChainProfileInletComposition",
+                                                                           density_field = "total_number_density_m3")
         return new(species_vec, mole_frac_vec, n_tot)
     end
 end
@@ -72,31 +144,24 @@ struct ChainWallProfile
                               channel_gap_m::Union{Nothing, AbstractVector} = nothing,
                               wall_temperature_K::Union{Nothing, AbstractVector} = nothing,
                               ion_edge_to_center_ratio::Union{Nothing, AbstractVector} = nothing)
-        a_wall_over_v_vec = Float64.(a_wall_over_v_m_inv)
-        isempty(a_wall_over_v_vec) &&
-            throw(ArgumentError("ChainWallProfile: a_wall_over_v_m_inv must be non-empty."))
-        for (i, value) in pairs(a_wall_over_v_vec)
-            isfinite(value) && value > 0.0 ||
-                throw(ArgumentError("ChainWallProfile: a_wall_over_v_m_inv[$i] must be finite and strictly positive."))
-        end
-
-        function _coerce_optional_wall_array(values, field_name::AbstractString)
-            values === nothing && return nothing
-            values_vec = Float64.(values)
-            length(values_vec) == length(a_wall_over_v_vec) ||
-                throw(ArgumentError("ChainWallProfile: $field_name length $(length(values_vec)) does not match required length $(length(a_wall_over_v_vec))."))
-            for (i, value) in pairs(values_vec)
-                isfinite(value) && value > 0.0 ||
-                    throw(ArgumentError("ChainWallProfile: $field_name[$i] must be finite and strictly positive."))
-            end
-            return values_vec
-        end
+        a_wall_over_v_vec = _validated_positive_profile_vector(a_wall_over_v_m_inv,
+                                                               "a_wall_over_v_m_inv",
+                                                               "ChainWallProfile")
+        n = length(a_wall_over_v_vec)
 
         return new(a_wall_over_v_vec,
-                   _coerce_optional_wall_array(channel_gap_m, "channel_gap_m"),
-                   _coerce_optional_wall_array(wall_temperature_K, "wall_temperature_K"),
-                   _coerce_optional_wall_array(ion_edge_to_center_ratio,
-                                               "ion_edge_to_center_ratio"))
+                   _validated_optional_positive_profile_vector(channel_gap_m,
+                                                              "channel_gap_m",
+                                                              "ChainWallProfile",
+                                                              n),
+                   _validated_optional_positive_profile_vector(wall_temperature_K,
+                                                              "wall_temperature_K",
+                                                              "ChainWallProfile",
+                                                              n),
+                   _validated_optional_positive_profile_vector(ion_edge_to_center_ratio,
+                                                              "ion_edge_to_center_ratio",
+                                                              "ChainWallProfile",
+                                                              n))
     end
 end
 
@@ -143,86 +208,26 @@ struct AxialChainProfile
                                schema_version::AbstractString = "terra_chain_profile_v4",
                                source_snapshot::Union{Nothing, AbstractDict} = nothing)
         z_m_vec = Float64.(z_m)
-        dx_m_vec = Float64.(dx_m)
-        te_K_vec = Float64.(te_K)
-
-        n = length(z_m_vec)
-        if n == 0
+        isempty(z_m_vec) &&
             throw(ArgumentError("AxialChainProfile: profile arrays must be non-empty."))
-        end
-        if length(dx_m_vec) != n || length(te_K_vec) != n
-            throw(ArgumentError("AxialChainProfile: all required profile arrays must have identical lengths."))
-        end
-
         for (i, value) in pairs(z_m_vec)
             isfinite(value) ||
                 throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
         end
-        for i in 2:n
-            z_m_vec[i] > z_m_vec[i - 1] ||
-                throw(ArgumentError("AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."))
-        end
+        _validate_strictly_increasing(z_m_vec, "z_m", "AxialChainProfile")
 
-        for (name, values) in (("dx_m", dx_m_vec),
-                               ("te_K", te_K_vec))
-            for (i, value) in pairs(values)
-                isfinite(value) ||
-                    throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
-                value > 0.0 ||
-                    throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
-            end
-        end
-
-        species_u_dict = Dict{String, Vector{Float64}}()
-        for (name, values) in pairs(species_u_m_s)
-            name_str = String(name)
-            isempty(strip(name_str)) &&
-                throw(ArgumentError("AxialChainProfile: species_u_m_s keys must be non-empty."))
-            values_vec = Float64.(values)
-            if length(values_vec) != n
-                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name_str] length $(length(values_vec)) does not match required profile length $n."))
-            end
-            for (i, value) in pairs(values_vec)
-                isfinite(value) ||
-                    throw(ArgumentError("AxialChainProfile: species_u_m_s[$name_str][$i] must be finite."))
-                value > 0.0 ||
-                    throw(ArgumentError("AxialChainProfile: species_u_m_s[$name_str][$i] must be strictly positive."))
-            end
-            species_u_dict[name_str] = values_vec
-        end
-        isempty(species_u_dict) &&
-            throw(ArgumentError("AxialChainProfile: species_u_m_s must contain at least one species."))
-
-        if wall_profile !== nothing
-            length(wall_profile.a_wall_over_v_m_inv) == n ||
-                throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."))
-            if wall_profile.channel_gap_m !== nothing
-                length(wall_profile.channel_gap_m) == n ||
-                    throw(ArgumentError("AxialChainProfile: wall_profile.channel_gap_m length $(length(wall_profile.channel_gap_m)) does not match required profile length $n."))
-            end
-            if wall_profile.wall_temperature_K !== nothing
-                length(wall_profile.wall_temperature_K) == n ||
-                    throw(ArgumentError("AxialChainProfile: wall_profile.wall_temperature_K length $(length(wall_profile.wall_temperature_K)) does not match required profile length $n."))
-            end
-            if wall_profile.ion_edge_to_center_ratio !== nothing
-                length(wall_profile.ion_edge_to_center_ratio) == n ||
-                    throw(ArgumentError("AxialChainProfile: wall_profile.ion_edge_to_center_ratio length $(length(wall_profile.ion_edge_to_center_ratio)) does not match required profile length $n."))
-            end
-        end
-
-        diagnostics_dict = Dict{String, Vector{Float64}}()
-        for (key, values) in pairs(diagnostics)
-            key_str = String(key)
-            values_vec = Float64.(values)
-            if length(values_vec) != n
-                throw(ArgumentError("AxialChainProfile: diagnostic `$(key_str)` length $(length(values_vec)) does not match required profile length $n."))
-            end
-            for (i, value) in pairs(values_vec)
-                isfinite(value) ||
-                    throw(ArgumentError("AxialChainProfile: diagnostic `$(key_str)[$i]` must be finite."))
-            end
-            diagnostics_dict[key_str] = values_vec
-        end
+        n = length(z_m_vec)
+        dx_m_vec = _validated_positive_profile_vector(dx_m, "dx_m",
+                                                      "AxialChainProfile";
+                                                      expected_length = n)
+        te_K_vec = _validated_positive_profile_vector(te_K, "te_K",
+                                                      "AxialChainProfile";
+                                                      expected_length = n)
+        species_u_dict = _validated_profile_species_velocity_dict(species_u_m_s, n)
+        diagnostics_dict = _validated_profile_diagnostics_dict(diagnostics, n)
+        wall_profile !== nothing && _validate_wall_profile_length(wall_profile, n)
+        inlet.source_compact_index <= n ||
+            throw(ArgumentError("AxialChainProfile: inlet.source_compact_index ($(inlet.source_compact_index)) must be <= retained profile length $(n)."))
 
         generator_dict = Dict{String, Any}(String(k) => v for (k, v) in pairs(generator))
         selection_dict = Dict{String, Any}(String(k) => v for (k, v) in pairs(selection))
@@ -259,86 +264,160 @@ Validate an `AxialChainProfile` against the chain-profile contract.
 - `ArgumentError` if the profile is invalid
 """
 function validate_axial_chain_profile(profile::AxialChainProfile)
-    n = length(profile.z_m)
-    if n == 0
+    isempty(profile.z_m) &&
         throw(ArgumentError("AxialChainProfile must contain at least one axial point."))
-    end
-    if length(profile.dx_m) != n || length(profile.te_K) != n
-        throw(ArgumentError("AxialChainProfile required arrays must have identical lengths."))
-    end
 
     for (i, value) in pairs(profile.z_m)
         isfinite(value) ||
             throw(ArgumentError("AxialChainProfile: z_m[$i] must be finite."))
     end
-    for i in 2:n
-        profile.z_m[i] > profile.z_m[i - 1] ||
-            throw(ArgumentError("AxialChainProfile: z_m must be strictly increasing (failed at indices $(i - 1), $i)."))
-    end
-
-    for (name, values) in (("dx_m", profile.dx_m),
-                           ("te_K", profile.te_K))
-        for (i, value) in pairs(values)
-            isfinite(value) ||
-                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be finite."))
-            value > 0.0 ||
-                throw(ArgumentError("AxialChainProfile: $(name)[$i] must be strictly positive."))
-        end
-    end
-
-    isempty(profile.species_u_m_s) &&
-        throw(ArgumentError("AxialChainProfile: species_u_m_s must contain at least one species."))
-    for (name, values) in pairs(profile.species_u_m_s)
-        lowered = lowercase(strip(name))
-        lowered in ("e", "e-", "electron") &&
-            throw(ArgumentError("AxialChainProfile: species_u_m_s must not include electron species."))
-        if length(values) != n
-            throw(ArgumentError("AxialChainProfile species_u_m_s[$name] length $(length(values)) does not match required profile length $n."))
-        end
-        for (i, value) in pairs(values)
-            isfinite(value) ||
-                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be finite."))
-            value > 0.0 ||
-                throw(ArgumentError("AxialChainProfile: species_u_m_s[$name][$i] must be strictly positive."))
-        end
-    end
-
-    for (name, values) in pairs(profile.diagnostics)
-        if length(values) != n
-            throw(ArgumentError("AxialChainProfile diagnostic `$name` length $(length(values)) does not match required profile length $n."))
-        end
-        for (i, value) in pairs(values)
-            isfinite(value) ||
-                throw(ArgumentError("AxialChainProfile: diagnostic `$name[$i]` must be finite."))
-        end
-    end
-
-    if profile.wall_profile !== nothing
-        wall_profile = profile.wall_profile
-        length(wall_profile.a_wall_over_v_m_inv) == n ||
-            throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv length $(length(wall_profile.a_wall_over_v_m_inv)) does not match required profile length $n."))
-        for (i, value) in pairs(wall_profile.a_wall_over_v_m_inv)
-            isfinite(value) && value > 0.0 ||
-                throw(ArgumentError("AxialChainProfile: wall_profile.a_wall_over_v_m_inv[$i] must be finite and strictly positive."))
-        end
-
-        for (name, values) in (("channel_gap_m", wall_profile.channel_gap_m),
-                               ("wall_temperature_K", wall_profile.wall_temperature_K),
-                               ("ion_edge_to_center_ratio",
-                                wall_profile.ion_edge_to_center_ratio))
-            values === nothing && continue
-            length(values) == n ||
-                throw(ArgumentError("AxialChainProfile: wall_profile.$name length $(length(values)) does not match required profile length $n."))
-            for (i, value) in pairs(values)
-                isfinite(value) && value > 0.0 ||
-                    throw(ArgumentError("AxialChainProfile: wall_profile.$name[$i] must be finite and strictly positive."))
-            end
-        end
-    end
+    _validate_strictly_increasing(profile.z_m, "z_m", "AxialChainProfile")
+    _validated_positive_profile_vector(profile.dx_m, "dx_m", "AxialChainProfile";
+                                       expected_length = length(profile.z_m))
+    _validated_positive_profile_vector(profile.te_K, "te_K", "AxialChainProfile";
+                                       expected_length = length(profile.z_m))
+    _validated_profile_species_velocity_dict(profile.species_u_m_s, length(profile.z_m))
+    _validated_profile_diagnostics_dict(profile.diagnostics, length(profile.z_m))
+    profile.wall_profile !== nothing &&
+        _validate_wall_profile_length(profile.wall_profile, length(profile.z_m))
 
     source_idx = profile.inlet.source_compact_index
-    source_idx <= n ||
-        throw(ArgumentError("AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(n)."))
+    source_idx <= length(profile.z_m) ||
+        throw(ArgumentError("AxialChainProfile: inlet.source_compact_index ($(source_idx)) must be <= retained profile length $(length(profile.z_m))."))
 
     return true
+end
+
+function _coerce_positive_int(value)::Union{Nothing, Int}
+    if value isa Integer
+        int_value = Int(value)
+        return int_value >= 1 ? int_value : nothing
+    end
+    if value isa Real && isfinite(value) && value >= 1 && isinteger(value)
+        return Int(round(value))
+    end
+    return nothing
+end
+
+function _coerce_nonnegative_int(value)::Union{Nothing, Int}
+    if value isa Integer
+        int_value = Int(value)
+        return int_value >= 0 ? int_value : nothing
+    end
+    if value isa Real && isfinite(value) && value >= 0 && isinteger(value)
+        return Int(round(value))
+    end
+    return nothing
+end
+
+function _selection_index_vector(selection::AbstractDict,
+                                 key::AbstractString,
+                                 expected_length::Integer)::Union{Nothing, Vector{Int}}
+    haskey(selection, key) || return nothing
+    values = selection[key]
+    values isa AbstractVector || return nothing
+    length(values) == expected_length || return nothing
+
+    indices = Vector{Int}(undef, expected_length)
+    for i in eachindex(values)
+        index = _coerce_positive_int(values[i])
+        index === nothing && return nothing
+        indices[i] = index
+    end
+    return indices
+end
+
+function _resolve_compact_to_source_index(profile::AxialChainProfile)
+    n_segments = length(profile.z_m)
+    selection = profile.selection
+
+    for key in ("compact_to_source_index", "source_cell_indices")
+        source_indices = _selection_index_vector(selection, key, n_segments)
+        source_indices === nothing || return source_indices
+    end
+
+    trim_start = haskey(selection, "trim_start_index") ?
+                 _coerce_positive_int(selection["trim_start_index"]) : nothing
+    if trim_start === nothing && haskey(selection, "trimmed_point_count")
+        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
+        trim_start = trimmed_points === nothing ? nothing : (trimmed_points + 1)
+    end
+    trim_start !== nothing && return collect(trim_start:(trim_start + n_segments - 1))
+
+    return collect(1:n_segments)
+end
+
+function _resolve_original_point_count(profile::AxialChainProfile)::Union{Nothing, Int}
+    retained_points = length(profile.z_m)
+    selection = profile.selection
+
+    if haskey(selection, "original_point_count")
+        original_points = _coerce_positive_int(selection["original_point_count"])
+        if original_points !== nothing && original_points >= retained_points
+            return original_points
+        end
+    end
+
+    if haskey(selection, "trimmed_point_count")
+        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
+        trimmed_points === nothing || return retained_points + trimmed_points
+    end
+
+    return nothing
+end
+
+function _profile_species_velocity_at_segment(profile::AxialChainProfile,
+                                              segment_index::Integer)
+    species_u = Dict{String, Float64}()
+    for (name, values) in pairs(profile.species_u_m_s)
+        species_u[name] = values[segment_index]
+    end
+    return species_u
+end
+
+function _segment_wall_profile_values(profile::AxialChainProfile,
+                                      segment_index::Integer,
+                                      wall_cfg::Union{Nothing, WallLossConfig} = nothing)
+    if profile.wall_profile === nothing
+        if wall_cfg !== nothing && wall_cfg.enabled
+            throw(ArgumentError("WallLossConfig is enabled, but AxialChainProfile.wall_profile is missing. " *
+                                "Wall losses require `wall_profile` in a `terra_chain_profile_v4` chain profile."))
+        end
+        return nothing
+    end
+
+    wall_profile = profile.wall_profile
+    return (; a_wall_over_v_m_inv = wall_profile.a_wall_over_v_m_inv[segment_index],
+            channel_gap_m = wall_profile.channel_gap_m === nothing ? nothing :
+                            wall_profile.channel_gap_m[segment_index],
+            wall_temperature_K = wall_profile.wall_temperature_K === nothing ? nothing :
+                                 wall_profile.wall_temperature_K[segment_index],
+            ion_edge_to_center_ratio = wall_profile.ion_edge_to_center_ratio === nothing ?
+                                       nothing :
+                                       wall_profile.ion_edge_to_center_ratio[segment_index])
+end
+
+function _build_profile_inlet_reactor(profile::AxialChainProfile, unit_system::Symbol)
+    inlet = profile.inlet
+    n_total = unit_system == :SI ? inlet.composition.total_number_density_m3 :
+              convert_number_density_si_to_cgs(inlet.composition.total_number_density_m3)
+    composition = ReactorComposition(;
+                                     species = inlet.composition.species,
+                                     mole_fractions = inlet.composition.mole_fractions,
+                                     total_number_density = n_total)
+    return ReactorConfig(; composition = composition, thermal = inlet.thermal)
+end
+
+function _chain_profile_metadata(profile::AxialChainProfile,
+                                 diagnostics::AbstractDict,
+                                 compact_to_source_index::AbstractVector{<:Integer})
+    return ChainMetadata(;
+                         schema_version = profile.schema_version,
+                         generator = profile.generator,
+                         selection = profile.selection,
+                         source_snapshot = profile.source_snapshot,
+                         diagnostics = diagnostics,
+                         compact_to_source_index = compact_to_source_index,
+                         original_point_count = _resolve_original_point_count(profile),
+                         retained_point_count = length(profile.z_m))
 end

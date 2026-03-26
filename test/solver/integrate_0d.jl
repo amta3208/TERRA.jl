@@ -1,32 +1,3 @@
-function _species_density_matrix(results::terra.ReactorResult)
-    n_times = length(results.frames)
-    n_times == 0 && return zeros(0, 0)
-    n_species = length(results.frames[1].species_densities)
-    densities = Matrix{Float64}(undef, n_species, n_times)
-    for i in 1:n_times
-        densities[:, i] = results.frames[i].species_densities
-    end
-    return densities
-end
-
-function _temperature_history(results::terra.ReactorResult)
-    n_times = length(results.frames)
-    tt = Vector{Float64}(undef, n_times)
-    te = Vector{Float64}(undef, n_times)
-    tv = Vector{Float64}(undef, n_times)
-    for i in 1:n_times
-        temps = results.frames[i].temperatures
-        tt[i] = temps.tt
-        te[i] = temps.te
-        tv[i] = temps.tv
-    end
-    return (tt = tt, te = te, tv = tv)
-end
-
-function _total_energy_history(results::terra.ReactorResult)
-    return Float64[frame.total_energy for frame in results.frames]
-end
-
 @testset "Integrate 0D (adiabatic)" begin
     # Initialize using the config-driven input to ensure the selected
     # database and options are honored (rather than a stale case file).
@@ -47,8 +18,8 @@ end
     initial_state = terra.config_to_initial_state(config)
     results = @time terra.integrate_0d_system(config, initial_state)
     @test results isa terra.ReactorResult
-    densities = _species_density_matrix(results)
-    temperatures = _temperature_history(results)
+    densities = terra.species_density_matrix(results)
+    temperatures = terra.temperature_history(results)
     @test results.t[end] > results.t[1]
     @test size(densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, temperatures.tt)
@@ -72,8 +43,8 @@ end
     results = @time terra.integrate_0d_system(config, initial_state)
     @test results isa terra.ReactorResult
 
-    densities = _species_density_matrix(results)
-    temperatures = _temperature_history(results)
+    densities = terra.species_density_matrix(results)
+    temperatures = terra.temperature_history(results)
     @test results.t[end] > results.t[1]
     @test size(densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, temperatures.tt)
@@ -98,8 +69,8 @@ end
     results = @time terra.integrate_0d_system(config, initial_state)
     @test results isa terra.ReactorResult
 
-    densities = _species_density_matrix(results)
-    temperatures = _temperature_history(results)
+    densities = terra.species_density_matrix(results)
+    temperatures = terra.temperature_history(results)
     @test results.success == true
     @test length(results.t) >= 2
     @test size(densities, 1) == 5
@@ -137,9 +108,9 @@ end
     results = @time terra.integrate_0d_system(config, initial_state)
     @test results isa terra.ReactorResult
 
-    densities = _species_density_matrix(results)
-    temperatures = _temperature_history(results)
-    total_energy = _total_energy_history(results)
+    densities = terra.species_density_matrix(results)
+    temperatures = terra.temperature_history(results)
+    total_energy = terra.total_energy_history(results)
     @test results.t[end] > results.t[1]
     @test size(densities, 1) == length(config.reactor.composition.species)
     @test all(isfinite, temperatures.tt)

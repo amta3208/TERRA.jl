@@ -14,119 +14,12 @@ function _failed_simulation_result(message::AbstractString)
                          message = String(message))
 end
 
-function _coerce_positive_int(value)::Union{Nothing, Int}
-    if value isa Integer
-        int_value = Int(value)
-        return int_value >= 1 ? int_value : nothing
-    end
-    if value isa Real && isfinite(value) && value >= 1 && isinteger(value)
-        return Int(round(value))
-    end
-    return nothing
-end
-
-function _coerce_nonnegative_int(value)::Union{Nothing, Int}
-    if value isa Integer
-        int_value = Int(value)
-        return int_value >= 0 ? int_value : nothing
-    end
-    if value isa Real && isfinite(value) && value >= 0 && isinteger(value)
-        return Int(round(value))
-    end
-    return nothing
-end
-
-function _selection_index_vector(selection::AbstractDict,
-                                 key::AbstractString,
-                                 expected_length::Integer)::Union{Nothing, Vector{Int}}
-    haskey(selection, key) || return nothing
-    values = selection[key]
-    values isa AbstractVector || return nothing
-    length(values) == expected_length || return nothing
-
-    indices = Vector{Int}(undef, expected_length)
-    for i in eachindex(values)
-        index = _coerce_positive_int(values[i])
-        index === nothing && return nothing
-        indices[i] = index
-    end
-    return indices
-end
-
-function _resolve_compact_to_source_index(profile::AxialChainProfile)
-    n_segments = length(profile.z_m)
-    selection = profile.selection
-
-    for key in ("compact_to_source_index", "source_cell_indices")
-        source_indices = _selection_index_vector(selection, key, n_segments)
-        source_indices === nothing || return source_indices
-    end
-
-    trim_start = haskey(selection, "trim_start_index") ?
-                 _coerce_positive_int(selection["trim_start_index"]) : nothing
-    if trim_start === nothing && haskey(selection, "trimmed_point_count")
-        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
-        trim_start = trimmed_points === nothing ? nothing : (trimmed_points + 1)
-    end
-    if trim_start !== nothing
-        return collect(trim_start:(trim_start + n_segments - 1))
-    end
-
-    return collect(1:n_segments)
-end
-
-function _resolve_original_point_count(profile::AxialChainProfile)::Union{Nothing, Int}
-    retained_points = length(profile.z_m)
-    selection = profile.selection
-
-    if haskey(selection, "original_point_count")
-        original_points = _coerce_positive_int(selection["original_point_count"])
-        if original_points !== nothing && original_points >= retained_points
-            return original_points
-        end
-    end
-
-    if haskey(selection, "trimmed_point_count")
-        trimmed_points = _coerce_nonnegative_int(selection["trimmed_point_count"])
-        trimmed_points === nothing || return retained_points + trimmed_points
-    end
-
-    return nothing
-end
-
-function _profile_species_velocity_at_segment(profile::AxialChainProfile,
-                                              segment_index::Integer)
-    species_u = Dict{String, Float64}()
-    for (name, values) in pairs(profile.species_u_m_s)
-        species_u[name] = values[segment_index]
-    end
-    return species_u
-end
-
 function _build_segment_wall_inputs(profile::AxialChainProfile,
                                     segment_index::Integer,
                                     wall_cfg::Union{Nothing, WallLossConfig} = nothing)
-    if profile.wall_profile === nothing
-        if wall_cfg !== nothing && wall_cfg.enabled
-            throw(ArgumentError("WallLossConfig is enabled, but AxialChainProfile.wall_profile is missing. " *
-                                "Wall losses require `wall_profile` in a `terra_chain_profile_v4` chain profile."))
-        end
-        return nothing
-    end
-
-    wall_profile = profile.wall_profile
-    return SegmentWallInputs(;
-                             a_wall_over_v_m_inv = wall_profile.a_wall_over_v_m_inv[segment_index],
-                             channel_gap_m = wall_profile.channel_gap_m === nothing ?
-                                             nothing :
-                                             wall_profile.channel_gap_m[segment_index],
-                             wall_temperature_K = wall_profile.wall_temperature_K ===
-                                                  nothing ? nothing :
-                                                  wall_profile.wall_temperature_K[segment_index],
-                             ion_edge_to_center_ratio = wall_profile.ion_edge_to_center_ratio ===
-                                                        nothing ?
-                                                        nothing :
-                                                        wall_profile.ion_edge_to_center_ratio[segment_index],)
+    wall_values = _segment_wall_profile_values(profile, segment_index, wall_cfg)
+    wall_values === nothing && return nothing
+    return SegmentWallInputs(; wall_values...)
 end
 
 function _non_electron_species_names(config::Config)
@@ -159,17 +52,6 @@ function _validate_profile_inlet(profile::AxialChainProfile, config::Config)
                             "Expected: $(join(expected_species, ", ")); got: $(join(inlet_species, ", "))."))
     profile.inlet.source_compact_index == 1 ||
         throw(ArgumentError("AxialChainProfile inlet.source_compact_index must be 1 for segment-1 initialization."))
-end
-
-function _build_profile_inlet_reactor(profile::AxialChainProfile, unit_system::Symbol)
-    inlet = profile.inlet
-    n_total = unit_system == :SI ? inlet.composition.total_number_density_m3 :
-              convert_number_density_si_to_cgs(inlet.composition.total_number_density_m3)
-    composition = ReactorComposition(;
-                                     species = inlet.composition.species,
-                                     mole_fractions = inlet.composition.mole_fractions,
-                                     total_number_density = n_total,)
-    return ReactorConfig(; composition = composition, thermal = inlet.thermal)
 end
 
 function _build_chain_cells(profile::AxialChainProfile,
@@ -207,20 +89,6 @@ function _build_chain_cells(profile::AxialChainProfile,
                                    message = segment_messages[k],)
     end
     return cells
-end
-
-function _build_chain_metadata(profile::AxialChainProfile,
-                               diagnostics::AbstractDict,
-                               compact_to_source_index::AbstractVector{<:Integer})
-    return ChainMetadata(;
-                         schema_version = profile.schema_version,
-                         generator = profile.generator,
-                         selection = profile.selection,
-                         source_snapshot = profile.source_snapshot,
-                         diagnostics = diagnostics,
-                         compact_to_source_index = compact_to_source_index,
-                         original_point_count = _resolve_original_point_count(profile),
-                         retained_point_count = length(profile.z_m),)
 end
 
 function _build_chain_models(base_models::ModelConfig,
@@ -512,8 +380,8 @@ function solve_terra_chain_steady(config::Config,
                 cells = _build_chain_cells(profile, compact_to_source_index,
                                            segment_end_reactors, segment_success,
                                            segment_messages, segment_results)
-                metadata = _build_chain_metadata(profile, diagnostics,
-                                                 compact_to_source_index)
+                metadata = _chain_profile_metadata(profile, diagnostics,
+                                                   compact_to_source_index)
                 chain_result = ChainSimulationResult(;
                                                      cells = cells,
                                                      metadata = metadata,
@@ -543,8 +411,8 @@ function solve_terra_chain_steady(config::Config,
                 cells = _build_chain_cells(profile, compact_to_source_index,
                                            segment_end_reactors, segment_success,
                                            segment_messages, segment_results)
-                metadata = _build_chain_metadata(profile, diagnostics,
-                                                 compact_to_source_index)
+                metadata = _chain_profile_metadata(profile, diagnostics,
+                                                   compact_to_source_index)
                 chain_result = ChainSimulationResult(;
                                                      cells = cells,
                                                      metadata = metadata,
@@ -576,7 +444,7 @@ function solve_terra_chain_steady(config::Config,
         cells = _build_chain_cells(profile, compact_to_source_index,
                                    segment_end_reactors, segment_success,
                                    segment_messages, segment_results)
-        metadata = _build_chain_metadata(profile, diagnostics, compact_to_source_index)
+        metadata = _chain_profile_metadata(profile, diagnostics, compact_to_source_index)
         chain_result = ChainSimulationResult(;
                                              cells = cells,
                                              metadata = metadata,

@@ -105,3 +105,91 @@ function Base.getindex(result::ReactorResult, frames::AbstractVector{<:Integer})
                          source_terms = result.source_terms,
                          metadata = copy(result.metadata))
 end
+
+"""
+$(SIGNATURES)
+
+Return species densities as an `n_species x n_times` matrix.
+"""
+function species_density_matrix(result::ReactorResult)
+    n_times = length(result.frames)
+    n_times == 0 && return zeros(0, 0)
+
+    n_species = length(result.frames[1].species_densities)
+    densities = Matrix{Float64}(undef, n_species, n_times)
+    for i in 1:n_times
+        frame = result.frames[i]
+        length(frame.species_densities) == n_species ||
+            throw(ArgumentError("ReactorResult frame $i has inconsistent species_densities length."))
+        densities[:, i] = frame.species_densities
+    end
+    return densities
+end
+
+"""
+$(SIGNATURES)
+
+Return saved temperature histories as `(tt, te, tv)`.
+"""
+function temperature_history(result::ReactorResult)
+    n_times = length(result.frames)
+    tt = Vector{Float64}(undef, n_times)
+    te = Vector{Float64}(undef, n_times)
+    tv = Vector{Float64}(undef, n_times)
+
+    for i in 1:n_times
+        temperatures = result.frames[i].temperatures
+        tt[i] = temperatures.tt
+        te[i] = temperatures.te
+        tv[i] = temperatures.tv
+    end
+
+    return (tt = tt, te = te, tv = tv)
+end
+
+"""
+$(SIGNATURES)
+
+Return saved total-energy history.
+"""
+function total_energy_history(result::ReactorResult)
+    return Float64[frame.total_energy for frame in result.frames]
+end
+
+function validate_results(result::ReactorResult)
+    if !result.success
+        @warn "Simulation was not successful"
+        return false
+    end
+
+    species_densities = species_density_matrix(result)
+    temperatures = temperature_history(result)
+
+    if any(species_densities .< 0)
+        @warn "Negative species densities found"
+        return false
+    end
+
+    if any(isnan.(species_densities)) || any(isinf.(species_densities))
+        @warn "NaN or Inf values found in species densities"
+        return false
+    end
+
+    if any(isnan.(temperatures.tt)) || any(isinf.(temperatures.tt))
+        @warn "NaN or Inf values found in temperatures"
+        return false
+    end
+
+    if any(temperatures.tt .<= 0) || any(temperatures.tt .> 1e6)
+        @warn "Unreasonable translational temperatures found"
+        return false
+    end
+
+    if any(temperatures.te .<= 0) || any(temperatures.te .> 1e6)
+        @warn "Unreasonable electron temperatures found"
+        return false
+    end
+
+    @info "Results validation passed"
+    return true
+end

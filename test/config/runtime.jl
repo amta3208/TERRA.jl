@@ -12,14 +12,22 @@
     @test_throws ArgumentError terra.LoggingConfig(; log_dir = "   ")
 end
 
-@testset "Legacy RuntimeConfig compatibility" begin
+@testset "RuntimeConfig rejects legacy aliases" begin
+    @test_throws MethodError terra.RuntimeConfig(; case_path = pwd(),
+                                                 write_native_outputs = true)
+    @test_throws MethodError terra.RuntimeConfig(; case_path = pwd(),
+                                                 print_integration_output = true)
+
     runtime = terra.RuntimeConfig(; case_path = pwd(),
-                                  write_native_outputs = true,
-                                  print_integration_output = true)
+                                  write_native_state_files = true,
+                                  logging = terra.LoggingConfig(;
+                                                                integration_detail_mode = :console))
     @test runtime.write_native_state_files == true
-    @test runtime.write_native_outputs == true
     @test runtime.logging.integration_detail_mode == :console
-    @test runtime.print_integration_output == true
+    @test_throws FieldError runtime.write_native_outputs
+    @test_throws FieldError runtime.print_integration_output
+    @test_throws MethodError terra.with_runtime(runtime; write_native_outputs = true)
+    @test_throws MethodError terra.with_runtime(runtime; print_integration_output = true)
 end
 
 @testset "Chain Segment Runtime Logging" begin

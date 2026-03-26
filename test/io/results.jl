@@ -114,6 +114,8 @@
     @test loaded.cells[1].endpoint_reactor !== nothing
     @test loaded.cells[1].endpoint_reactor.composition.species == ["N", "N2", "E-"]
     @test loaded.cells[1].reactor.frames[2].temperatures.te ≈ 9800.0
+    @test terra.temperature_history(loaded.cells[1].reactor).te[2] ≈ 9800.0
+    @test size(terra.species_density_matrix(loaded.cells[1].reactor)) == (3, 2)
     @test loaded.cells[1].species_u_m_s["N+"] == 15000.0
     @test loaded.cells[1].reactor.frames[1].source_terms !== nothing
     @test loaded.cells[1].reactor.frames[1].source_terms.production ≈ 1.0

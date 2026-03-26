@@ -9,6 +9,7 @@
         :AxialChainProfile, :AxialMarchingConfig,
         :ReactorFrame, :ReactorResult, :ChainCellResult, :ChainMetadata,
         :ChainSimulationResult, :load_chain_profile,
+        :species_density_matrix, :temperature_history, :total_energy_history,
         :with_case_path, :with_time, :with_runtime, :with_logging,
         :solve_terra_0d, :nitrogen_10ev_example, :save_results, :load_results_chain,
         :solve_terra_chain_steady,

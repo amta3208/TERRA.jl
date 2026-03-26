@@ -53,20 +53,15 @@ function with_runtime(runtime::RuntimeConfig;
                       validate_species_against_terra::Bool = runtime.validate_species_against_terra,
                       print_source_terms::Bool = runtime.print_source_terms,
                       write_native_state_files::Bool = runtime.write_native_state_files,
-                      logging::LoggingConfig = runtime.logging,
-                      write_native_outputs::Union{Nothing, Bool} = nothing,
-                      print_integration_output::Union{Nothing, Bool} = nothing)
-    native_state_files = write_native_outputs === nothing ? write_native_state_files :
-                         write_native_outputs
+                      logging::LoggingConfig = runtime.logging)
     return RuntimeConfig(;
                          database_path = String(database_path),
                          case_path = String(case_path),
                          unit_system = unit_system,
                          validate_species_against_terra = validate_species_against_terra,
                          print_source_terms = print_source_terms,
-                         write_native_state_files = native_state_files,
-                         logging = logging,
-                         print_integration_output = print_integration_output)
+                         write_native_state_files = write_native_state_files,
+                         logging = logging)
 end
 
 """
@@ -81,9 +76,7 @@ function with_runtime(config::Config;
                       validate_species_against_terra::Bool = config.runtime.validate_species_against_terra,
                       print_source_terms::Bool = config.runtime.print_source_terms,
                       write_native_state_files::Bool = config.runtime.write_native_state_files,
-                      logging::LoggingConfig = config.runtime.logging,
-                      write_native_outputs::Union{Nothing, Bool} = nothing,
-                      print_integration_output::Union{Nothing, Bool} = nothing)
+                      logging::LoggingConfig = config.runtime.logging)
     runtime = with_runtime(config.runtime;
                            database_path = database_path,
                            case_path = case_path,
@@ -91,9 +84,7 @@ function with_runtime(config::Config;
                            validate_species_against_terra = validate_species_against_terra,
                            print_source_terms = print_source_terms,
                            write_native_state_files = write_native_state_files,
-                           logging = logging,
-                           write_native_outputs = write_native_outputs,
-                           print_integration_output = print_integration_output)
+                           logging = logging)
 
     return Config(;
                   reactor = config.reactor,
