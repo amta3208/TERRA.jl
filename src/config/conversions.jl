@@ -1,6 +1,27 @@
 """
 $(SIGNATURES)
 
+Return a copy of `logging` with updated logging controls.
+"""
+function with_logging(logging::LoggingConfig;
+                      console_mode::Symbol = logging.console_mode,
+                      progress_mode::Symbol = logging.progress_mode,
+                      native_stream_mode::Symbol = logging.native_stream_mode,
+                      integration_detail_mode::Symbol = logging.integration_detail_mode,
+                      chain_detail_mode::Symbol = logging.chain_detail_mode,
+                      log_dir::Union{Nothing, AbstractString} = logging.log_dir)
+    return _with_logging_config(logging;
+                                console_mode = console_mode,
+                                progress_mode = progress_mode,
+                                native_stream_mode = native_stream_mode,
+                                integration_detail_mode = integration_detail_mode,
+                                chain_detail_mode = chain_detail_mode,
+                                log_dir = log_dir)
+end
+
+"""
+$(SIGNATURES)
+
 Return a copy of `config` with an updated logging block.
 """
 function with_logging(config::Config;
@@ -10,14 +31,42 @@ function with_logging(config::Config;
                       integration_detail_mode::Symbol = config.runtime.logging.integration_detail_mode,
                       chain_detail_mode::Symbol = config.runtime.logging.chain_detail_mode,
                       log_dir::Union{Nothing, AbstractString} = config.runtime.logging.log_dir)
-    logging = _with_logging_config(config.runtime.logging;
-                                   console_mode = console_mode,
-                                   progress_mode = progress_mode,
-                                   native_stream_mode = native_stream_mode,
-                                   integration_detail_mode = integration_detail_mode,
-                                   chain_detail_mode = chain_detail_mode,
-                                   log_dir = log_dir)
+    logging = with_logging(config.runtime.logging;
+                           console_mode = console_mode,
+                           progress_mode = progress_mode,
+                           native_stream_mode = native_stream_mode,
+                           integration_detail_mode = integration_detail_mode,
+                           chain_detail_mode = chain_detail_mode,
+                           log_dir = log_dir)
     return with_runtime(config; logging = logging)
+end
+
+"""
+$(SIGNATURES)
+
+Return a copy of `runtime` with an updated runtime block.
+"""
+function with_runtime(runtime::RuntimeConfig;
+                      database_path::AbstractString = runtime.database_path,
+                      case_path::AbstractString = runtime.case_path,
+                      unit_system::Symbol = runtime.unit_system,
+                      validate_species_against_terra::Bool = runtime.validate_species_against_terra,
+                      print_source_terms::Bool = runtime.print_source_terms,
+                      write_native_state_files::Bool = runtime.write_native_state_files,
+                      logging::LoggingConfig = runtime.logging,
+                      write_native_outputs::Union{Nothing, Bool} = nothing,
+                      print_integration_output::Union{Nothing, Bool} = nothing)
+    native_state_files = write_native_outputs === nothing ? write_native_state_files :
+                         write_native_outputs
+    return RuntimeConfig(;
+                         database_path = String(database_path),
+                         case_path = String(case_path),
+                         unit_system = unit_system,
+                         validate_species_against_terra = validate_species_against_terra,
+                         print_source_terms = print_source_terms,
+                         write_native_state_files = native_state_files,
+                         logging = logging,
+                         print_integration_output = print_integration_output)
 end
 
 """
@@ -35,17 +84,16 @@ function with_runtime(config::Config;
                       logging::LoggingConfig = config.runtime.logging,
                       write_native_outputs::Union{Nothing, Bool} = nothing,
                       print_integration_output::Union{Nothing, Bool} = nothing)
-    native_state_files = write_native_outputs === nothing ? write_native_state_files :
-                         write_native_outputs
-    runtime = RuntimeConfig(;
-                            database_path = String(database_path),
-                            case_path = String(case_path),
-                            unit_system = unit_system,
-                            validate_species_against_terra = validate_species_against_terra,
-                            print_source_terms = print_source_terms,
-                            write_native_state_files = native_state_files,
-                            logging = logging,
-                            print_integration_output = print_integration_output)
+    runtime = with_runtime(config.runtime;
+                           database_path = database_path,
+                           case_path = case_path,
+                           unit_system = unit_system,
+                           validate_species_against_terra = validate_species_against_terra,
+                           print_source_terms = print_source_terms,
+                           write_native_state_files = write_native_state_files,
+                           logging = logging,
+                           write_native_outputs = write_native_outputs,
+                           print_integration_output = print_integration_output)
 
     return Config(;
                   reactor = config.reactor,

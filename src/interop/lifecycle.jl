@@ -16,18 +16,6 @@ const API_NATIVE_LOG_OFF = Int32(0)
 const API_NATIVE_LOG_MINIMAL = Int32(1)
 const API_NATIVE_LOG_VERBOSE = Int32(2)
 
-function _default_native_log_path(case_path::AbstractString)
-    return normpath(joinpath(case_path, "output", "logs", "native.log"))
-end
-
-function _prepare_native_log_file!(path::AbstractString)
-    mkpath(dirname(path))
-    open(path, "w") do io
-        write(io, "")
-    end
-    return String(path)
-end
-
 function set_api_console_verbosity_wrapper(level::Integer)
     if !is_terra_loaded()
         return nothing
@@ -72,8 +60,7 @@ function configure_api_logging_wrapper(; console_level::Integer = API_NATIVE_LOG
     if log_path === nothing || isempty(String(log_path))
         clear_api_log_path_wrapper()
     else
-        prepared_path = _prepare_native_log_file!(String(log_path))
-        set_api_log_path_wrapper(prepared_path)
+        set_api_log_path_wrapper(_prepare_log_path(String(log_path)))
     end
 
     return nothing

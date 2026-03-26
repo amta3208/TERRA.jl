@@ -173,9 +173,10 @@ end
     run_log_path = joinpath(temp_case_path, "output", "logs", "run.log")
     @test isfile(run_log_path)
     run_log = read(run_log_path, String)
-    @test occursin("============ TERRA 0D Simulation ============", run_log)
+    @test occursin("Preparing ODE integration", run_log)
+    @test occursin("starting ODE integration...", run_log)
+    @test occursin("0D integration snapshot", run_log)
     @test occursin("success!", run_log)
-    @test occursin("=============================================", run_log)
 end
 
 @testset "0D Console Progress Routing" begin
@@ -206,8 +207,7 @@ end
     console_text = read(routed_pipe, String)
     results = routed_results[]::terra.ReactorResult
     @test results.success == true
-    @test occursin("=========== TERRA 0D Simulation ===========", console_text)
+    @test occursin("TERRA 0D Simulation", console_text)
     @test occursin("starting ODE integration...", console_text)
     @test occursin("success!", console_text)
-    @test occursin("===========================================", console_text)
 end

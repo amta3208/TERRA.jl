@@ -119,10 +119,11 @@
         run_log_path = joinpath(config.runtime.case_path, "output", "logs", "run.log")
         @test isfile(run_log_path)
         run_log = read(run_log_path, String)
-        @test occursin("TERRA 1D Chain Simulation", run_log)
+        @test occursin("========= TERRA 1D Chain Simulation =========", run_log)
         @test occursin("segments: 1", run_log)
         @test occursin("===== Segment 1/1 0D Simulation =====", run_log)
         @test occursin("chain success!", run_log)
+        @test occursin("============================================", run_log)
         @test !occursin("Initializing TERRA", run_log)
 
         cleanup_terra!()
@@ -148,7 +149,7 @@
         run_log_path = joinpath(config.runtime.case_path, "output", "logs", "run.log")
         @test isfile(run_log_path)
         run_log = read(run_log_path, String)
-        @test occursin("TERRA 1D Chain Simulation", run_log)
+        @test occursin("========= TERRA 1D Chain Simulation =========", run_log)
         @test occursin("===== Segment 1/1 0D Simulation =====", run_log)
         @test occursin("chain success!", run_log)
 
@@ -210,10 +211,12 @@
         console_text = read(capture_pipe, String)
         chain = chain_ref[]::terra.ChainSimulationResult
         @test chain.success == true
-        @test occursin("TERRA 1D Chain Simulation", console_text)
+        @test occursin("========= TERRA 1D Chain Simulation =========", console_text)
         @test occursin("===== Segment 1/1 0D Simulation =====", console_text)
         @test occursin("starting ODE integration...", console_text)
         @test occursin("chain success!", console_text)
+        @test occursin("============================================", console_text)
+        @test !occursin("TERRA 0D Simulation", console_text)
 
         cleanup_terra!()
     end

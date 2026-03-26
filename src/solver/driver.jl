@@ -21,95 +21,86 @@ the `TERRA_LIB_PATH` environment variable when it is not already loaded.
 function initialize_terra(config::Config, case_path::String = config.runtime.case_path;
                           lifecycle_console::Symbol = :minimal,
                           preserve_active_runtime::Bool = true)
-    runtime = _runtime_with_case_path(config.runtime, case_path)
     previous_runtime = _active_runtime_for_logging()
-    _set_active_runtime_for_logging!(runtime)
+    runtime = case_path == config.runtime.case_path ? config.runtime :
+              with_runtime(config.runtime; case_path = case_path)
+    restore_runtime = preserve_active_runtime ? runtime : previous_runtime
 
-    try
-        _log_run_event(runtime, :info, "Initializing TERRA";
-                       console = lifecycle_console,
-                       :case_path => case_path)
-
-        # Ensure the shared library is loaded
-        if !is_terra_loaded()
-            load_terra_library!()
-            _log_run_event(runtime, :debug,
-                           "TERRA library loaded successfully via TERRA_LIB_PATH";
-                           console = :never)
-        end
-
-        # If the Fortran API is already initialized, finalize it so we can
-        # reinitialize using the updated configuration and input files.
+    return with_active_runtime_for_logging(runtime; restore = restore_runtime) do
         try
-            if is_api_initialized_wrapper()
+            _log_run_event(runtime, :info, "Initializing TERRA";
+                           console = lifecycle_console,
+                           :case_path => case_path)
+
+            if !is_terra_loaded()
+                load_terra_library!()
                 _log_run_event(runtime, :debug,
-                               "Finalizing existing TERRA API before re-initialization";
+                               "TERRA library loaded successfully via TERRA_LIB_PATH";
                                console = :never)
-                finalize_api_wrapper()
             end
-        catch e
-            _log_run_exception(runtime, :warn,
-                               "Unable to query/finalize existing TERRA API state",
-                               e;
-                               console = :never)
-        end
 
-        # Generate input files for TERRA based on the provided configuration
-        generate_input_files(config, case_path)
-        _log_run_event(runtime, :debug, "TERRA input files generated";
-                       console = :never,
-                       :case_path => case_path)
+            try
+                if is_api_initialized_wrapper()
+                    _log_run_event(runtime, :debug,
+                                   "Finalizing existing TERRA API before re-initialization";
+                                   console = :never)
+                    finalize_api_wrapper()
+                end
+            catch e
+                _log_run_exception(runtime, :warn,
+                                   "Unable to query/finalize existing TERRA API state",
+                                   e;
+                                   console = :never)
+            end
 
-        native_logging = _prepare_native_logging(runtime)
-
-        # Initialize the API - get dimensions from Fortran
-        result = initialize_api_wrapper(case_path = case_path,
-                                        native_console_level = native_logging.console_level,
-                                        native_file_level = native_logging.file_level,
-                                        native_log_path = native_logging.log_path)
-        num_species = result.num_species
-        num_dimensions = result.num_dimensions
-
-        # Hard consistency check: configured species count must match TERRA setup
-        configured_species = config.reactor.composition.species
-        if num_species != length(configured_species)
-            error("Configured species count ($(length(configured_species))) does not match TERRA setup ($num_species). " *
-                  "Ensure configuration and generated input match the TERRA database.")
-        end
-
-        _log_run_event(runtime, :info, "TERRA initialized successfully";
-                       console = lifecycle_console,
-                       :num_species => num_species,
-                       :num_dimensions => num_dimensions)
-
-        # Fetch and log runtime flags from TERRA for verification
-        try
-            flags = get_runtime_flags()
-            _log_run_event(runtime, :debug, "TERRA runtime flags";
+            generate_input_files(config, case_path)
+            _log_run_event(runtime, :debug, "TERRA input files generated";
                            console = :never,
-                           :ev_relax_set => flags.ev_relax_set,
-                           :vib_noneq => flags.vib_noneq,
-                           :eex_noneq => flags.eex_noneq,
-                           :rot_noneq => flags.rot_noneq,
-                           :bfe => flags.consider_elec_bfe,
-                           :bbh => flags.consider_elec_bbh,
-                           :bfh => flags.consider_elec_bfh,
-                           :bbe => flags.consider_elec_bbe)
-        catch e
-            _log_run_exception(runtime, :warn,
-                               "Unable to read TERRA runtime flags (rebuild library to enable)",
-                               e;
-                               console = :never)
-        end
-        return true
+                           :case_path => case_path)
 
-    catch e
-        _log_run_exception(runtime, :error, "Failed to initialize TERRA", e;
-                           console = :minimal)
-        rethrow(e)
-    finally
-        if !preserve_active_runtime
-            _restore_active_runtime_for_logging!(previous_runtime)
+            native_logging = _prepare_native_logging(runtime)
+            result = initialize_api_wrapper(case_path = case_path,
+                                            native_console_level = native_logging.console_level,
+                                            native_file_level = native_logging.file_level,
+                                            native_log_path = native_logging.log_path)
+            num_species = result.num_species
+            num_dimensions = result.num_dimensions
+
+            configured_species = config.reactor.composition.species
+            if num_species != length(configured_species)
+                error("Configured species count ($(length(configured_species))) does not match TERRA setup ($num_species). " *
+                      "Ensure configuration and generated input match the TERRA database.")
+            end
+
+            _log_run_event(runtime, :info, "TERRA initialized successfully";
+                           console = lifecycle_console,
+                           :num_species => num_species,
+                           :num_dimensions => num_dimensions)
+
+            try
+                flags = get_runtime_flags()
+                _log_run_event(runtime, :debug, "TERRA runtime flags";
+                               console = :never,
+                               :ev_relax_set => flags.ev_relax_set,
+                               :vib_noneq => flags.vib_noneq,
+                               :eex_noneq => flags.eex_noneq,
+                               :rot_noneq => flags.rot_noneq,
+                               :bfe => flags.consider_elec_bfe,
+                               :bbh => flags.consider_elec_bbh,
+                               :bfh => flags.consider_elec_bfh,
+                               :bbe => flags.consider_elec_bbe)
+            catch e
+                _log_run_exception(runtime, :warn,
+                                   "Unable to read TERRA runtime flags (rebuild library to enable)",
+                                   e;
+                                   console = :never)
+            end
+            return true
+
+        catch e
+            _log_run_exception(runtime, :error, "Failed to initialize TERRA", e;
+                               console = :minimal)
+            rethrow(e)
         end
     end
 end
@@ -130,29 +121,24 @@ clean up memory and resources.
 """
 function finalize_terra()
     runtime = _active_runtime_for_logging()
-    try
-        if runtime !== nothing
-            _log_run_event(runtime, :info, "Finalizing TERRA"; console = :minimal)
-        end
-
-        # Call the wrapper finalization
+    if runtime === nothing
         finalize_api_wrapper()
-
-        # Close the library
         close_terra_library()
+        return nothing
+    end
 
-        if runtime !== nothing
+    return with_active_runtime_for_logging(runtime; restore = nothing) do
+        try
+            _log_run_event(runtime, :info, "Finalizing TERRA"; console = :minimal)
+            finalize_api_wrapper()
+            close_terra_library()
             _log_run_event(runtime, :info, "TERRA finalized successfully";
                            console = :minimal)
-        end
-    catch e
-        if runtime !== nothing
+        catch e
             _log_run_exception(runtime, :error, "Error during TERRA finalization", e;
                                console = :minimal)
+            rethrow(e)
         end
-        rethrow(e)
-    finally
-        _clear_active_runtime_for_logging!()
     end
 end
 

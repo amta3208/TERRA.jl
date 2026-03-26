@@ -285,8 +285,7 @@ function _integrate_0d_system(config::Config, initial_state;
                                                   inlet_state_cache = inlet_state_cache)
     result_metadata = _source_terms_result_metadata(prepared_sources)
 
-    progress_reporter = _progress_mode_enabled(runtime.logging) ?
-                        FractionProgressReporter(tlim) : nothing
+    progress_reporter = _progress_reporter(runtime, tlim)
 
     p = (layout = layout,
          config = config,
