@@ -259,21 +259,26 @@ function load_chain_profile(path::AbstractString)
 
     chain_profile = AxialChainProfile(z_m = _require_float_array_field(profile, "z_m",
                                                                        "profile"),
-                                      dx_m = _require_float_array_field(profile, "dx_m",
+                                      dx_m = _require_float_array_field(profile,
+                                                                        "dx_m",
                                                                         "profile"),
-                                      te_K = _require_float_array_field(profile, "te_K",
+                                      te_K = _require_float_array_field(profile,
+                                                                        "te_K",
                                                                         "profile"),
                                       species_u_m_s = _require_float_array_dict_field(profile,
                                                                                       "species_u_m_s",
                                                                                       "profile"),
-                                      wall_profile = _build_chain_wall_profile(raw),
                                       inlet = _build_chain_profile_inlet(raw),
-                                      diagnostics = _coerce_optional_diagnostics(diagnostics_raw),
-                                      generator = generator,
-                                      selection = selection,
+                                      wall_profile = _build_chain_wall_profile(raw),
                                       schema_version = String(raw["schema_version"]),
-                                      source_snapshot = source_snapshot_raw)
-
+                                      generator = Dict{String, Any}(String(k) => v
+                                                                    for (k, v) in pairs(generator)),
+                                      selection = Dict{String, Any}(String(k) => v
+                                                                    for (k, v) in pairs(selection)),
+                                      diagnostics = _coerce_optional_diagnostics(diagnostics_raw),
+                                      source_snapshot = source_snapshot_raw === nothing ? nothing :
+                                                        Dict{String, Any}(String(k) => v
+                                                                          for (k, v) in pairs(source_snapshot_raw)))
     validate_axial_chain_profile(chain_profile)
     return chain_profile
 end

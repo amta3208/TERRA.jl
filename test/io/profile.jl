@@ -72,11 +72,9 @@ end
     @testset "Loads Exported Fixture Profile" begin
         temp_case = mktempdir()
         try
-            input_path = joinpath(
-                TEST_HET_CHAIN_INTERFACE_CASE_PATH,
-                "output",
-                "hallthruster_solution_avg.json",
-            )
+            input_path = joinpath(TEST_HET_CHAIN_INTERFACE_CASE_PATH,
+                                  "output",
+                                  "hallthruster_solution_avg.json")
             profile_path = export_tool.export_chain_profile([
                 input_path,
                 temp_case,
@@ -144,11 +142,9 @@ end
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_z.json")
-            _write_chain_profile_json(
-                profile_path;
-                schema_version = "terra_chain_profile_v4",
-                z_m = [0.01, 0.02, 0.019],
-            )
+            _write_chain_profile_json(profile_path;
+                                      schema_version = "terra_chain_profile_v4",
+                                      z_m = [0.01, 0.02, 0.019])
 
             @test_throws ArgumentError terra.load_chain_profile(profile_path)
         finally
@@ -160,16 +156,14 @@ end
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_length.json")
-            _write_chain_profile_json(
-                profile_path;
-                schema_version = "terra_chain_profile_v4",
-                species_u_m_s = Dict(
-                    "N" => [200.0, 210.0, 220.0],
-                    "N2" => [180.0, 181.0],
-                    "N+" => [1000.0, 1100.0, 1200.0],
-                    "N2+" => [900.0, 1000.0, 1100.0],
-                ),
-            )
+            _write_chain_profile_json(profile_path;
+                                      schema_version = "terra_chain_profile_v4",
+                                      species_u_m_s = Dict(
+                                          "N" => [200.0, 210.0, 220.0],
+                                          "N2" => [180.0, 181.0],
+                                          "N+" => [1000.0, 1100.0, 1200.0],
+                                          "N2+" => [900.0, 1000.0, 1100.0],
+                                      ))
 
             @test_throws ArgumentError terra.load_chain_profile(profile_path)
         finally
@@ -181,16 +175,14 @@ end
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_velocity.json")
-            _write_chain_profile_json(
-                profile_path;
-                schema_version = "terra_chain_profile_v4",
-                species_u_m_s = Dict(
-                    "N" => [200.0, 210.0, 220.0],
-                    "N2" => [180.0, 181.0, 182.0],
-                    "N+" => [1000.0, -1.0, 1200.0],
-                    "N2+" => [900.0, 1000.0, 1100.0],
-                ),
-            )
+            _write_chain_profile_json(profile_path;
+                                      schema_version = "terra_chain_profile_v4",
+                                      species_u_m_s = Dict(
+                                          "N" => [200.0, 210.0, 220.0],
+                                          "N2" => [180.0, 181.0, 182.0],
+                                          "N+" => [1000.0, -1.0, 1200.0],
+                                          "N2+" => [900.0, 1000.0, 1100.0],
+                                      ))
 
             @test_throws ArgumentError terra.load_chain_profile(profile_path)
         finally

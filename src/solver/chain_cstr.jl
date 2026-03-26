@@ -5,6 +5,22 @@ function _segment_case_path(base_case_path::AbstractString, segment_index::Integ
                              @sprintf("segment_%04d", segment_index)))
 end
 
+function _segment_logging_log_dir(base_runtime::RuntimeConfig,
+                                  segment_case_path::AbstractString)::Union{Nothing, String}
+    base_runtime.logging.log_dir === nothing && return nothing
+    segment_suffix = relpath(segment_case_path, base_runtime.case_path)
+    return normpath(joinpath(_resolve_log_dir(base_runtime), segment_suffix))
+end
+
+function _segment_logging(base_runtime::RuntimeConfig,
+                          segment_case_path::AbstractString)::LoggingConfig
+    return with_logging(base_runtime.logging;
+                        native_stream_mode = _logging_mode_file_only(base_runtime.logging.native_stream_mode),
+                        integration_detail_mode = _logging_mode_file_only(base_runtime.logging.integration_detail_mode),
+                        chain_detail_mode = :off,
+                        log_dir = _segment_logging_log_dir(base_runtime, segment_case_path))
+end
+
 function _failed_simulation_result(message::AbstractString)
     return ReactorResult(;
                          t = Float64[],

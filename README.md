@@ -60,8 +60,7 @@ config = with_case_path(config, mktempdir())
 
 initialize_terra(config)
 try
-    # Use closed-reactor behavior for this run
-    results = solve_terra_0d(config; use_residence_time = false)
+    results = solve_terra_0d(config)
     @info "Final translational temperature (K)" temperature_history(results).tt[end]
 finally
     finalize_terra()

@@ -33,6 +33,9 @@ include("config/config.jl")
 include("config/validation.jl")
 include("config/conversions.jl")
 
+include("runtime/paths.jl")
+include("runtime/session.jl")
+
 include("results/reactor.jl")
 include("results/chain.jl")
 
@@ -40,11 +43,8 @@ include("chain/profile.jl")
 include("chain/marching.jl")
 
 include("io/logging.jl")
-include("io/prob_setup_writer.jl")
-include("io/sources_setup_writer.jl")
-include("io/tau_scaling_writer.jl")
-include("io/input_generation.jl")
-include("io/chain_profile_loader.jl")
+include("io/input.jl")
+include("io/profile.jl")
 include("io/results.jl")
 
 include("solver/api_layout.jl")

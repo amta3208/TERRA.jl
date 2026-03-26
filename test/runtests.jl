@@ -36,6 +36,11 @@ include("helpers/shared.jl")
         include("config/conversions.jl")
     end
 
+    @testset "Runtime" begin
+        include("runtime/paths.jl")
+        include("runtime/session.jl")
+    end
+
     @testset "Results" begin
         include("results/reactor.jl")
         include("results/chain.jl")
@@ -47,8 +52,8 @@ include("helpers/shared.jl")
     end
 
     @testset "IO" begin
-        include("io/input_generation.jl")
-        include("io/chain_profile_loader.jl")
+        include("io/input.jl")
+        include("io/profile.jl")
         include("io/export_chain_profile.jl")
         include("io/results.jl")
     end

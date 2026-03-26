@@ -60,7 +60,7 @@ function configure_api_logging_wrapper(; console_level::Integer = API_NATIVE_LOG
     if log_path === nothing || isempty(String(log_path))
         clear_api_log_path_wrapper()
     else
-        set_api_log_path_wrapper(_prepare_log_path(String(log_path)))
+        set_api_log_path_wrapper(String(log_path))
     end
 
     return nothing
@@ -78,9 +78,7 @@ function initialize_api_wrapper(; case_path::String = pwd(),
         TERRA_INITIALIZED[] = false
     end
 
-    # Always validate inputs and prepare filesystem, even if Fortran is already initialized.
-    # This preserves input validation semantics and directory creation guarantees.
-    # Validate inputs
+    # Always validate inputs, even if Fortran is already initialized.
     if !isdir(case_path)
         error("Case path does not exist: $case_path")
     end
@@ -93,33 +91,11 @@ function initialize_api_wrapper(; case_path::String = pwd(),
     TERRA_CASE_PATH[] = case_path
     TERRA_OUTPUTS_OPEN[] = false
 
-    # Ensure output directory structure exists
-    output_dir = joinpath(case_path, "output")
-    if !isdir(output_dir)
-        mkpath(output_dir)
-    end
-
-    # Ensure required output subdirectories exist
-    sources_dir = joinpath(output_dir, "sources")
-    states_dir = joinpath(output_dir, "states")
-
-    if !isdir(sources_dir)
-        mkpath(sources_dir)
-    end
-
-    if !isdir(states_dir)
-        mkpath(states_dir)
-    end
-
     console_level = native_console_level === nothing ? API_NATIVE_LOG_OFF :
                     Int32(native_console_level)
     file_level = native_file_level === nothing ? API_NATIVE_LOG_VERBOSE :
                  Int32(native_file_level)
-    resolved_log_path = if native_log_path === nothing
-        file_level == API_NATIVE_LOG_OFF ? nothing : _default_native_log_path(case_path)
-    else
-        String(native_log_path)
-    end
+    resolved_log_path = native_log_path === nothing ? nothing : String(native_log_path)
 
     configure_api_logging_wrapper(; console_level = console_level,
                                   file_level = file_level,

@@ -1,9 +1,4 @@
-const DEFAULT_OUTPUT_LOG_DIRNAME = "logs"
-const DEFAULT_RUN_LOG_FILENAME = "run.log"
-const DEFAULT_NATIVE_LOG_FILENAME = "native.log"
-const DEFAULT_CHAIN_LOG_FILENAME = "chain.log"
 const DEFAULT_PROGRESS_FRACTION_STEP = 0.1
-const ACTIVE_RUNTIME_FOR_LOGGING = Ref{Union{Nothing, RuntimeConfig}}(nothing)
 const CHAIN_RUN_BANNER = "\n" * "="^9 * " TERRA 1D Chain Simulation " * "="^9
 const CHAIN_RUN_FOOTER = "="^(length(CHAIN_RUN_BANNER) - 1)
 
@@ -114,52 +109,12 @@ function ChainSegmentEntry(base_config::Config,
                              state_cache_used)
 end
 
-_active_runtime_for_logging() = ACTIVE_RUNTIME_FOR_LOGGING[]
-
-function with_active_runtime_for_logging(f::Function, runtime::RuntimeConfig;
-                                         restore::Union{Nothing, RuntimeConfig} = runtime)
-    ACTIVE_RUNTIME_FOR_LOGGING[] = runtime
-    try
-        return f()
-    finally
-        ACTIVE_RUNTIME_FOR_LOGGING[] = restore
-    end
-end
-
 _writes_file(mode::Symbol) = mode == :file || mode == :both
 _writes_console(mode::Symbol) = mode == :console || mode == :both
 
-function _resolve_log_dir(case_path::AbstractString, logging::LoggingConfig)::String
-    if logging.log_dir === nothing
-        return normpath(joinpath(case_path, "output", DEFAULT_OUTPUT_LOG_DIRNAME))
-    end
-    return isabspath(logging.log_dir) ? normpath(logging.log_dir) :
-           normpath(joinpath(case_path, logging.log_dir))
-end
-
-_resolve_log_dir(runtime::RuntimeConfig) = _resolve_log_dir(runtime.case_path, runtime.logging)
-
-function _ensure_log_dir(runtime::RuntimeConfig)::String
-    log_dir = _resolve_log_dir(runtime)
-    mkpath(log_dir)
-    return log_dir
-end
-
-function _default_native_log_path(case_path::AbstractString)
-    return normpath(joinpath(case_path, "output", DEFAULT_OUTPUT_LOG_DIRNAME,
-                             DEFAULT_NATIVE_LOG_FILENAME))
-end
-
-log_path(::RunLog, runtime::RuntimeConfig) = joinpath(_resolve_log_dir(runtime),
-                                                      DEFAULT_RUN_LOG_FILENAME)
-log_path(::NativeLog, runtime::RuntimeConfig) = joinpath(_resolve_log_dir(runtime),
-                                                         DEFAULT_NATIVE_LOG_FILENAME)
-log_path(::ChainLog, runtime::RuntimeConfig) = joinpath(_resolve_log_dir(runtime),
-                                                        DEFAULT_CHAIN_LOG_FILENAME)
-
-_run_log_path(runtime::RuntimeConfig) = log_path(RUN_LOG, runtime)
-_native_log_path(runtime::RuntimeConfig) = log_path(NATIVE_LOG, runtime)
-_chain_log_path(runtime::RuntimeConfig) = log_path(CHAIN_LOG, runtime)
+log_path(::RunLog, runtime::RuntimeConfig) = run_log_path(runtime)
+log_path(::NativeLog, runtime::RuntimeConfig) = native_log_path(runtime)
+log_path(::ChainLog, runtime::RuntimeConfig) = chain_log_path(runtime)
 
 stream_mode(::RunLog, ::LoggingConfig) = :file
 stream_mode(::NativeLog, logging::LoggingConfig) = logging.native_stream_mode
@@ -182,12 +137,16 @@ function _append_log_text(path::AbstractString, text::AbstractString)
     return nothing
 end
 
-prepare!(::RunLog, runtime::RuntimeConfig) = _ensure_log_dir(runtime)
+function prepare!(::RunLog, runtime::RuntimeConfig)
+    ensure_case_layout!(runtime)
+    return nothing
+end
 
 function prepare!(::ChainLog, runtime::RuntimeConfig)
     mode = stream_mode(CHAIN_LOG, runtime.logging)
     mode == :off && return nothing
     _writes_file(mode) || return nothing
+    ensure_case_layout!(runtime)
     return _prepare_log_path(log_path(CHAIN_LOG, runtime))
 end
 
@@ -207,6 +166,7 @@ _native_file_level(logging::LoggingConfig) = _writes_file(logging.native_stream_
 function prepare!(::NativeLog, runtime::RuntimeConfig)
     console_level = _native_console_level(runtime.logging)
     file_level = _native_file_level(runtime.logging)
+    ensure_case_layout!(runtime)
     path = file_level == API_NATIVE_LOG_OFF ? nothing :
            _prepare_log_path(log_path(NATIVE_LOG, runtime))
     return (console_level = console_level, file_level = file_level, log_path = path)
@@ -366,7 +326,7 @@ function Base.show(io::IO, ::MIME"text/plain", entry::ChainHeaderEntry)
     _write_chain_line(io, 2, "segments", length(profile.z_m))
     _write_chain_line(io, 2, "chain_detail_mode", config.runtime.logging.chain_detail_mode)
     if _writes_file(stream_mode(CHAIN_LOG, config.runtime.logging))
-        _write_chain_line(io, 2, "chain_log_path", log_path(CHAIN_LOG, config.runtime))
+        _write_chain_line(io, 2, "chain_log_path", chain_log_path(config.runtime))
     end
     _write_chain_line(io, 2, "handoff_mode", marching.handoff_mode)
     _write_chain_line(io, 2, "termination_mode", marching.termination_mode)
@@ -584,20 +544,4 @@ function _report_progress!(runtime::RuntimeConfig, progress::FractionProgressRep
                    :t => Float64(t),
                    :tlim => progress.tlim)
     return nothing
-end
-
-function _segment_logging_log_dir(base_runtime::RuntimeConfig,
-                                  segment_case_path::AbstractString)::Union{Nothing, String}
-    base_runtime.logging.log_dir === nothing && return nothing
-    segment_suffix = relpath(segment_case_path, base_runtime.case_path)
-    return normpath(joinpath(_resolve_log_dir(base_runtime), segment_suffix))
-end
-
-function _segment_logging(base_runtime::RuntimeConfig,
-                          segment_case_path::AbstractString)::LoggingConfig
-    return with_logging(base_runtime.logging;
-                        native_stream_mode = _logging_mode_file_only(base_runtime.logging.native_stream_mode),
-                        integration_detail_mode = _logging_mode_file_only(base_runtime.logging.integration_detail_mode),
-                        chain_detail_mode = :off,
-                        log_dir = _segment_logging_log_dir(base_runtime, segment_case_path))
 end

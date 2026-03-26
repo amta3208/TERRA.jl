@@ -17,7 +17,7 @@
     end
 end
 
-@testset "Input/Directory Handling" begin
+@testset "Input And Lifecycle Handling" begin
     @testset "Initialization Input Validation" begin
         # Ensure library is loaded and Fortran not initialized
         terra.close_terra_library()
@@ -77,91 +77,51 @@ end
         rm(temp_dir; recursive = true)
     end
 
-    @testset "Output Directory Creation" begin
-        # Fresh state for this test
+    @testset "Native Logging Configuration" begin
         terra.close_terra_library()
         terra.load_terra_library!()
 
-        # Create a temporary test case directory with input
         temp_case_dir = mktempdir()
+        temp_log_dir = mktempdir()
         try
-            # Create input directory and file
             input_dir = joinpath(temp_case_dir, "input")
             mkpath(input_dir)
             touch(joinpath(input_dir, "prob_setup.inp"))
+            terra.ensure_case_layout!(terra.RuntimeConfig(; case_path = temp_case_dir))
 
-            # Verify output directories don't exist initially
-            output_dir = joinpath(temp_case_dir, "output")
-            sources_dir = joinpath(output_dir, "sources")
-            states_dir = joinpath(output_dir, "states")
-
-            @test !isdir(output_dir)
-            @test !isdir(sources_dir)
-            @test !isdir(states_dir)
-
-            # Initialize - should create output directories
-            terra.initialize_api_wrapper(case_path = temp_case_dir)
-
-            # Verify output directories were created
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-
-            # Test that calling again doesn't cause errors (directories already exist)
-            result2 = terra.initialize_api_wrapper(case_path = temp_case_dir)
-            @test result2 isa NamedTuple
-
-            # Verify directories still exist
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-
+            native_log_path = joinpath(temp_log_dir, "native.log")
+            @test_nowarn terra.configure_api_logging_wrapper(
+                console_level = terra.API_NATIVE_LOG_OFF,
+                file_level = terra.API_NATIVE_LOG_VERBOSE,
+                log_path = native_log_path,
+            )
+            result = terra.initialize_api_wrapper(
+                case_path = temp_case_dir,
+                native_console_level = terra.API_NATIVE_LOG_OFF,
+                native_file_level = terra.API_NATIVE_LOG_VERBOSE,
+                native_log_path = native_log_path,
+            )
+            @test result isa NamedTuple
         finally
             rm(temp_case_dir; recursive = true)
+            rm(temp_log_dir; recursive = true)
         end
     end
 
-    @testset "Output Directory Creation with Existing Directories" begin
-        # Fresh state for this test
-        terra.close_terra_library()
-        terra.load_terra_library!()
-
-        # Create a temporary test case directory with input and partial output structure
-        temp_case_dir = mktempdir()
+    @testset "Native Output Open And Close" begin
+        dims = @test_nowarn reset_and_init!(TEST_CASE_PATH)
         try
-            # Create input directory and file
-            input_dir = joinpath(temp_case_dir, "input")
-            mkpath(input_dir)
-            touch(joinpath(input_dir, "prob_setup.inp"))
+            @test dims isa NamedTuple
 
-            # Create output directory but not subdirectories
-            output_dir = joinpath(temp_case_dir, "output")
-            mkpath(output_dir)
-
-            # Create a test file in output to verify it's preserved
-            test_file = joinpath(output_dir, "test_file.txt")
-            write(test_file, "test content")
-
-            sources_dir = joinpath(output_dir, "sources")
-            states_dir = joinpath(output_dir, "states")
-
-            @test isdir(output_dir)
-            @test !isdir(sources_dir)
-            @test !isdir(states_dir)
-            @test isfile(test_file)
-
-            # Initialize - should create missing subdirectories
-            terra.initialize_api_wrapper(case_path = temp_case_dir)
-
-            # Verify all directories exist and existing content is preserved
-            @test isdir(output_dir)
-            @test isdir(sources_dir)
-            @test isdir(states_dir)
-            @test isfile(test_file)
-            @test read(test_file, String) == "test content"
-
+            @test_nowarn terra.open_api_output_files_wrapper()
+            @test terra.TERRA_OUTPUTS_OPEN[] == true
+            @test_nowarn terra.close_api_output_files_wrapper()
+            @test terra.TERRA_OUTPUTS_OPEN[] == false
         finally
-            rm(temp_case_dir; recursive = true)
+            try
+                terra.finalize_api_wrapper()
+            catch
+            end
         end
     end
 end
