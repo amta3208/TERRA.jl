@@ -58,6 +58,14 @@ include("helpers/shared.jl")
         include("chain/marching.jl")
     end
 
+    @testset "Reactor" begin
+        include("reactor/initial.jl")
+        include("reactor/state.jl")
+        include("reactor/rhs.jl")
+        include("reactor/solve.jl")
+        include("reactor/integrate.jl")
+    end
+
     @testset "Sources" begin
         include("sources/residence.jl")
         include("sources/wall.jl")
@@ -72,11 +80,6 @@ include("helpers/shared.jl")
     end
 
     @testset "Solver" begin
-        include("solver/initial_state.jl")
-        include("solver/state_vector.jl")
-        include("solver/rhs.jl")
-        include("solver/driver.jl")
-        include("solver/integrate_0d.jl")
         include("solver/chain_cstr.jl")
     end
 end

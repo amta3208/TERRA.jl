@@ -156,6 +156,49 @@
         cleanup_terra!()
     end
 
+    @testset "Chain segment presentation uses reactor-owned 0D seam" begin
+        config = build_chain_test_config()
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = species_velocity_profile(;
+                                                                                   n_segments = 1,
+                                                                                   neutral_base = 180.0,
+                                                                                   ion_base = 18000.0),
+                                          inlet = profile_inlet(config))
+        marching = terra.AxialMarchingConfig()
+        inlet_reactor = terra._build_profile_inlet_reactor(profile,
+                                                           config.runtime.unit_system)
+        segment_config = terra._build_chain_segment_config(config, profile, 1,
+                                                           inlet_reactor, marching)
+
+        result_ref = Ref{Any}(nothing)
+        cache_ref = Ref{Any}(nothing)
+        capture_pipe = Pipe()
+        redirect_stdout(capture_pipe) do
+            @test_nowarn terra.initialize_terra(segment_config,
+                                                segment_config.runtime.case_path;
+                                                lifecycle_console = :never,
+                                                preserve_active_runtime = false)
+            result_ref[], cache_ref[] = terra._solve_terra_0d_internal(segment_config;
+                                                                       presentation = terra.CHAIN_SEGMENT_PRESENTATION)
+            nothing
+        end
+        close(Base.pipe_writer(capture_pipe))
+
+        console_text = read(capture_pipe, String)
+        result = result_ref[]::terra.ReactorResult
+        cache = cache_ref[]::terra.ReactorStateCache
+
+        @test result.success == true
+        @test !isempty(result.frames)
+        @test cache.species == segment_config.reactor.composition.species
+        @test occursin("starting ODE integration...", console_text)
+        @test !occursin("TERRA 0D Simulation", console_text)
+
+        cleanup_terra!()
+    end
+
     @testset "Chain detail logging can mirror to console and file" begin
         config = build_chain_test_config()
         config = terra.with_logging(config;

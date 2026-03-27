@@ -1,40 +1,65 @@
 """
 $(SIGNATURES)
 
-Convert nested `Config` to initial state vectors for TERRA.
+Concrete 0D initial state prepared from `Config` and the active TERRA API.
 """
-struct ReactorStateCache
-    species::Vector{String}
-    rho_sp_cgs::Vector{Float64}
-    rho_ex_cgs::Union{Nothing, Matrix{Float64}}
+struct ReactorInitialState
+    rho_sp::Vector{Float64}
+    rho_etot::Float64
+    rho_energy::Float64
+    rho_rem::Float64
+    rho_ex::Union{Nothing, Matrix{Float64}}
+    rho_vx::Union{Nothing, Array{Float64, 3}}
+    rho_eeex::Float64
+    rho_evib::Float64
+    number_density::Float64
+    molecular_weights::Vector{Float64}
+    teex_const::Float64
+    gas_constants::Vector{Float64}
+    pressure::Float64
+    initial_temperatures::NamedTuple
+    state_cache_used::Bool
+end
 
-    function ReactorStateCache(;
-                               species,
-                               rho_sp_cgs,
-                               rho_ex_cgs::Union{Nothing, AbstractMatrix{<:Real}} = nothing)
-        species_vec = String.(species)
-        rho_sp_vec = Float64.(rho_sp_cgs)
-        length(species_vec) == length(rho_sp_vec) ||
-            throw(ArgumentError("ReactorStateCache: `species` and `rho_sp_cgs` must have identical lengths."))
-        isempty(species_vec) &&
-            throw(ArgumentError("ReactorStateCache: at least one species must be provided."))
-        if any(rho_sp_vec .< 0.0)
-            throw(ArgumentError("ReactorStateCache: `rho_sp_cgs` must be non-negative."))
-        end
+function ReactorInitialState(; rho_sp,
+                             rho_etot,
+                             rho_energy,
+                             rho_rem,
+                             rho_ex::Union{Nothing, AbstractMatrix{<:Real}} = nothing,
+                             rho_vx::Union{Nothing, AbstractArray{<:Real, 3}} = nothing,
+                             rho_eeex,
+                             rho_evib,
+                             number_density,
+                             molecular_weights,
+                             teex_const,
+                             gas_constants,
+                             pressure,
+                             initial_temperatures::NamedTuple,
+                             state_cache_used::Bool = false)
+    rho_sp_vec = Float64.(rho_sp)
+    molecular_weights_vec = Float64.(molecular_weights)
+    gas_constants_vec = Float64.(gas_constants)
+    length(rho_sp_vec) == length(molecular_weights_vec) == length(gas_constants_vec) ||
+        throw(ArgumentError("ReactorInitialState: density, molecular-weight, and gas-constant vectors must have identical lengths."))
 
-        rho_ex_val = if rho_ex_cgs === nothing
-            nothing
-        else
-            rho_ex_mat = Matrix{Float64}(rho_ex_cgs)
-            size(rho_ex_mat, 2) >= length(species_vec) ||
-                throw(ArgumentError("ReactorStateCache: `rho_ex_cgs` must provide at least one column per active species."))
-            any(rho_ex_mat .< 0.0) &&
-                throw(ArgumentError("ReactorStateCache: `rho_ex_cgs` must be non-negative."))
-            rho_ex_mat[:, 1:length(species_vec)]
-        end
+    rho_ex_val = rho_ex === nothing ? nothing : Matrix{Float64}(rho_ex)
+    rho_vx_val = rho_vx === nothing ? nothing : Float64.(rho_vx)
 
-        return new(species_vec, rho_sp_vec, rho_ex_val)
-    end
+    return ReactorInitialState(rho_sp_vec,
+                               Float64(rho_etot),
+                               Float64(rho_energy),
+                               Float64(rho_rem),
+                               rho_ex_val,
+                               rho_vx_val,
+                               Float64(rho_eeex),
+                               Float64(rho_evib),
+                               Float64(number_density),
+                               molecular_weights_vec,
+                               Float64(teex_const),
+                               gas_constants_vec,
+                               Float64(pressure),
+                               initial_temperatures,
+                               state_cache_used)
 end
 
 function _validated_state_cache(config::Config,
@@ -60,14 +85,16 @@ end
            state_cache.rho_ex_cgs !== nothing
 end
 
+"""
+$(SIGNATURES)
+
+Convert nested `Config` to a reactor-owned initial state in CGS units.
+"""
 function config_to_initial_state(config::Config;
                                  state_cache::Union{Nothing, ReactorStateCache} = nothing)
     species = config.reactor.composition.species
-
-    # Get molecular weights
     molecular_weights = get_molecular_weights(species)
 
-    # Ensure we're working in CGS - convert if needed
     config_cgs = config.runtime.unit_system == :CGS ? config :
                  convert_config_units(config, :CGS)
     composition = config_cgs.reactor.composition
@@ -77,8 +104,6 @@ function config_to_initial_state(config::Config;
     has_elec_sts = has_electronic_sts_wrapper()
     use_state_cache = _use_state_cache(state_cache, has_elec_sts)
 
-    # Convert mole fractions to mass densities (CGS units), unless an upstream
-    # state cache is explicitly providing species densities and electronic STS.
     mass_densities_cgs = if use_state_cache
         copy((state_cache::ReactorStateCache).rho_sp_cgs)
     else
@@ -89,52 +114,34 @@ function config_to_initial_state(config::Config;
     gas_constants_full = get_species_gas_constants_wrapper()
     gas_constants = gas_constants_full[1:length(molecular_weights)]
 
-    # When a full-state handoff is active, preserve the upstream electronic
-    # populations and rebuild only the downstream energies from the requested
-    # thermal state.
     initial_electronic_states = if use_state_cache
         copy((state_cache::ReactorStateCache).rho_ex_cgs)
     else
         set_electronic_boltzmann_wrapper(mass_densities_cgs,
-                                         thermal.Tee,  # Electronic-state populations use TEE
-                                         thermal.Tt,   # Rotational temperature (use translational as proxy)
+                                         thermal.Tee,
+                                         thermal.Tt,
                                          thermal.Tv)
     end
 
-    # Calculate electron-electronic energy using TERRA's method.
-    # IMPORTANT: Species without electronically resolved states contribute to
-    # the electron-electronic mode; their energy must be initialized using the
-    # electron temperature (TE), not TEE. TERRA internally excludes species with
-    # resolved electronic states from this mode, so passing TE here is correct.
     initial_electron_electronic_energy = calculate_electron_electronic_energy_wrapper(thermal.Te,
                                                                                       thermal.Tv,
                                                                                       mass_densities_cgs)
 
-    # Initialize vibrational state populations using TERRA's Boltzmann
-    # distribution (for potential diagnostics), but do NOT use this to infer
-    # STS. The active STS setting comes from the database/setup, which the
-    # wrapper cannot reliably query here. To avoid a mismatch with TERRA,
-    # always treat vibrational energy in mode form and do not include rho_vx
-    # in Etot.
     initial_vibrational_states = set_vibrational_boltzmann_wrapper(initial_electronic_states,
                                                                    thermal.Te,
                                                                    thermal.Tt,
                                                                    thermal.Tv)
-
-    # Mode-level vibrational energy at Tv. Provide per-species electronic
-    # temperature proxy as TE uniformly; species with resolved electronic
-    # states are already accounted through rho_ex above.
     initial_vibrational_energy = calculate_vibrational_energy_wrapper(thermal.Tv,
                                                                       mass_densities_cgs;
                                                                       rho_ex = initial_electronic_states,
                                                                       tex = fill(thermal.Te,
                                                                                  length(mass_densities_cgs)))
 
-    # Total energy: do not include rho_vx to avoid double counting when TERRA
-    # is not in vibrational STS mode.
     initial_total_energy = calculate_total_energy_wrapper(thermal.Tt, mass_densities_cgs;
                                                           rho_ex = initial_electronic_states,
-                                                          u = 0.0, v = 0.0, w = 0.0,
+                                                          u = 0.0,
+                                                          v = 0.0,
+                                                          w = 0.0,
                                                           rho_eeex = initial_electron_electronic_energy,
                                                           rho_evib = initial_vibrational_energy)
 
@@ -171,19 +178,19 @@ function config_to_initial_state(config::Config;
                                                                 molecular_weights) :
                          composition.total_number_density
 
-    return (rho_sp = mass_densities_cgs,
-            rho_etot = initial_enthalpy,
-            rho_energy = initial_total_energy,
-            rho_rem = initial_remainder_energy,
-            rho_ex = initial_electronic_states,
-            rho_vx = nothing,
-            rho_eeex = initial_electron_electronic_energy,
-            rho_evib = initial_vibrational_energy,
-            number_density = number_density_cgs,
-            molecular_weights = molecular_weights,
-            teex_const = thermal.Te,
-            gas_constants = gas_constants,
-            pressure = initial_pressure,
-            initial_temperatures = initial_temperatures,
-            state_cache_used = use_state_cache)
+    return ReactorInitialState(; rho_sp = mass_densities_cgs,
+                               rho_etot = initial_enthalpy,
+                               rho_energy = initial_total_energy,
+                               rho_rem = initial_remainder_energy,
+                               rho_ex = initial_electronic_states,
+                               rho_vx = nothing,
+                               rho_eeex = initial_electron_electronic_energy,
+                               rho_evib = initial_vibrational_energy,
+                               number_density = number_density_cgs,
+                               molecular_weights = molecular_weights,
+                               teex_const = thermal.Te,
+                               gas_constants = gas_constants,
+                               pressure = initial_pressure,
+                               initial_temperatures = initial_temperatures,
+                               state_cache_used = use_state_cache)
 end

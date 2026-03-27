@@ -21,15 +21,6 @@ function _segment_logging(base_runtime::RuntimeConfig,
                         log_dir = _segment_logging_log_dir(base_runtime, segment_case_path))
 end
 
-function _failed_simulation_result(message::AbstractString)
-    return ReactorResult(;
-                         t = Float64[],
-                         frames = ReactorFrame[],
-                         source_terms = nothing,
-                         success = false,
-                         message = String(message))
-end
-
 function _build_segment_wall_inputs(profile::AxialChainProfile,
                                     segment_index::Integer,
                                     wall_cfg::Union{Nothing, WallLossConfig} = nothing)
@@ -343,7 +334,7 @@ function solve_terra_chain_steady(config::Config,
         segment_end_reactors = [config.reactor for _ in 1:n_segments]
         segment_success = fill(false, n_segments)
         segment_messages = fill("Not executed.", n_segments)
-        segment_results = [_failed_simulation_result("Not executed.") for _ in 1:n_segments]
+        segment_results = [_failed_reactor_result("Not executed.") for _ in 1:n_segments]
         segment_state_cache_used = fill(false, n_segments)
 
         inlet_reactor = _build_profile_inlet_reactor(profile, config.runtime.unit_system)
@@ -379,10 +370,10 @@ function solve_terra_chain_steady(config::Config,
                 local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
                                                                            wall_inputs = wall_inputs,
                                                                            state_cache = requested_state_cache,
-                                                                           presentation = :chain_segment)
+                                                                           presentation = CHAIN_SEGMENT_PRESENTATION)
             catch e
                 segment_messages[k] = "Segment setup/integration threw exception: $(e)"
-                segment_results[k] = _failed_simulation_result(segment_messages[k])
+                segment_results[k] = _failed_reactor_result(segment_messages[k])
                 emit!(CHAIN_LOG, chain_runtime,
                       ChainSegmentEntry(config, profile,
                                         compact_to_source_index, k,

@@ -1,6 +1,43 @@
 """
 $(SIGNATURES)
 
+Compact cache of a reactor end state used for downstream initialization.
+"""
+struct ReactorStateCache
+    species::Vector{String}
+    rho_sp_cgs::Vector{Float64}
+    rho_ex_cgs::Union{Nothing, Matrix{Float64}}
+
+    function ReactorStateCache(; species,
+                               rho_sp_cgs,
+                               rho_ex_cgs::Union{Nothing, AbstractMatrix{<:Real}} = nothing)
+        species_vec = String.(species)
+        rho_sp_vec = Float64.(rho_sp_cgs)
+        length(species_vec) == length(rho_sp_vec) ||
+            throw(ArgumentError("ReactorStateCache: `species` and `rho_sp_cgs` must have identical lengths."))
+        isempty(species_vec) &&
+            throw(ArgumentError("ReactorStateCache: at least one species must be provided."))
+        any(rho_sp_vec .< 0.0) &&
+            throw(ArgumentError("ReactorStateCache: `rho_sp_cgs` must be non-negative."))
+
+        rho_ex_val = if rho_ex_cgs === nothing
+            nothing
+        else
+            rho_ex_mat = Matrix{Float64}(rho_ex_cgs)
+            size(rho_ex_mat, 2) >= length(species_vec) ||
+                throw(ArgumentError("ReactorStateCache: `rho_ex_cgs` must provide at least one column per active species."))
+            any(rho_ex_mat .< 0.0) &&
+                throw(ArgumentError("ReactorStateCache: `rho_ex_cgs` must be non-negative."))
+            rho_ex_mat[:, 1:length(species_vec)]
+        end
+
+        return new(species_vec, rho_sp_vec, rho_ex_val)
+    end
+end
+
+"""
+$(SIGNATURES)
+
 Pack state components into the `y` vector ordering used by Fortran `rhs_api`.
 """
 function pack_state_vector(layout::ApiLayout,
@@ -44,44 +81,33 @@ function pack_state_vector!(y::Vector{Float64},
                             rho_erot::Union{Real, Nothing} = nothing,
                             rho_eeex::Union{Real, Nothing} = nothing,
                             rho_evib::Union{Real, Nothing} = nothing)
-    if length(y) != layout.neq
+    length(y) == layout.neq ||
         throw(DimensionMismatch("y length ($(length(y))) does not match layout.neq ($(layout.neq))"))
-    end
-    if length(rho_sp) != layout.nsp
+    length(rho_sp) == layout.nsp ||
         throw(DimensionMismatch("rho_sp length ($(length(rho_sp))) must match layout.nsp ($(layout.nsp))"))
-    end
-    if layout.is_elec_sts && rho_ex === nothing
+    layout.is_elec_sts && rho_ex === nothing &&
         throw(ArgumentError("rho_ex must be provided when electronic STS is active (layout.is_elec_sts=true)."))
-    end
-    if layout.is_vib_sts && rho_vx === nothing
+    layout.is_vib_sts && rho_vx === nothing &&
         throw(ArgumentError("rho_vx must be provided when vibrational STS is active (layout.is_vib_sts=true)."))
-    end
-    if layout.rot_noneq && rho_erot === nothing
+    layout.rot_noneq && rho_erot === nothing &&
         throw(ArgumentError("rho_erot must be provided when rot_noneq=true."))
-    end
-    if layout.eex_noneq && rho_eeex === nothing
+    layout.eex_noneq && rho_eeex === nothing &&
         throw(ArgumentError("rho_eeex must be provided when eex_noneq=true."))
-    end
-    if layout.vib_noneq && rho_evib === nothing
+    layout.vib_noneq && rho_evib === nothing &&
         throw(ArgumentError("rho_evib must be provided when vib_noneq=true."))
-    end
-    if layout.nd >= 1 && rho_u === nothing
+    layout.nd >= 1 && rho_u === nothing &&
         throw(ArgumentError("rho_u must be provided when nd>=1."))
-    end
-    if layout.nd >= 2 && rho_v === nothing
+    layout.nd >= 2 && rho_v === nothing &&
         throw(ArgumentError("rho_v must be provided when nd>=2."))
-    end
-    if layout.nd >= 3 && rho_w === nothing
+    layout.nd >= 3 && rho_w === nothing &&
         throw(ArgumentError("rho_w must be provided when nd>=3."))
-    end
 
     fill!(y, 0.0)
     idx = 1
 
-    # Vibrational states
     if layout.n_eq_vib > 0
         @assert rho_vx !== nothing
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if layout.ies[isp] == 0 || layout.ih[isp] != 2
                 continue
             end
@@ -89,8 +115,7 @@ function pack_state_vector!(y::Vector{Float64},
                 if layout.ivs[iex, isp] == 0
                     continue
                 end
-                mv_isp_iex = layout.mv[isp, iex]
-                for ivx in 0:mv_isp_iex
+                for ivx in 0:layout.mv[isp, iex]
                     y[idx] = Float64((rho_vx::AbstractArray{<:Real, 3})[ivx + 1, iex, isp])
                     idx += 1
                 end
@@ -98,10 +123,9 @@ function pack_state_vector!(y::Vector{Float64},
         end
     end
 
-    # Electronic states
     if layout.is_elec_sts
         @assert rho_ex !== nothing
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if layout.ies[isp] == 0
                 continue
             end
@@ -115,8 +139,7 @@ function pack_state_vector!(y::Vector{Float64},
         end
     end
 
-    # Species densities for non-electronic-specific species
-    @inbounds for isp in 1:(layout.nsp)
+    @inbounds for isp in 1:layout.nsp
         if layout.ies[isp] == 1
             continue
         end
@@ -127,7 +150,6 @@ function pack_state_vector!(y::Vector{Float64},
         idx += 1
     end
 
-    # Momentum (if any)
     if layout.nd >= 1
         y[idx] = Float64(rho_u::Real)
         idx += 1
@@ -141,7 +163,6 @@ function pack_state_vector!(y::Vector{Float64},
         idx += 1
     end
 
-    # Energies
     y[idx] = Float64(rho_etot)
     idx += 1
     if layout.eex_noneq
@@ -157,7 +178,7 @@ function pack_state_vector!(y::Vector{Float64},
         idx += 1
     end
 
-    @assert idx==layout.neq + 1 "Internal error: state packing length mismatch"
+    @assert idx == layout.neq + 1 "Internal error: state packing length mismatch"
     return nothing
 end
 
@@ -166,13 +187,13 @@ $(SIGNATURES)
 
 Unpack a compact `y` vector into component arrays.
 
-This returns `rho_sp` for all active species (including charge-balanced electrons
-when enabled), plus `rho_ex`/`rho_vx` when the corresponding STS modes are active.
+This returns `rho_sp` for all active species (including charge-balanced
+electrons when enabled), plus `rho_ex` and `rho_vx` when the corresponding STS
+modes are active.
 """
 function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
-    if length(y) != layout.neq
+    length(y) == layout.neq ||
         throw(DimensionMismatch("y length ($(length(y))) does not match layout.neq ($(layout.neq))"))
-    end
 
     rho_sp = zeros(Float64, layout.nsp)
     rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
@@ -182,10 +203,9 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
     idx = 1
     rho_total = 0.0
 
-    # Vibrational states first
     if layout.n_eq_vib > 0
         @assert rho_vx !== nothing
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if layout.ies[isp] == 0 || layout.ih[isp] != 2
                 continue
             end
@@ -193,8 +213,7 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
                 if layout.ivs[iex, isp] == 0
                     continue
                 end
-                mv_isp_iex = layout.mv[isp, iex]
-                for ivx in 0:mv_isp_iex
+                for ivx in 0:layout.mv[isp, iex]
                     val = Float64(y[idx])
                     (rho_vx::Array{Float64, 3})[ivx + 1, iex, isp] = val
                     rho_sp[isp] += val
@@ -205,10 +224,9 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         end
     end
 
-    # Electronic states next
     if layout.is_elec_sts
         @assert rho_ex !== nothing
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if layout.ies[isp] == 0
                 continue
             end
@@ -225,8 +243,7 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         end
     end
 
-    # Species densities
-    @inbounds for isp in 1:(layout.nsp)
+    @inbounds for isp in 1:layout.nsp
         if layout.ies[isp] == 1
             continue
         end
@@ -239,7 +256,6 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         idx += 1
     end
 
-    # Momentum
     rho_u = 0.0
     rho_v = 0.0
     rho_w = 0.0
@@ -256,7 +272,6 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         idx += 1
     end
 
-    # Energies
     rho_etot = Float64(y[idx])
     idx += 1
     rho_eeex = 0.0
@@ -275,20 +290,19 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
         idx += 1
     end
 
-    @assert idx==layout.neq + 1 "Internal error: state unpacking length mismatch"
+    @assert idx == layout.neq + 1 "Internal error: state unpacking length mismatch"
 
-    # Reconstruct electron density from charge balance if requested (matches Fortran convention).
     if layout.get_electron_density_by_charge_balance && layout.esp >= 1 &&
        layout.esp <= layout.nsp && rho_total > 0
         spgam = zeros(Float64, layout.nsp)
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if rho_sp[isp] == 0.0
                 continue
             end
             spgam[isp] = rho_sp[isp] / rho_total / (AVOGADRO * layout.spwt[isp])
         end
         spgam_e = 0.0
-        @inbounds for isp in 1:(layout.nsp)
+        @inbounds for isp in 1:layout.nsp
             if isp == layout.esp
                 continue
             end
@@ -307,4 +321,175 @@ function unpack_state_vector(y::AbstractVector{<:Real}, layout::ApiLayout)
             rho_erot = rho_erot,
             rho_eeex = rho_eeex,
             rho_evib = rho_evib)
+end
+
+function _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp::Vector{Float64},
+                                                  rho_ex::Union{Nothing, Matrix{Float64}},
+                                                  u::Vector{Float64},
+                                                  layout::ApiLayout)
+    fill!(rho_sp, 0.0)
+    rho_ex === nothing || fill!(rho_ex, 0.0)
+
+    idx = 1
+
+    if layout.n_eq_vib > 0
+        @inbounds for isp in 1:layout.nsp
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                for _ivx in 0:layout.mv[isp, iex]
+                    rho_sp[isp] += u[idx]
+                    idx += 1
+                end
+            end
+        end
+    end
+
+    if layout.is_elec_sts
+        @assert rho_ex !== nothing
+        @inbounds for isp in 1:layout.nsp
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                val = u[idx]
+                (rho_ex::Matrix{Float64})[iex, isp] = val
+                rho_sp[isp] += val
+                idx += 1
+            end
+        end
+    end
+
+    @inbounds for isp in 1:layout.nsp
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        rho_sp[isp] = u[idx]
+        idx += 1
+    end
+
+    @assert idx == layout.mom_range.start "Internal error: continuity reconstruction index mismatch"
+
+    if layout.get_electron_density_by_charge_balance
+        esp = layout.esp
+        if esp >= 1 && esp <= layout.nsp
+            s = 0.0
+            @inbounds for isp in 1:layout.nsp
+                if isp == esp
+                    continue
+                end
+                if layout.ie[isp] != 0
+                    s += layout.ie[isp] * rho_sp[isp] / layout.spwt[isp]
+                end
+            end
+            rho_sp[esp] = layout.spwt[esp] * s
+        end
+    end
+
+    return nothing
+end
+
+function _reconstruct_drho_sp_from_compact!(drho_sp::Vector{Float64},
+                                            dy::AbstractVector{<:Real},
+                                            layout::ApiLayout)
+    fill!(drho_sp, 0.0)
+
+    idx = 1
+
+    if layout.n_eq_vib > 0
+        @inbounds for isp in 1:layout.nsp
+            if layout.ies[isp] == 0 || layout.ih[isp] != 2
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 0
+                    continue
+                end
+                for _ivx in 0:layout.mv[isp, iex]
+                    drho_sp[isp] += Float64(dy[idx])
+                    idx += 1
+                end
+            end
+        end
+    end
+
+    if layout.is_elec_sts
+        @inbounds for isp in 1:layout.nsp
+            if layout.ies[isp] == 0
+                continue
+            end
+            for iex in 1:layout.mex[isp]
+                if layout.ivs[iex, isp] == 1
+                    continue
+                end
+                drho_sp[isp] += Float64(dy[idx])
+                idx += 1
+            end
+        end
+    end
+
+    @inbounds for isp in 1:layout.nsp
+        if layout.ies[isp] == 1
+            continue
+        end
+        if layout.get_electron_density_by_charge_balance && isp == layout.esp
+            continue
+        end
+        drho_sp[isp] = Float64(dy[idx])
+        idx += 1
+    end
+
+    @assert idx == layout.mom_range.start "Internal error: continuity derivative reconstruction index mismatch"
+    return nothing
+end
+
+@inline function _compact_drho_e_from_drho_sp(drho_sp::Vector{Float64}, layout::ApiLayout)
+    esp = layout.esp
+    if !(esp >= 1 && esp <= layout.nsp)
+        return 0.0
+    end
+    if !layout.get_electron_density_by_charge_balance
+        return drho_sp[esp]
+    end
+
+    s = 0.0
+    @inbounds for isp in 1:layout.nsp
+        if isp == esp
+            continue
+        end
+        if layout.ie[isp] != 0
+            s += layout.ie[isp] * drho_sp[isp] / layout.spwt[isp]
+        end
+    end
+    return layout.spwt[esp] * s
+end
+
+function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
+                                      p,
+                                      layout::ApiLayout,
+                                      u_final::Vector{Float64},
+                                      is_isothermal::Bool)
+    rho_sp = zeros(Float64, layout.nsp)
+    rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
+
+    if is_isothermal
+        y_work = similar(u_final)
+        _compact_isothermal_fill_fortran_y_work!(y_work, rho_sp, rho_ex, u_final, p, layout)
+    else
+        _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp, rho_ex, u_final, layout)
+    end
+
+    return ReactorStateCache(; species = species,
+                             rho_sp_cgs = rho_sp,
+                             rho_ex_cgs = rho_ex)
 end

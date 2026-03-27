@@ -43,20 +43,22 @@ include("results/chain.jl")
 include("chain/profile.jl")
 include("chain/marching.jl")
 
+include("reactor/state.jl")
+include("reactor/rhs.jl")
+include("reactor/initial.jl")
+
 include("io/logging.jl")
 include("io/input.jl")
 include("io/profile.jl")
 include("io/results.jl")
 
-include("sources/core.jl")
 include("sources/residence.jl")
 include("sources/wall.jl")
+include("sources/core.jl")
 
-include("solver/initial_state.jl")
-include("solver/state_vector.jl")
-include("solver/rhs.jl")
-include("solver/integrate_0d.jl")
-include("solver/driver.jl")
+include("reactor/integrate.jl")
+include("reactor/solve.jl")
+include("reactor/examples.jl")
 include("solver/chain_cstr.jl")
 
 export initialize_terra, finalize_terra
