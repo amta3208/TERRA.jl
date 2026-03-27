@@ -270,29 +270,23 @@ Base.show(io::IO, ::MIME"text/plain", entry::IntegrationDetailEntry) = print(io,
 # Chain rendering
 # -----------------------------------------------------------------------------
 
-function _chain_scalar(value)
-    if value === nothing
-        return "null"
-    elseif value isa Symbol
-        return String(value)
-    elseif value isa Bool
-        return lowercase(string(value))
-    elseif value isa Integer
-        return string(value)
-    elseif value isa Real
-        x = Float64(value)
-        if !isfinite(x)
-            return string(x)
-        elseif x == 0.0
-            return "0.0"
-        elseif abs(x) >= 1.0e4 || abs(x) < 1.0e-3
-            return @sprintf("%.6e", x)
-        end
-        return @sprintf("%.6f", x)
-    elseif value isa AbstractString
-        return String(value)
+_chain_scalar(::Nothing) = "null"
+_chain_scalar(value::Symbol) = String(value)
+_chain_scalar(value::Bool) = lowercase(string(value))
+_chain_scalar(value::Integer) = string(value)
+_chain_scalar(value::AbstractString) = String(value)
+_chain_scalar(value) = repr(value)
+
+function _chain_scalar(value::Real)
+    x = Float64(value)
+    if !isfinite(x)
+        return string(x)
+    elseif x == 0.0
+        return "0.0"
+    elseif abs(x) >= 1.0e4 || abs(x) < 1.0e-3
+        return @sprintf("%.6e", x)
     end
-    return repr(value)
+    return @sprintf("%.6f", x)
 end
 
 function _write_chain_line(io::IO, indent::Integer, key::AbstractString, value)
@@ -342,8 +336,8 @@ function Base.show(io::IO, ::MIME"text/plain", entry::ChainHeaderEntry)
     if _writes_file(stream_mode(CHAIN_LOG, config.runtime.logging))
         _write_chain_line(io, 2, "chain_log_path", chain_log_path(config.runtime))
     end
-    _write_chain_line(io, 2, "handoff_mode", marching.handoff_mode)
-    _write_chain_line(io, 2, "termination_mode", marching.termination_mode)
+    _write_chain_line(io, 2, "handoff_mode", chain_policy_name(marching.handoff_policy))
+    _write_chain_line(io, 2, "termination_mode", chain_policy_name(marching.termination_policy))
     _write_chain_line(io, 2, "is_isothermal_teex", marching.is_isothermal_teex)
     _write_chain_line(io, 2, "compact_to_source_index", repr(entry.compact_to_source_index))
     _write_chain_line(io, 2, "species", repr(config.reactor.composition.species))
@@ -456,8 +450,8 @@ function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainHeaderEntry)
     marching = entry.marching
     lines = [CHAIN_RUN_BANNER,
              @sprintf("segments: %d", length(profile.z_m)),
-             "handoff_mode: $(marching.handoff_mode)",
-             "termination_mode: $(marching.termination_mode)",
+             "handoff_mode: $(chain_policy_name(marching.handoff_policy))",
+             "termination_mode: $(chain_policy_name(marching.termination_policy))",
              "is_isothermal_teex: $(marching.is_isothermal_teex)"]
     emit!(RUN_LOG, runtime, EventEntry(:info, join(lines, "\n"); console = :minimal))
     return nothing
