@@ -7,9 +7,7 @@ function _solve_terra_0d_internal(config::Config;
                                   sources::Union{Nothing, SourceTermsConfig} = config.sources,
                                   wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
                                   state_cache::Union{Nothing, ReactorStateCache} = nothing,
-                                  presentation = STANDALONE_0D_PRESENTATION)
-    presentation_obj = _integration_presentation(presentation)
-
+                                  presentation::AbstractReactorPresentation = STANDALONE_0D_PRESENTATION)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
@@ -20,7 +18,7 @@ function _solve_terra_0d_internal(config::Config;
                                                           sources = sources,
                                                           wall_inputs = wall_inputs,
                                                           inlet_state_cache = state_cache,
-                                                          presentation = presentation_obj)
+                                                          presentation = presentation)
         return results, final_state_cache
     catch e
         emit!(RUN_LOG, config.runtime,

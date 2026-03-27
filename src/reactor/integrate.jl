@@ -11,17 +11,6 @@ struct ChainSegmentPresentation <: AbstractReactorPresentation end
 const STANDALONE_0D_PRESENTATION = Standalone0DPresentation()
 const CHAIN_SEGMENT_PRESENTATION = ChainSegmentPresentation()
 
-_integration_presentation(presentation::AbstractReactorPresentation) = presentation
-
-function _integration_presentation(presentation::Symbol)
-    if presentation == :standalone_0d
-        return STANDALONE_0D_PRESENTATION
-    elseif presentation == :chain_segment
-        return CHAIN_SEGMENT_PRESENTATION
-    end
-    throw(ArgumentError("Unsupported integration presentation: :$presentation"))
-end
-
 const STANDALONE_0D_BANNER = "\n" * "="^12 * " TERRA 0D Simulation " * "="^12
 const STANDALONE_0D_FOOTER = "="^(length(STANDALONE_0D_BANNER) - 1)
 
@@ -195,8 +184,8 @@ function _integrate_0d_system(config::Config,
                               sources::Union{Nothing, SourceTermsConfig} = config.sources,
                               wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
                               inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing,
-                              presentation = STANDALONE_0D_PRESENTATION)
-    presentation_obj = _integration_presentation(presentation)
+                              presentation::AbstractReactorPresentation = STANDALONE_0D_PRESENTATION)
+    presentation_obj = presentation
     runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
