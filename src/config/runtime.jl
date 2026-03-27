@@ -8,9 +8,8 @@ const _LOGGING_PROGRESS_MODES = (:auto, :off, :summary)
 const _LOGGING_STREAM_MODES = (:off, :file, :console, :both)
 
 function _validate_logging_mode(name::AbstractString, value::Symbol, allowed_modes)
-    value in allowed_modes ||
-        throw(ArgumentError("$(name) must be one of $(collect(allowed_modes)), got :$value"))
-    return value
+    value in allowed_modes ? value :
+    throw(ArgumentError("$(name) must be one of $(collect(allowed_modes)), got :$value"))
 end
 
 function _normalize_log_dir(log_dir::Union{Nothing, AbstractString})
@@ -61,21 +60,6 @@ struct LoggingConfig
                    chain_detail_mode,
                    _normalize_log_dir(log_dir))
     end
-end
-
-function _with_logging_config(logging::LoggingConfig;
-                              console_mode::Symbol = logging.console_mode,
-                              progress_mode::Symbol = logging.progress_mode,
-                              native_stream_mode::Symbol = logging.native_stream_mode,
-                              integration_detail_mode::Symbol = logging.integration_detail_mode,
-                              chain_detail_mode::Symbol = logging.chain_detail_mode,
-                              log_dir::Union{Nothing, AbstractString} = logging.log_dir)
-    return LoggingConfig(; console_mode = console_mode,
-                         progress_mode = progress_mode,
-                         native_stream_mode = native_stream_mode,
-                         integration_detail_mode = integration_detail_mode,
-                         chain_detail_mode = chain_detail_mode,
-                         log_dir = log_dir)
 end
 
 """

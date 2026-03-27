@@ -73,7 +73,7 @@ function initialize_terra(config::Config, case_path::String = config.runtime.cas
                            console = :never,
                            :case_path => case_path)
 
-            native_logging = _prepare_native_logging(runtime)
+            native_logging = prepare!(NATIVE_LOG, runtime)
             result = initialize_api_wrapper(case_path = case_path,
                                             native_console_level = native_logging.console_level,
                                             native_file_level = native_logging.file_level,

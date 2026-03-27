@@ -1,3 +1,9 @@
+const TEST_ENV_DIR = @__DIR__
+
+if !(TEST_ENV_DIR in LOAD_PATH)
+    pushfirst!(LOAD_PATH, TEST_ENV_DIR)
+end
+
 using TERRA: TERRA as terra
 using Test
 using Aqua
@@ -22,6 +28,7 @@ include("helpers/shared.jl")
         include("interop/library.jl")
         include("interop/lifecycle.jl")
         include("interop/metadata.jl")
+        include("interop/api_layout.jl")
         include("interop/thermo.jl")
     end
 
@@ -53,6 +60,7 @@ include("helpers/shared.jl")
 
     @testset "IO" begin
         include("io/input.jl")
+        include("io/logging.jl")
         include("io/profile.jl")
         include("io/export_chain_profile.jl")
         include("io/results.jl")

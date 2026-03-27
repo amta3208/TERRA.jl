@@ -9,7 +9,7 @@ function _segment_logging_log_dir(base_runtime::RuntimeConfig,
                                   segment_case_path::AbstractString)::Union{Nothing, String}
     base_runtime.logging.log_dir === nothing && return nothing
     segment_suffix = relpath(segment_case_path, base_runtime.case_path)
-    return normpath(joinpath(_resolve_log_dir(base_runtime), segment_suffix))
+    return normpath(joinpath(log_dir(base_runtime), segment_suffix))
 end
 
 function _segment_logging(base_runtime::RuntimeConfig,
@@ -336,9 +336,9 @@ function solve_terra_chain_steady(config::Config,
         n_segments = length(profile.z_m)
         compact_to_source_index = _resolve_compact_to_source_index(profile)
         header_entry = ChainHeaderEntry(config, profile, marching, compact_to_source_index)
-        _prepare_chain_logging(chain_runtime)
-        _emit_chain_summary(chain_runtime, header_entry)
-        _emit_chain_detail(chain_runtime, header_entry)
+        prepare!(CHAIN_LOG, chain_runtime)
+        emit!(RUN_LOG, chain_runtime, header_entry)
+        emit!(CHAIN_LOG, chain_runtime, header_entry)
 
         segment_end_reactors = [config.reactor for _ in 1:n_segments]
         segment_success = fill(false, n_segments)
@@ -357,7 +357,7 @@ function solve_terra_chain_steady(config::Config,
             segment_entry = ChainSegmentEntry(config, profile, compact_to_source_index, k,
                                               segment_case_path,
                                               segment_results[k])
-            _emit_chain_summary(chain_runtime, segment_entry)
+            emit!(RUN_LOG, chain_runtime, segment_entry)
 
             try
                 segment_config = _build_chain_segment_config(config, profile, k, inlet_reactor,
@@ -383,12 +383,12 @@ function solve_terra_chain_steady(config::Config,
             catch e
                 segment_messages[k] = "Segment setup/integration threw exception: $(e)"
                 segment_results[k] = _failed_simulation_result(segment_messages[k])
-                _emit_chain_detail(chain_runtime,
-                                   ChainSegmentEntry(config, profile,
-                                                     compact_to_source_index, k,
-                                                     segment_case_path,
-                                                     segment_results[k];
-                                                     state_cache_used = segment_state_cache_used[k]))
+                emit!(CHAIN_LOG, chain_runtime,
+                      ChainSegmentEntry(config, profile,
+                                        compact_to_source_index, k,
+                                        segment_case_path,
+                                        segment_results[k];
+                                        state_cache_used = segment_state_cache_used[k]))
                 diagnostics = _build_chain_diagnostics(config, profile, marching,
                                                        segment_end_reactors,
                                                        segment_state_cache_used,
@@ -405,8 +405,8 @@ function solve_terra_chain_steady(config::Config,
                                                      failed_cell = k,
                                                      message = "Chain failed at segment $k during setup/integration.",)
                 result_entry = ChainResultEntry(chain_result)
-                _emit_chain_detail(chain_runtime, result_entry)
-                _emit_chain_summary(chain_runtime, result_entry)
+                emit!(CHAIN_LOG, chain_runtime, result_entry)
+                emit!(RUN_LOG, chain_runtime, result_entry)
                 return chain_result
             end
 
@@ -415,11 +415,11 @@ function solve_terra_chain_steady(config::Config,
             segment_messages[k] = local_result.message
 
             if !local_result.success
-                _emit_chain_detail(chain_runtime,
-                                   ChainSegmentEntry(config, profile,
-                                                     compact_to_source_index, k,
-                                                     segment_case_path, local_result;
-                                                     state_cache_used = segment_state_cache_used[k]))
+                emit!(CHAIN_LOG, chain_runtime,
+                      ChainSegmentEntry(config, profile,
+                                        compact_to_source_index, k,
+                                        segment_case_path, local_result;
+                                        state_cache_used = segment_state_cache_used[k]))
                 diagnostics = _build_chain_diagnostics(config, profile, marching,
                                                        segment_end_reactors,
                                                        segment_state_cache_used,
@@ -436,19 +436,19 @@ function solve_terra_chain_steady(config::Config,
                                                      failed_cell = k,
                                                      message = "Chain failed at segment $k: $(local_result.message)",)
                 result_entry = ChainResultEntry(chain_result)
-                _emit_chain_detail(chain_runtime, result_entry)
-                _emit_chain_summary(chain_runtime, result_entry)
+                emit!(CHAIN_LOG, chain_runtime, result_entry)
+                emit!(RUN_LOG, chain_runtime, result_entry)
                 return chain_result
             end
 
             endpoint_reactor = _extract_segment_endpoint_reactor(config, local_result)
             segment_end_reactors[k] = endpoint_reactor
-            _emit_chain_detail(chain_runtime,
-                               ChainSegmentEntry(config, profile,
-                                                 compact_to_source_index, k,
-                                                 segment_case_path, local_result;
-                                                 endpoint_reactor = endpoint_reactor,
-                                                 state_cache_used = segment_state_cache_used[k]))
+            emit!(CHAIN_LOG, chain_runtime,
+                  ChainSegmentEntry(config, profile,
+                                    compact_to_source_index, k,
+                                    segment_case_path, local_result;
+                                    endpoint_reactor = endpoint_reactor,
+                                    state_cache_used = segment_state_cache_used[k]))
             inlet_reactor = endpoint_reactor
             upstream_state_cache = local_state_cache
         end
@@ -468,8 +468,8 @@ function solve_terra_chain_steady(config::Config,
                                              failed_cell = nothing,
                                              message = "chain success!",)
         result_entry = ChainResultEntry(chain_result)
-        _emit_chain_detail(chain_runtime, result_entry)
-        _emit_chain_summary(chain_runtime, result_entry)
+        emit!(CHAIN_LOG, chain_runtime, result_entry)
+        emit!(RUN_LOG, chain_runtime, result_entry)
         return chain_result
     end
 end

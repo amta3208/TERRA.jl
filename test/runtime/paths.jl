@@ -10,6 +10,7 @@
         @test layout.sources_dir == joinpath(temp_dir, "output", "sources")
         @test layout.states_dir == joinpath(temp_dir, "output", "states")
         @test layout.log_dir == joinpath(temp_dir, "output", "logs")
+        @test terra.log_dir(runtime) == layout.log_dir
         @test layout.run_log_path == joinpath(temp_dir, "output", "logs", "run.log")
         @test layout.native_log_path == joinpath(temp_dir, "output", "logs", "native.log")
         @test layout.chain_log_path == joinpath(temp_dir, "output", "logs", "chain.log")
@@ -34,6 +35,7 @@ end
                                           logging = terra.LoggingConfig(; log_dir = "custom_logs"))
         relative_layout = terra.case_layout(runtime_rel)
         @test relative_layout.log_dir == joinpath(temp_dir, "custom_logs")
+        @test terra.log_dir(runtime_rel) == relative_layout.log_dir
 
         runtime_abs = terra.RuntimeConfig(;
                                           case_path = temp_dir,

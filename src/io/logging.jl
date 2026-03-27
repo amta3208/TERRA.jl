@@ -2,6 +2,10 @@ const DEFAULT_PROGRESS_FRACTION_STEP = 0.1
 const CHAIN_RUN_BANNER = "\n" * "="^9 * " TERRA 1D Chain Simulation " * "="^9
 const CHAIN_RUN_FOOTER = "="^(length(CHAIN_RUN_BANNER) - 1)
 
+# -----------------------------------------------------------------------------
+# Log targets and entries
+# -----------------------------------------------------------------------------
+
 abstract type AbstractLogTarget end
 
 struct RunLog <: AbstractLogTarget end
@@ -24,7 +28,7 @@ end
 struct ExceptionEntry <: AbstractLogEntry
     level::Symbol
     message::String
-    exception
+    exception::Any
     console::Symbol
     fields::Vector{Pair{Symbol, Any}}
 end
@@ -68,19 +72,23 @@ function FractionProgressReporter(tlim::Real;
     return FractionProgressReporter(Float64(tlim), step, step)
 end
 
-EventEntry(level::Symbol, message::AbstractString;
-           console::Symbol = :never, fields...) = EventEntry(level,
-                                                             String(message),
-                                                             console,
-                                                             _field_pairs(fields))
+function EventEntry(level::Symbol, message::AbstractString;
+                    console::Symbol = :never, fields...)
+    return EventEntry(level,
+                      String(message),
+                      console,
+                      _field_pairs(fields))
+end
 
-ExceptionEntry(level::Symbol, message::AbstractString, exception;
-               console::Symbol = :never,
-               fields...) = ExceptionEntry(level,
-                                          String(message),
-                                          exception,
-                                          console,
-                                          _field_pairs(fields))
+function ExceptionEntry(level::Symbol, message::AbstractString, exception;
+                        console::Symbol = :never,
+                        fields...)
+    return ExceptionEntry(level,
+                          String(message),
+                          exception,
+                          console,
+                          _field_pairs(fields))
+end
 
 IntegrationDetailEntry(text::AbstractString) = IntegrationDetailEntry(String(text))
 
@@ -108,6 +116,10 @@ function ChainSegmentEntry(base_config::Config,
                              endpoint_reactor,
                              state_cache_used)
 end
+
+# -----------------------------------------------------------------------------
+# File and console routing
+# -----------------------------------------------------------------------------
 
 _writes_file(mode::Symbol) = mode == :file || mode == :both
 _writes_console(mode::Symbol) = mode == :console || mode == :both
@@ -137,10 +149,7 @@ function _append_log_text(path::AbstractString, text::AbstractString)
     return nothing
 end
 
-function prepare!(::RunLog, runtime::RuntimeConfig)
-    ensure_case_layout!(runtime)
-    return nothing
-end
+prepare!(::RunLog, runtime::RuntimeConfig) = (ensure_case_layout!(runtime); nothing)
 
 function prepare!(::ChainLog, runtime::RuntimeConfig)
     mode = stream_mode(CHAIN_LOG, runtime.logging)
@@ -159,9 +168,11 @@ function _native_console_level(logging::LoggingConfig)
     return API_NATIVE_LOG_MINIMAL
 end
 
-_native_file_level(logging::LoggingConfig) = _writes_file(logging.native_stream_mode) ?
-                                             API_NATIVE_LOG_VERBOSE :
-                                             API_NATIVE_LOG_OFF
+function _native_file_level(logging::LoggingConfig)
+    _writes_file(logging.native_stream_mode) ?
+    API_NATIVE_LOG_VERBOSE :
+    API_NATIVE_LOG_OFF
+end
 
 function prepare!(::NativeLog, runtime::RuntimeConfig)
     console_level = _native_console_level(runtime.logging)
@@ -232,9 +243,7 @@ function _emit_console_event(logging::LoggingConfig, entry::ExceptionEntry)
     return nothing
 end
 
-function _render(entry::AbstractLogEntry)
-    return sprint(show, MIME("text/plain"), entry)
-end
+_render(entry::AbstractLogEntry) = sprint(show, MIME("text/plain"), entry)
 
 function Base.show(io::IO, ::MIME"text/plain", entry::EventEntry)
     print(io, _format_run_log_line(entry.level, entry.message, entry.fields))
@@ -251,10 +260,11 @@ function Base.show(io::IO, ::MIME"text/plain", entry::ExceptionEntry)
     return nothing
 end
 
-function Base.show(io::IO, ::MIME"text/plain", entry::IntegrationDetailEntry)
-    print(io, entry.text)
-    return nothing
-end
+Base.show(io::IO, ::MIME"text/plain", entry::IntegrationDetailEntry) = print(io, entry.text)
+
+# -----------------------------------------------------------------------------
+# Chain rendering
+# -----------------------------------------------------------------------------
 
 function _chain_scalar(value)
     if value === nothing
@@ -371,7 +381,8 @@ function Base.show(io::IO, ::MIME"text/plain", entry::ChainSegmentEntry)
     _write_chain_line(io, 2, "message", entry.result.message)
 
     print(io, "  species_u_m_s:\n")
-    for (name, velocity) in _ordered_chain_velocity_pairs(entry.profile, entry.segment_index)
+    for (name, velocity) in _ordered_chain_velocity_pairs(entry.profile,
+                                                          entry.segment_index)
         _write_chain_line(io, 4, name, velocity)
     end
 
@@ -403,6 +414,10 @@ function Base.show(io::IO, ::MIME"text/plain", entry::ChainResultEntry)
     _write_chain_line(io, 2, "message", entry.result.message)
     return nothing
 end
+
+# -----------------------------------------------------------------------------
+# Runtime entrypoints and progress reporting
+# -----------------------------------------------------------------------------
 
 function emit!(::RunLog, runtime::RuntimeConfig, entry::EventEntry)
     prepare!(RUN_LOG, runtime)
@@ -436,10 +451,10 @@ function _chain_summary_entry(entry::ChainHeaderEntry)
     profile = entry.profile
     marching = entry.marching
     lines = [CHAIN_RUN_BANNER,
-             @sprintf("segments: %d", length(profile.z_m)),
-             "handoff_mode: $(marching.handoff_mode)",
-             "termination_mode: $(marching.termination_mode)",
-             "is_isothermal_teex: $(marching.is_isothermal_teex)"]
+        @sprintf("segments: %d", length(profile.z_m)),
+        "handoff_mode: $(marching.handoff_mode)",
+        "termination_mode: $(marching.termination_mode)",
+        "is_isothermal_teex: $(marching.is_isothermal_teex)"]
     return EventEntry(:info, join(lines, "\n"); console = :minimal)
 end
 
@@ -455,16 +470,18 @@ function _chain_summary_entry(entry::ChainResultEntry)
     return EventEntry(level, string(message, "\n", CHAIN_RUN_FOOTER); console = :minimal)
 end
 
-function emit!(::RunLog, runtime::RuntimeConfig, entry::Union{ChainHeaderEntry,
-                                                              ChainSegmentEntry,
-                                                              ChainResultEntry})
+function emit!(::RunLog, runtime::RuntimeConfig,
+               entry::Union{ChainHeaderEntry,
+                            ChainSegmentEntry,
+                            ChainResultEntry})
     emit!(RUN_LOG, runtime, _chain_summary_entry(entry))
     return nothing
 end
 
-function emit!(::ChainLog, runtime::RuntimeConfig, entry::Union{ChainHeaderEntry,
-                                                                ChainSegmentEntry,
-                                                                ChainResultEntry})
+function emit!(::ChainLog, runtime::RuntimeConfig,
+               entry::Union{ChainHeaderEntry,
+                            ChainSegmentEntry,
+                            ChainResultEntry})
     mode = stream_mode(CHAIN_LOG, runtime.logging)
     mode == :off && return nothing
 
@@ -496,29 +513,6 @@ function _emit_integration_detail(runtime::RuntimeConfig, detail_text::AbstractS
     return nothing
 end
 
-function _prepare_chain_logging(runtime::RuntimeConfig)
-    prepare!(CHAIN_LOG, runtime)
-    return nothing
-end
-
-function _emit_chain_summary(runtime::RuntimeConfig, entry::Union{ChainHeaderEntry,
-                                                                  ChainSegmentEntry,
-                                                                  ChainResultEntry})
-    emit!(RUN_LOG, runtime, entry)
-    return nothing
-end
-
-function _emit_chain_detail(runtime::RuntimeConfig, entry::Union{ChainHeaderEntry,
-                                                                 ChainSegmentEntry,
-                                                                 ChainResultEntry})
-    emit!(CHAIN_LOG, runtime, entry)
-    return nothing
-end
-
-function _prepare_native_logging(runtime::RuntimeConfig)
-    return prepare!(NATIVE_LOG, runtime)
-end
-
 function _progress_mode_enabled(logging::LoggingConfig)
     if logging.progress_mode == :off
         return false
@@ -529,7 +523,8 @@ function _progress_mode_enabled(logging::LoggingConfig)
 end
 
 function _progress_reporter(runtime::RuntimeConfig, tlim::Real)
-    return _progress_mode_enabled(runtime.logging) ? FractionProgressReporter(tlim) : nothing
+    return _progress_mode_enabled(runtime.logging) ? FractionProgressReporter(tlim) :
+           nothing
 end
 
 function _progress_message(progress::FractionProgressReporter, t::Real)
@@ -538,7 +533,8 @@ function _progress_message(progress::FractionProgressReporter, t::Real)
     return @sprintf("-> %3d%% (t = %.3e / %.3e s)", pct, Float64(t), progress.tlim)
 end
 
-function _report_progress!(runtime::RuntimeConfig, progress::FractionProgressReporter, t::Real)
+function _report_progress!(runtime::RuntimeConfig, progress::FractionProgressReporter,
+                           t::Real)
     _log_run_event(runtime, :info, _progress_message(progress, t);
                    console = :minimal,
                    :t => Float64(t),

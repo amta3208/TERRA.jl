@@ -1,18 +1,12 @@
 """
-# TERRA Solver Module
-
-This module provides the high-level interface for running TERRA simulations
-from Julia, hiding the complexity of the Fortran interface and providing
-a clean, Julia-native API.
+Compact metadata for the Fortran `rhs_api` state layout.
 """
 
-# Debug: RHS call counter
-const _TERRA_ODE_DBG_CALLS = Ref(0)
-
 """
-Compact API layout information for the Fortran `rhs_api` / `calculate_rhs_api` state vectors.
+Compact API layout information for the Fortran `rhs_api` / `calculate_rhs_api`
+state vectors.
 
-This describes the *compact* ordering used internally by TERRA:
+This describes the compact ordering used internally by TERRA:
 `[rho_vib_states, rho_elec_states, rho_species, rho_u..., rho_etot, rho_eeex?, rho_erot?, rho_evib?]`.
 """
 struct ApiLayout
@@ -91,12 +85,14 @@ function ApiLayout(layout::NamedTuple)
     energy_stop = neq
 
     idx_etot = energy_start
-    idx_eeex = (layout.eex_noneq == 1) ? (idx_etot + 1) : 0
-    idx_erot = (layout.rot_noneq == 1) ? (idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0)) :
+    idx_eeex = layout.eex_noneq == 1 ? idx_etot + 1 : 0
+    idx_erot = layout.rot_noneq == 1 ?
+               idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0) :
                0
-    idx_evib = (layout.vib_noneq == 1) ?
-               (idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0) +
-                (layout.rot_noneq == 1 ? 1 : 0)) : 0
+    idx_evib = layout.vib_noneq == 1 ?
+               idx_etot + 1 + (layout.eex_noneq == 1 ? 1 : 0) +
+               (layout.rot_noneq == 1 ? 1 : 0) :
+               0
 
     return ApiLayout(Int(layout.layout_version),
                      Int(layout.mnsp),
@@ -144,6 +140,4 @@ $(SIGNATURES)
 
 Query the Fortran API for the current `y`/`dy` layout.
 """
-function get_api_layout()
-    return ApiLayout(get_api_layout_wrapper())
-end
+get_api_layout() = ApiLayout(get_api_layout_wrapper())

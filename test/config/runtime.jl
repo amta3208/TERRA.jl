@@ -62,11 +62,11 @@ end
     segment_config = terra._build_chain_segment_config(config, profile, 1, inlet_reactor,
                                                        marching)
 
-    expected_segment_log_dir = normpath(joinpath(terra._resolve_log_dir(config.runtime),
+    expected_segment_log_dir = normpath(joinpath(terra.log_dir(config.runtime),
                                                  "chain_segments", "segment_0001"))
     @test segment_config.runtime.logging.native_stream_mode == :file
     @test segment_config.runtime.logging.integration_detail_mode == :file
     @test segment_config.runtime.logging.chain_detail_mode == :off
     @test segment_config.runtime.logging.log_dir == expected_segment_log_dir
-    @test terra._resolve_log_dir(segment_config.runtime) == expected_segment_log_dir
+    @test terra.log_dir(segment_config.runtime) == expected_segment_log_dir
 end

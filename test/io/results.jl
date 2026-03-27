@@ -1,4 +1,6 @@
-@testset "Chain Result Save/Load" begin
+using JSON
+
+function _chain_result_fixture()
     frame1 = terra.ReactorFrame(;
         t = 0.0,
         species_densities = [1e-3, 1e-6, 1e-8],
@@ -98,8 +100,28 @@
         message = "Chain integration failed at cell 2",
     )
 
+    return (reactor = reactor1, chain = chain)
+end
+
+@testset "Reactor Result Save" begin
+    fixture = _chain_result_fixture()
+    output_path = tempname() * ".csv"
+
+    @test terra.save_results(fixture.reactor, output_path)
+    @test isfile(output_path)
+
+    lines = split(chomp(read(output_path, String)), '\n')
+    @test length(lines) == 3
+    @test startswith(lines[1], "time,total_energy,T_trans,T_electron,T_vib")
+    @test occursin("species_1_density", lines[1])
+    @test occursin("0.0,10000.0,300.0,10000.0,320.0", lines[2])
+end
+
+@testset "Chain Result Save/Load" begin
+    fixture = _chain_result_fixture()
     output_path = tempname() * ".json"
-    @test terra.save_results(chain, output_path)
+
+    @test terra.save_results(fixture.chain, output_path)
     @test isfile(output_path)
 
     loaded = terra.load_results_chain(output_path)
@@ -127,4 +149,28 @@
 
     missing_path = joinpath(mktempdir(), "missing_chain_results.json")
     @test_throws ArgumentError terra.load_results_chain(missing_path)
+end
+
+@testset "Chain Result Validation" begin
+    fixture = _chain_result_fixture()
+    output_path = tempname() * ".json"
+    @test terra.save_results(fixture.chain, output_path)
+
+    bad_schema_path = tempname() * ".json"
+    bad_schema = JSON.parsefile(output_path)
+    bad_schema["schema_version"] = "terra_chain_results_v1"
+    open(bad_schema_path, "w") do io
+        JSON.print(io, bad_schema, 2)
+        println(io)
+    end
+    @test_throws ArgumentError terra.load_results_chain(bad_schema_path)
+
+    bad_count_path = tempname() * ".json"
+    bad_count = JSON.parsefile(output_path)
+    bad_count["metadata"]["retained_point_count"] = 5
+    open(bad_count_path, "w") do io
+        JSON.print(io, bad_count, 2)
+        println(io)
+    end
+    @test_throws ArgumentError terra.load_results_chain(bad_count_path)
 end

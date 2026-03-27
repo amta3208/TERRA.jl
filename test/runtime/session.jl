@@ -33,7 +33,7 @@ end
     custom_log_dir = mktempdir()
     try
         default_runtime = terra.RuntimeConfig(; case_path = temp_dir)
-        default_logging = terra._prepare_native_logging(default_runtime)
+        default_logging = terra.prepare!(terra.NATIVE_LOG, default_runtime)
         @test default_logging.console_level == terra.API_NATIVE_LOG_OFF
         @test default_logging.file_level == terra.API_NATIVE_LOG_VERBOSE
         @test default_logging.log_path == joinpath(temp_dir, "output", "logs", "native.log")
@@ -44,7 +44,7 @@ end
                                              logging = terra.LoggingConfig(;
                                                                            native_stream_mode = :off,
                                                                            log_dir = custom_log_dir))
-        custom_logging = terra._prepare_native_logging(custom_runtime)
+        custom_logging = terra.prepare!(terra.NATIVE_LOG, custom_runtime)
         @test custom_logging.file_level == terra.API_NATIVE_LOG_OFF
         @test custom_logging.log_path === nothing
         @test isdir(custom_log_dir)

@@ -36,20 +36,21 @@ function CaseLayout(runtime::RuntimeConfig)
     output_dir = normpath(joinpath(case_path, "output"))
     sources_dir = normpath(joinpath(output_dir, "sources"))
     states_dir = normpath(joinpath(output_dir, "states"))
-    log_dir = _resolve_log_dir(case_path, runtime.logging)
+    log_dir_path = _resolve_log_dir(case_path, runtime.logging)
     return CaseLayout(case_path,
                       input_dir,
                       output_dir,
                       sources_dir,
                       states_dir,
-                      log_dir,
-                      joinpath(log_dir, DEFAULT_RUN_LOG_FILENAME),
-                      joinpath(log_dir, DEFAULT_NATIVE_LOG_FILENAME),
-                      joinpath(log_dir, DEFAULT_CHAIN_LOG_FILENAME))
+                      log_dir_path,
+                      joinpath(log_dir_path, DEFAULT_RUN_LOG_FILENAME),
+                      joinpath(log_dir_path, DEFAULT_NATIVE_LOG_FILENAME),
+                      joinpath(log_dir_path, DEFAULT_CHAIN_LOG_FILENAME))
 end
 
 case_layout(runtime::RuntimeConfig) = CaseLayout(runtime)
 
+log_dir(runtime::RuntimeConfig) = case_layout(runtime).log_dir
 run_log_path(runtime::RuntimeConfig) = case_layout(runtime).run_log_path
 native_log_path(runtime::RuntimeConfig) = case_layout(runtime).native_log_path
 chain_log_path(runtime::RuntimeConfig) = case_layout(runtime).chain_log_path
