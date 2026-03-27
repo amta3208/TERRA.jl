@@ -41,14 +41,14 @@ function _chain_diagnostics(base_config::Config,
                             segment_end_reactors::AbstractVector{<:ReactorConfig},
                             segment_state_cache_used::AbstractVector{Bool},
                             full_state_handoff_supported::Union{Nothing, Bool})
-    diagnostics = Dict{String, Any}("handoff_mode" => String(marching.handoff_mode),
-                                    "termination_mode" => String(marching.termination_mode),
+    diagnostics = Dict{String, Any}("handoff_mode" => chain_policy_name(marching.handoff_policy),
+                                    "termination_mode" => chain_policy_name(marching.termination_policy),
                                     "override_tt_K" => marching.override_tt_K,
                                     "override_tv_K" => marching.override_tv_K,
                                     "segment_rho_ex_handoff_applied" => Bool[flag
                                                                              for flag in segment_state_cache_used])
 
-    if marching.handoff_mode == :full_state
+    if requires_state_cache_handoff(marching.handoff_policy)
         diagnostics["full_state_rho_ex_handoff_supported"] = full_state_handoff_supported ===
                                                              true
         if full_state_handoff_supported === false

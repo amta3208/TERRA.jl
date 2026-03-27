@@ -379,8 +379,8 @@ function _segment_wall_profile_values(profile::AxialChainProfile,
                                       segment_index::Integer,
                                       wall_cfg::Union{Nothing, WallLossConfig} = nothing)
     if profile.wall_profile === nothing
-        if wall_cfg !== nothing && wall_cfg.enabled
-            throw(ArgumentError("WallLossConfig is enabled, but AxialChainProfile.wall_profile is missing. " *
+        if wall_cfg !== nothing
+            throw(ArgumentError("WallLossConfig is configured, but AxialChainProfile.wall_profile is missing. " *
                                 "Wall losses require `wall_profile` in a `terra_chain_profile_v4` chain profile."))
         end
         return nothing

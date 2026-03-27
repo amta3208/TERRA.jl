@@ -56,13 +56,7 @@ function _chain_segment_config(base_config::Config,
          marching.override_tt_K
     tv = marching.override_tv_K === nothing ? inlet_reactor.thermal.Tv :
          marching.override_tv_K
-    tee = if segment_index == 1
-        inlet_reactor.thermal.Tee
-    elseif marching.handoff_mode == :full_state
-        te_profile
-    else
-        inlet_reactor.thermal.Tee
-    end
+    tee = segment_tee(marching.handoff_policy, segment_index, te_profile, inlet_reactor)
 
     chain_physics = PhysicsConfig(bbh_model = base_config.models.physics.bbh_model,
                                   esc_model = base_config.models.physics.esc_model,
@@ -77,8 +71,7 @@ function _chain_segment_config(base_config::Config,
                                   energy_loss_per_eii = base_config.models.physics.energy_loss_per_eii)
 
     base_rt = base_config.sources.residence_time
-    residence_time = ResidenceTimeConfig(enabled = true,
-                                         L = profile.dx_m[segment_index],
+    residence_time = ResidenceTimeConfig(L = profile.dx_m[segment_index],
                                          U_species = _profile_species_velocity_at_segment(profile,
                                                                                           segment_index),
                                          U_energy = base_rt === nothing ? nothing :
@@ -149,9 +142,9 @@ $(SIGNATURES)
 Solve a steady axial chain of CSTR segments using the TERRA 0D solver.
 
 This implementation supports:
-- `handoff_mode = :reinitialize`
-- `handoff_mode = :full_state`
-- `termination_mode = :final_time`
+- `ReinitializeHandoff()`
+- `FullStateHandoff()`
+- `FinalTimeTermination()`
 
 # Arguments
 - `config::Config`: Base TERRA config for models, sources, solver controls, and inlet state
@@ -212,15 +205,16 @@ function solve_terra_chain_steady(config::Config,
                 initialize_terra(segment_config, segment_config.runtime.case_path;
                                  lifecycle_console = :never,
                                  preserve_active_runtime = false)
-                if marching.handoff_mode == :full_state &&
+                if requires_state_cache_handoff(marching.handoff_policy) &&
                    full_state_handoff_supported === nothing
                     full_state_handoff_supported = has_electronic_sts_wrapper()
                 end
-                requested_state_cache = (marching.handoff_mode == :full_state && k > 1) ?
-                                        upstream_state_cache : nothing
-                segment_state_cache_used[k] = requested_state_cache !== nothing &&
-                                              full_state_handoff_supported === true &&
-                                              requested_state_cache.rho_ex_cgs !== nothing
+                requested_state_cache = requested_handoff_state_cache(marching.handoff_policy,
+                                                                      k,
+                                                                      upstream_state_cache)
+                segment_state_cache_used[k] = state_cache_handoff_used(marching.handoff_policy,
+                                                                       requested_state_cache,
+                                                                       full_state_handoff_supported)
                 local_result, local_state_cache = _solve_terra_0d_internal(segment_config;
                                                                            wall_inputs = wall_inputs,
                                                                            state_cache = requested_state_cache,
