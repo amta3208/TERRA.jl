@@ -1,47 +1,80 @@
+abstract type AbstractPreparedSource end
+
 struct PreparedSources
-    residence_time::Union{Nothing, PreparedResidenceTimeSource}
-    wall_losses::Union{Nothing, PreparedWallLossData}
+    operators::Vector{AbstractPreparedSource}
 end
 
-PreparedSources() = PreparedSources(nothing, nothing)
+PreparedSources() = PreparedSources(AbstractPreparedSource[])
+PreparedSources(operators::AbstractPreparedSource...) =
+    PreparedSources(AbstractPreparedSource[operator for operator in operators])
+
+function source_operator(sources::PreparedSources, ::Type{T}) where {T <: AbstractPreparedSource}
+    for operator in sources.operators
+        operator isa T && return operator
+    end
+    return nothing
+end
+
+prepare_source(layout::ApiLayout, config::Config, u0::Vector{Float64}, ::Nothing;
+               wall_inputs = nothing,
+               inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing) = nothing
 
 function _prepare_sources(layout::ApiLayout, config::Config, u0::Vector{Float64}, ::Nothing;
-                          wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
+                          wall_inputs = nothing,
                           inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     return PreparedSources()
 end
 
 function _prepare_sources(layout::ApiLayout, config::Config,
                           u0::Vector{Float64}, sources::SourceTermsConfig;
-                          wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
+                          wall_inputs = nothing,
                           inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
-    residence_time = _prepare_residence_time_source(layout, config, u0,
-                                                    sources.residence_time;
-                                                    inlet_state_cache = inlet_state_cache)
-    wall_losses = _prepare_wall_losses(layout, config, sources.wall_losses;
-                                       wall_inputs = wall_inputs)
-    return PreparedSources(residence_time, wall_losses)
+    operators = AbstractPreparedSource[]
+
+    residence_time = prepare_source(layout, config, u0, sources.residence_time;
+                                    inlet_state_cache = inlet_state_cache)
+    residence_time === nothing || push!(operators, residence_time)
+
+    wall_losses = prepare_source(layout, config, u0, sources.wall_losses;
+                                 wall_inputs = wall_inputs)
+    wall_losses === nothing || push!(operators, wall_losses)
+
+    return PreparedSources(operators)
 end
 
 @inline _apply_sources!(du::Vector{Float64}, u::Vector{Float64}, ::Nothing) = nothing
 
 function _apply_sources!(du::Vector{Float64}, u::Vector{Float64}, sources::PreparedSources)
-    _apply_residence_time!(du, u, sources.residence_time)
-    _apply_wall_losses!(du, u, sources.wall_losses)
+    for operator in sources.operators
+        apply_source!(du, u, operator)
+    end
     return nothing
+end
+
+function _source_snapshot_namedtuple(entries::Vector{Pair{Symbol, Any}})
+    keys = Tuple(first(entry) for entry in entries)
+    values = Tuple(last(entry) for entry in entries)
+    return NamedTuple{keys}(values)
 end
 
 function _source_frame_snapshot(u::Vector{Float64},
                                 sources::PreparedSources,
                                 unit_system::Symbol)
-    wall_snapshot = _wall_loss_frame_snapshot(u, sources.wall_losses, unit_system)
-    wall_snapshot === nothing && return nothing
-    return (wall_losses = wall_snapshot,)
+    entries = Pair{Symbol, Any}[]
+    for operator in sources.operators
+        snapshot = source_frame_snapshot(u, operator, unit_system)
+        snapshot === nothing || push!(entries, source_name(operator) => snapshot)
+    end
+    isempty(entries) && return nothing
+    return _source_snapshot_namedtuple(entries)
 end
 
 function _source_result_metadata(sources::PreparedSources)
     metadata = Dict{String, Any}()
-    wall_metadata = _wall_loss_metadata(sources.wall_losses)
-    wall_metadata === nothing || (metadata["wall_losses"] = wall_metadata)
+    for operator in sources.operators
+        operator_metadata = source_result_metadata(operator)
+        operator_metadata === nothing ||
+            (metadata[String(source_name(operator))] = operator_metadata)
+    end
     return metadata
 end

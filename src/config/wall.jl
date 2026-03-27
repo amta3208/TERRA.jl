@@ -108,12 +108,10 @@ $(SIGNATURES)
 Wrapper-managed wall-loss configuration.
 """
 struct WallLossConfig
-    enabled::Bool
     species_models::Dict{String, SpeciesWallModel}
 
-    function WallLossConfig(; enabled::Bool = true,
-                            species_models::AbstractDict = Dict{String, SpeciesWallModel}())
+    function WallLossConfig(; species_models::AbstractDict = Dict{String, SpeciesWallModel}())
         species_model_dict = _coerce_wall_species_models(species_models)
-        return new(enabled, species_model_dict)
+        return new(species_model_dict)
     end
 end

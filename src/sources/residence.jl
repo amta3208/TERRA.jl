@@ -1,4 +1,4 @@
-struct PreparedResidenceTimeSource
+struct PreparedResidenceTimeSource <: AbstractPreparedSource
     u_in::Vector{Float64}
     species_order::Vector{String}
     species_indices::Dict{String, Vector{Int}}
@@ -81,11 +81,11 @@ function _build_residence_time_energy_indices(layout::ApiLayout, is_isothermal_t
     return indices
 end
 
-@inline _apply_residence_time!(du::Vector{Float64}, u::Vector{Float64}, ::Nothing) = nothing
+source_name(::PreparedResidenceTimeSource) = :residence_time
 
-function _apply_residence_time!(du::Vector{Float64},
-                                u::Vector{Float64},
-                                residence_time::PreparedResidenceTimeSource)
+function apply_source!(du::Vector{Float64},
+                       u::Vector{Float64},
+                       residence_time::PreparedResidenceTimeSource)
     u_in = residence_time.u_in
     @inbounds for name in residence_time.species_order
         inv_tau = residence_time.inv_tau_species[name]
@@ -98,6 +98,12 @@ function _apply_residence_time!(du::Vector{Float64},
     end
     return nothing
 end
+
+source_frame_snapshot(u::Vector{Float64},
+                      ::PreparedResidenceTimeSource,
+                      unit_system::Symbol) = nothing
+
+source_result_metadata(::PreparedResidenceTimeSource) = nothing
 
 function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
                                           species_order::Vector{String})
@@ -116,22 +122,11 @@ function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
     return nothing
 end
 
-@inline function _prepare_residence_time_source(layout::ApiLayout,
-                                                config::Config,
-                                                u0::Vector{Float64},
-                                                ::Nothing;
-                                                inlet_state_cache::Union{Nothing,
-                                                                         ReactorStateCache} = nothing)
-    return nothing
-end
-
-function _prepare_residence_time_source(layout::ApiLayout,
-                                        config::Config,
-                                        u0::Vector{Float64},
-                                        rt_cfg::ResidenceTimeConfig;
-                                        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
-    rt_cfg.enabled || return nothing
-
+function prepare_source(layout::ApiLayout,
+                        config::Config,
+                        u0::Vector{Float64},
+                        rt_cfg::ResidenceTimeConfig;
+                        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
     continuity = _build_residence_time_continuity_indices(layout,
                                                           config.reactor.composition.species)
     species_order = continuity.species_order

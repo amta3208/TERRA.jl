@@ -60,7 +60,7 @@ struct PreparedWallReaction{M <: SpeciesWallModel} <: PreparedWallSpeciesModel
     model::M
 end
 
-struct PreparedWallLossData
+struct PreparedWallLossData <: AbstractPreparedSource
     wall_config::WallLossConfig
     wall_inputs::SegmentWallInputs
     species_index_data::WallLossSpeciesIndexData
@@ -74,8 +74,7 @@ end
 
 @inline function _wall_losses_enabled(sources::Union{Nothing, SourceTermsConfig})
     return sources !== nothing &&
-           sources.wall_losses !== nothing &&
-           sources.wall_losses.enabled
+           sources.wall_losses !== nothing
 end
 
 function _validate_direct_wall_loss_usage(sources::Union{Nothing, SourceTermsConfig})
@@ -277,20 +276,13 @@ function _prepare_wall_species_model(reactant::String,
                                          reactant_charge)
 end
 
-@inline function _prepare_wall_losses(layout::ApiLayout,
-                                      config::Config,
-                                      ::Nothing;
-                                      wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
-    return nothing
-end
-
-function _prepare_wall_losses(layout::ApiLayout,
-                              config::Config,
-                              wall_cfg::WallLossConfig;
-                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
-    wall_cfg.enabled || return nothing
+function prepare_source(layout::ApiLayout,
+                        config::Config,
+                        u0::Vector{Float64},
+                        wall_cfg::WallLossConfig;
+                        wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     wall_inputs === nothing &&
-        throw(ArgumentError("WallLossConfig is enabled, but no segment wall inputs were provided. " *
+        throw(ArgumentError("WallLossConfig is present, but no segment wall inputs were provided. " *
                             "Wall losses are profile-driven and require per-segment `wall_profile` data."))
 
     species_index_data = _build_wall_loss_index_data(layout,
@@ -399,20 +391,19 @@ function _accumulate_wall_loss_sources!(du::Union{Nothing, Vector{Float64}},
     return nothing
 end
 
-@inline _apply_wall_losses!(du::Vector{Float64}, u::Vector{Float64}, ::Nothing) = nothing
+source_name(::PreparedWallLossData) = :wall_losses
 
-function _apply_wall_losses!(du::Vector{Float64},
-                             u::Vector{Float64},
-                             wall_losses::PreparedWallLossData)
+function apply_source!(du::Vector{Float64},
+                       u::Vector{Float64},
+                       wall_losses::PreparedWallLossData)
     isempty(wall_losses.models) && return nothing
     _accumulate_wall_loss_sources!(du, u, wall_losses)
     return nothing
 end
 
-function _wall_loss_frame_snapshot(u::Vector{Float64},
-                                   wall_losses::Union{Nothing, PreparedWallLossData},
-                                   unit_system::Symbol)
-    wall_losses === nothing && return nothing
+function source_frame_snapshot(u::Vector{Float64},
+                               wall_losses::PreparedWallLossData,
+                               unit_system::Symbol)
     isempty(wall_losses.models) && return nothing
 
     species_drho = zeros(Float64, length(wall_losses.species_index_data.species_order))
@@ -434,9 +425,7 @@ function _wall_loss_frame_snapshot(u::Vector{Float64},
             k_wall_1_s = k_wall)
 end
 
-function _wall_loss_metadata(wall_losses::Union{Nothing, PreparedWallLossData})
-    wall_losses === nothing && return nothing
-
+function source_result_metadata(wall_losses::PreparedWallLossData)
     species_models = Dict{String, Any}()
     for model in wall_losses.models
         reaction = _reaction(model)
