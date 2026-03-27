@@ -1,9 +1,3 @@
-const TEST_ENV_DIR = @__DIR__
-
-if !(TEST_ENV_DIR in LOAD_PATH)
-    pushfirst!(LOAD_PATH, TEST_ENV_DIR)
-end
-
 using TERRA: TERRA as terra
 using Test
 using Aqua
