@@ -470,17 +470,3 @@ function _wall_loss_metadata(wall_losses::Union{Nothing, PreparedWallLossData})
                              "enabled_flags" => enabled_flags,
                              "species_models" => species_models)
 end
-
-function _chain_wall_profile_to_dict(wall_profile::ChainWallProfile)
-    payload = Dict{String, Any}("a_wall_over_v_m_inv" => copy(wall_profile.a_wall_over_v_m_inv))
-    if wall_profile.channel_gap_m !== nothing
-        payload["channel_gap_m"] = copy(wall_profile.channel_gap_m)
-    end
-    if wall_profile.wall_temperature_K !== nothing
-        payload["wall_temperature_K"] = copy(wall_profile.wall_temperature_K)
-    end
-    if wall_profile.ion_edge_to_center_ratio !== nothing
-        payload["ion_edge_to_center_ratio"] = copy(wall_profile.ion_edge_to_center_ratio)
-    end
-    return payload
-end

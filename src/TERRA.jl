@@ -59,7 +59,9 @@ include("sources/core.jl")
 include("reactor/integrate.jl")
 include("reactor/solve.jl")
 include("reactor/examples.jl")
-include("solver/chain_cstr.jl")
+
+include("chain/diagnostics.jl")
+include("chain/solve.jl")
 
 export initialize_terra, finalize_terra
 export Config, ReactorConfig, ReactorComposition, ReactorThermalState

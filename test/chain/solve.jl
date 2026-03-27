@@ -1,4 +1,4 @@
-@testset "Chain CSTR solver" begin
+@testset "Chain solve" begin
     function build_chain_test_config()
         config = terra.nitrogen_10ev_config(; isothermal = false)
         config = terra.with_case_path(config, mktempdir())
@@ -100,12 +100,12 @@
         @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6
                   for
                   frame in segment_result.frames)
-        segment1_config = terra._build_chain_segment_config(config,
-                                                            profile,
-                                                            1,
-                                                            terra._build_profile_inlet_reactor(profile,
-                                                                                               config.runtime.unit_system),
-                                                            marching)
+        segment1_config = terra._chain_segment_config(config,
+                                                      profile,
+                                                      1,
+                                                      terra._profile_inlet_reactor(profile,
+                                                                                   config.runtime.unit_system),
+                                                      marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
         chain_log_path = joinpath(config.runtime.case_path, "output", "logs", "chain.log")
         @test isfile(chain_log_path)
@@ -127,6 +127,37 @@
         @test !occursin("Initializing TERRA", run_log)
 
         cleanup_terra!()
+    end
+
+    @testset "Chain segment runtime logging stays file-only under segment case path" begin
+        config = terra.nitrogen_10ev_config()
+        config = terra.with_case_path(config, mktempdir())
+        config = terra.with_logging(config;
+                                    native_stream_mode = :both,
+                                    integration_detail_mode = :both,
+                                    chain_detail_mode = :both,
+                                    log_dir = "custom_logs")
+        profile = terra.AxialChainProfile(z_m = [0.0],
+                                          dx_m = [0.01],
+                                          te_K = [config.reactor.thermal.Te],
+                                          species_u_m_s = Dict("N" => [150.0],
+                                                               "N2" => [120.0],
+                                                               "N+" => [18000.0],
+                                                               "N2+" => [19000.0]),
+                                          inlet = profile_inlet(config))
+        marching = terra.AxialMarchingConfig()
+        inlet_reactor = terra._profile_inlet_reactor(profile, config.runtime.unit_system)
+        segment_config = terra._chain_segment_config(config, profile, 1, inlet_reactor,
+                                                     marching)
+
+        expected_segment_log_dir = normpath(joinpath(terra.log_dir(config.runtime),
+                                                     "chain_segments",
+                                                     "segment_0001"))
+        @test segment_config.runtime.logging.native_stream_mode == :file
+        @test segment_config.runtime.logging.integration_detail_mode == :file
+        @test segment_config.runtime.logging.chain_detail_mode == :off
+        @test segment_config.runtime.logging.log_dir == expected_segment_log_dir
+        @test terra.log_dir(segment_config.runtime) == expected_segment_log_dir
     end
 
     @testset "Chain detail logging can be disabled" begin
@@ -167,10 +198,10 @@
                                                                                    ion_base = 18000.0),
                                           inlet = profile_inlet(config))
         marching = terra.AxialMarchingConfig()
-        inlet_reactor = terra._build_profile_inlet_reactor(profile,
-                                                           config.runtime.unit_system)
-        segment_config = terra._build_chain_segment_config(config, profile, 1,
-                                                           inlet_reactor, marching)
+        inlet_reactor = terra._profile_inlet_reactor(profile,
+                                                     config.runtime.unit_system)
+        segment_config = terra._chain_segment_config(config, profile, 1,
+                                                     inlet_reactor, marching)
 
         result_ref = Ref{Any}(nothing)
         cache_ref = Ref{Any}(nothing)
@@ -324,8 +355,8 @@
         @test second_result.frames[1].temperatures.tt ≈ first_endpoint.thermal.Tt
         @test second_result.frames[1].temperatures.tv ≈ first_endpoint.thermal.Tv
         @test second_result.frames[1].temperatures.te ≈ profile.te_K[2]
-        segment2_config = terra._build_chain_segment_config(config, profile, 2,
-                                                            first_endpoint, marching)
+        segment2_config = terra._chain_segment_config(config, profile, 2,
+                                                      first_endpoint, marching)
         @test segment2_config.models.physics.is_isothermal_teex == true
         @test segment2_config.reactor.thermal.Tee ≈ profile.te_K[2]
         @test chain.cells[2].species_u_m_s["N2+"] == 23000.0
@@ -369,19 +400,19 @@
         @test chain.cells[1].reactor.frames[1].temperatures.tv ≈ 900.0
         @test chain.cells[1].reactor.frames[1].temperatures.te ≈ profile.te_K[1]
 
-        inlet_reactor = terra._build_profile_inlet_reactor(profile,
-                                                           config.runtime.unit_system)
-        segment1_config = terra._build_chain_segment_config(config, profile, 1,
-                                                            inlet_reactor, marching)
+        inlet_reactor = terra._profile_inlet_reactor(profile,
+                                                     config.runtime.unit_system)
+        segment1_config = terra._chain_segment_config(config, profile, 1,
+                                                      inlet_reactor, marching)
         @test segment1_config.models.physics.is_isothermal_teex == true
         @test segment1_config.sources.residence_time !== nothing
         @test_nowarn terra.initialize_terra(segment1_config,
                                             segment1_config.runtime.case_path)
         segment1_result, segment1_cache = terra._solve_terra_0d_internal(segment1_config)
 
-        segment1_endpoint = terra._extract_segment_endpoint_reactor(config, segment1_result)
-        segment2_config = terra._build_chain_segment_config(config, profile, 2,
-                                                            segment1_endpoint, marching)
+        segment1_endpoint = terra._segment_endpoint_reactor(config, segment1_result)
+        segment2_config = terra._chain_segment_config(config, profile, 2,
+                                                      segment1_endpoint, marching)
         state_from_cache = terra.config_to_initial_state(segment2_config;
                                                          state_cache = segment1_cache)
         state_from_boltz = terra.config_to_initial_state(segment2_config)
@@ -410,12 +441,12 @@
                                           inlet = profile_inlet(config))
         marching = terra.AxialMarchingConfig(; is_isothermal_teex = false)
 
-        inlet_reactor = terra._build_profile_inlet_reactor(profile,
-                                                           config.runtime.unit_system)
-        segment1_config = terra._build_chain_segment_config(config, profile, 1,
-                                                            inlet_reactor, marching)
-        segment2_config = terra._build_chain_segment_config(config, profile, 2,
-                                                            inlet_reactor, marching)
+        inlet_reactor = terra._profile_inlet_reactor(profile,
+                                                     config.runtime.unit_system)
+        segment1_config = terra._chain_segment_config(config, profile, 1,
+                                                      inlet_reactor, marching)
+        segment2_config = terra._chain_segment_config(config, profile, 2,
+                                                      inlet_reactor, marching)
 
         @test segment1_config.models.physics.is_isothermal_teex == false
         @test segment2_config.models.physics.is_isothermal_teex == false
@@ -512,7 +543,7 @@
         @test chain_wall.metadata.diagnostics["wall_profile"]["a_wall_over_v_m_inv"] ≈
               [2.0 / 0.0155]
 
-        wall_segment_inputs = terra._build_segment_wall_inputs(profile, 1, wall_cfg)
+        wall_segment_inputs = terra._segment_wall_inputs(profile, 1, wall_cfg)
         @test wall_segment_inputs !== nothing
         @test wall_segment_inputs.channel_gap_m ≈ 0.0155
 
@@ -538,8 +569,41 @@
                                                                                                 neutral_base = 180.0,
                                                                                                 ion_base = 18000.0),
                                                        inlet = profile_inlet(base_config))
-        @test_throws ArgumentError terra._build_segment_wall_inputs(missing_wall_profile, 1,
-                                                                    wall_cfg)
+        @test_throws ArgumentError terra._segment_wall_inputs(missing_wall_profile, 1,
+                                                              wall_cfg)
+
+        cleanup_terra!()
+    end
+
+    @testset "Failed segment returns partial chain result" begin
+        base_config = build_chain_test_config()
+        wall_cfg = terra.WallLossConfig(;
+                                        species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
+                                                                                                        products = Dict("N" => 1.0))),)
+        wall_config = terra.Config(;
+                                   reactor = base_config.reactor,
+                                   models = base_config.models,
+                                   sources = terra.SourceTermsConfig(; wall_losses = wall_cfg),
+                                   numerics = base_config.numerics,
+                                   runtime = base_config.runtime,)
+        profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
+                                          dx_m = [0.01, 0.01],
+                                          te_K = [115000.0, 90000.0],
+                                          species_u_m_s = Dict("N" => [220.0, 225.0],
+                                                               "N2" => [200.0, 205.0],
+                                                               "N+" => [18000.0, 22000.0],
+                                                               "N2+" => [19000.0, 23000.0]),
+                                          inlet = profile_inlet(base_config))
+
+        chain = terra.solve_terra_chain_steady(wall_config, profile)
+
+        @test chain.success == false
+        @test chain.failed_cell == 1
+        @test chain.message == "Chain failed at segment 1 during setup/integration."
+        @test occursin("wall_profile is missing", chain.cells[1].message)
+        @test chain.cells[1].reactor.success == false
+        @test chain.cells[2].message == "Not executed."
+        @test chain.metadata.compact_to_source_index == [1, 2]
 
         cleanup_terra!()
     end

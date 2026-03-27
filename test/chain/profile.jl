@@ -40,9 +40,9 @@
     @test terra._resolve_compact_to_source_index(profile) == [5, 6]
     @test terra._resolve_original_point_count(profile) == 7
 
-    inlet_reactor_si = terra._build_profile_inlet_reactor(profile, :SI)
+    inlet_reactor_si = terra._profile_inlet_reactor(profile, :SI)
     @test inlet_reactor_si.composition.total_number_density == 1e19
-    inlet_reactor_cgs = terra._build_profile_inlet_reactor(profile, :CGS)
+    inlet_reactor_cgs = terra._profile_inlet_reactor(profile, :CGS)
     @test inlet_reactor_cgs.composition.total_number_density ≈
           terra.convert_number_density_si_to_cgs(1e19)
 

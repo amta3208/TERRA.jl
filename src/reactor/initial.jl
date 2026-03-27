@@ -174,7 +174,7 @@ function config_to_initial_state(config::Config;
                                electron_enthalpy
 
     number_density_cgs = use_state_cache ?
-                         _total_number_density_from_cgs_density(mass_densities_cgs,
+                         mass_densities_to_total_number_density(mass_densities_cgs,
                                                                 molecular_weights) :
                          composition.total_number_density
 

@@ -397,7 +397,7 @@ function _segment_wall_profile_values(profile::AxialChainProfile,
                                        wall_profile.ion_edge_to_center_ratio[segment_index])
 end
 
-function _build_profile_inlet_reactor(profile::AxialChainProfile, unit_system::Symbol)
+function _profile_inlet_reactor(profile::AxialChainProfile, unit_system::Symbol)
     inlet = profile.inlet
     n_total = unit_system == :SI ? inlet.composition.total_number_density_m3 :
               convert_number_density_si_to_cgs(inlet.composition.total_number_density_m3)
@@ -406,6 +406,17 @@ function _build_profile_inlet_reactor(profile::AxialChainProfile, unit_system::S
                                      mole_fractions = inlet.composition.mole_fractions,
                                      total_number_density = n_total)
     return ReactorConfig(; composition = composition, thermal = inlet.thermal)
+end
+
+function _chain_wall_profile_to_dict(wall_profile::ChainWallProfile)
+    payload = Dict{String, Any}("a_wall_over_v_m_inv" => copy(wall_profile.a_wall_over_v_m_inv))
+    wall_profile.channel_gap_m !== nothing &&
+        (payload["channel_gap_m"] = copy(wall_profile.channel_gap_m))
+    wall_profile.wall_temperature_K !== nothing &&
+        (payload["wall_temperature_K"] = copy(wall_profile.wall_temperature_K))
+    wall_profile.ion_edge_to_center_ratio !== nothing &&
+        (payload["ion_edge_to_center_ratio"] = copy(wall_profile.ion_edge_to_center_ratio))
+    return payload
 end
 
 function _chain_profile_metadata(profile::AxialChainProfile,

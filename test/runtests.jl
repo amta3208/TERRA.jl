@@ -56,6 +56,7 @@ include("helpers/shared.jl")
     @testset "Chain" begin
         include("chain/profile.jl")
         include("chain/marching.jl")
+        include("chain/solve.jl")
     end
 
     @testset "Reactor" begin
@@ -79,7 +80,4 @@ include("helpers/shared.jl")
         include("io/results.jl")
     end
 
-    @testset "Solver" begin
-        include("solver/chain_cstr.jl")
-    end
 end
