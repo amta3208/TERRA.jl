@@ -14,7 +14,7 @@
 
     u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
     rt_cfg = terra.ResidenceTimeConfig(; L = 1.0, U_species = u_species)
-    rt = terra._prepare_residence_time_source(layout, config, u_in, rt_cfg)
+    rt = terra.prepare_source(layout, config, u_in, rt_cfg)
 
     @test sort(rt.species_order) == ["N", "N+", "N2", "N2+"]
     @test !isempty(rt.species_indices["N"])
@@ -57,7 +57,7 @@
             config = config,
             teex_const = state.teex_const,
             teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-            sources = terra.PreparedSources(rt, nothing))
+            sources = terra.PreparedSources(rt))
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
     @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
@@ -94,8 +94,7 @@ end
                                            L = 1.0,
                                            U_species = Dict("N" => 1.0, "N2" => 1.0,
                                                             "N+" => 2.0))
-    @test_throws ArgumentError terra._prepare_residence_time_source(layout, config, u_in,
-                                                                    missing_rt)
+    @test_throws ArgumentError terra.prepare_source(layout, config, u_in, missing_rt)
 
     extra_rt = terra.ResidenceTimeConfig(;
                                          L = 1.0,
@@ -104,8 +103,7 @@ end
                                                           "N+" => 2.0,
                                                           "N2+" => 2.0,
                                                           "Ar" => 3.0))
-    @test_throws ArgumentError terra._prepare_residence_time_source(layout, config, u_in,
-                                                                    extra_rt)
+    @test_throws ArgumentError terra.prepare_source(layout, config, u_in, extra_rt)
 end
 
 @testset "Isothermal Teex: residence time skips rho_eeex" begin
@@ -128,7 +126,7 @@ end
                                        L = 1.0,
                                        U_species = Dict("N" => 1.0, "N2" => 1.5,
                                                         "N+" => 2.0, "N2+" => 2.5))
-    rt = terra._prepare_residence_time_source(layout, config, u_in, rt_cfg)
+    rt = terra.prepare_source(layout, config, u_in, rt_cfg)
 
     @test !(layout.idx_eeex in rt.energy_indices)
 
@@ -146,7 +144,7 @@ end
             config = config,
             teex_const = state.teex_const,
             teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-            sources = terra.PreparedSources(rt, nothing))
+            sources = terra.PreparedSources(rt))
 
     @test_nowarn terra.terra_ode_system!(du_base, u, p_base, 0.0)
     @test_nowarn terra.terra_ode_system!(du_rt, u, p_rt, 0.0)
@@ -169,7 +167,6 @@ end
                                      rho_evib = layout.vib_noneq ? state.rho_evib : nothing)
 
     rt_cfg = terra.ResidenceTimeConfig(;
-                                       enabled = true,
                                        L = 1.0,
                                        U_species = Dict("N" => 1.0, "N2" => 1.0,
                                                         "N+" => 1.0, "N2+" => 1.0))
@@ -177,12 +174,11 @@ end
     prepared = terra._prepare_sources(layout, config, u_base,
                                       terra.SourceTermsConfig(; residence_time = rt_cfg))
     @test prepared isa terra.PreparedSources
-    @test prepared.residence_time !== nothing
-    @test prepared.wall_losses === nothing
+    @test terra.source_operator(prepared, terra.PreparedResidenceTimeSource) !== nothing
+    @test terra.source_operator(prepared, terra.PreparedWallLossData) === nothing
 
     disabled = terra._prepare_sources(layout, config, u_base, terra.SourceTermsConfig())
-    @test disabled.residence_time === nothing
-    @test disabled.wall_losses === nothing
+    @test isempty(disabled.operators)
 end
 
 @testset "Residence-time inlet_reactor support" begin
@@ -212,7 +208,7 @@ end
                                        U_species = Dict("N" => 1.0, "N2" => 1.5,
                                                         "N+" => 2.0, "N2+" => 2.5),
                                        inlet_reactor = inlet_reactor)
-    rt = terra._prepare_residence_time_source(layout, config, u_base, rt_cfg)
+    rt = terra.prepare_source(layout, config, u_base, rt_cfg)
 
     @test any(abs.(rt.u_in .- u_base) .> 0.0)
 end
@@ -248,9 +244,9 @@ end
                                                         "N+" => 2.0, "N2+" => 2.5),
                                        inlet_reactor = config.reactor)
 
-    rt_boltz = terra._prepare_residence_time_source(layout, config, u_base, rt_cfg)
-    rt_cached = terra._prepare_residence_time_source(layout, config, u_base, rt_cfg;
-                                                     inlet_state_cache = final_state_cache)
+    rt_boltz = terra.prepare_source(layout, config, u_base, rt_cfg)
+    rt_cached = terra.prepare_source(layout, config, u_base, rt_cfg;
+                                     inlet_state_cache = final_state_cache)
 
     boltz_inlet_state = terra.unpack_state_vector(rt_boltz.u_in, layout)
     cached_inlet_state = terra.unpack_state_vector(rt_cached.u_in, layout)

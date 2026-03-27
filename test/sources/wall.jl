@@ -39,19 +39,21 @@
     prepared = terra._prepare_sources(layout, config, u_base,
                                       terra.SourceTermsConfig(; wall_losses = combined_wall_cfg);
                                       wall_inputs = wall_inputs)
-    @test prepared.residence_time === nothing
-    @test prepared.wall_losses !== nothing
-    @test prepared.wall_losses.wall_inputs.channel_gap_m ≈ 0.0155
-    @test !isempty(prepared.wall_losses.models)
-    @test prepared.wall_losses.segment_te_K ≈ config.reactor.thermal.Te
-    @test prepared.wall_losses.species_index_data.ground_indices["N"] in prepared.wall_losses.species_index_data.all_indices["N"]
-    @test prepared.wall_losses.species_index_data.ground_indices["N2"] in prepared.wall_losses.species_index_data.all_indices["N2"]
+    prepared_wall = terra.source_operator(prepared,
+                                          terra.PreparedWallLossData)::terra.PreparedWallLossData
+    @test terra.source_operator(prepared, terra.PreparedResidenceTimeSource) === nothing
+    @test prepared_wall !== nothing
+    @test prepared_wall.wall_inputs.channel_gap_m ≈ 0.0155
+    @test !isempty(prepared_wall.models)
+    @test prepared_wall.segment_te_K ≈ config.reactor.thermal.Te
+    @test prepared_wall.species_index_data.ground_indices["N"] in prepared_wall.species_index_data.all_indices["N"]
+    @test prepared_wall.species_index_data.ground_indices["N2"] in prepared_wall.species_index_data.all_indices["N2"]
     @test length(first(filter(model -> terra._reaction(model).reactant == "N+",
-                              prepared.wall_losses.models)).reaction.reactant_indices) ==
-          length(prepared.wall_losses.species_index_data.all_indices["N+"])
+                              prepared_wall.models)).reaction.reactant_indices) ==
+          length(prepared_wall.species_index_data.all_indices["N+"])
     @test first(filter(model -> terra._reaction(model).reactant == "N",
-                       prepared.wall_losses.models)).reaction.reactant_indices ==
-          [prepared.wall_losses.species_index_data.ground_indices["N"]]
+                       prepared_wall.models)).reaction.reactant_indices ==
+          [prepared_wall.species_index_data.ground_indices["N"]]
 
     @test_throws ArgumentError terra._prepare_sources(layout, config, u_base,
                                                       terra.SourceTermsConfig(; wall_losses = combined_wall_cfg))
@@ -59,8 +61,8 @@
     bad_wall_cfg = terra.WallLossConfig(;
                                         species_models = Dict("Ar+" => terra.IonNeutralizationWallModel(;
                                                                                                          products = Dict("N" => 1.0))))
-    @test_throws ArgumentError terra._prepare_wall_losses(layout, config, bad_wall_cfg;
-                                                          wall_inputs = wall_inputs)
+    @test_throws ArgumentError terra.prepare_source(layout, config, u_base, bad_wall_cfg;
+                                                    wall_inputs = wall_inputs)
 
     @test_throws MethodError terra.SpeciesWallModel(;
                                                     class = :ion_neutralization,
@@ -87,19 +89,21 @@
     ion_prepared = terra._prepare_sources(layout, config, u_base,
                                           terra.SourceTermsConfig(; wall_losses = ion_wall_cfg);
                                           wall_inputs = wall_inputs)
+    ion_prepared_wall = terra.source_operator(ion_prepared,
+                                              terra.PreparedWallLossData)::terra.PreparedWallLossData
     n_plus_model = only(filter(model -> terra._reaction(model).reactant == "N+",
-                               ion_prepared.wall_losses.models))
+                               ion_prepared_wall.models))
     reaction = terra._reaction(n_plus_model)
     expected_default_bohm_rate = wall_inputs.a_wall_over_v_m_inv *
                                  terra.DEFAULT_ION_EDGE_TO_CENTER_RATIO *
                                  n_plus_model.model.bohm_scale *
                                  sqrt(reaction.charge_state * terra.BOLTZMANN_J_PER_K *
-                                      ion_prepared.wall_losses.segment_te_K /
+                                      ion_prepared_wall.segment_te_K /
                                       terra._molecular_mass_kg(reaction.reactant_molecular_weight))
-    @test terra._wall_rate_1_s(n_plus_model, ion_prepared.wall_losses) ≈
+    @test terra._wall_rate_1_s(n_plus_model, ion_prepared_wall) ≈
           expected_default_bohm_rate
 
-    ion_indices = ion_prepared.wall_losses.species_index_data
+    ion_indices = ion_prepared_wall.species_index_data
     u_ion = zeros(length(u_base))
     for (j, idx) in pairs(ion_indices.all_indices["N+"])
         u_ion[idx] = 1.0e-12 * j
@@ -115,7 +119,7 @@
     u_ion[n2_excited_idx] = 9.0e-13
 
     du_ion = zeros(length(u_base))
-    terra._apply_wall_losses!(du_ion, u_ion, ion_prepared.wall_losses)
+    terra.apply_source!(du_ion, u_ion, ion_prepared_wall)
     @test all(du_ion[idx] < 0.0 for idx in ion_indices.all_indices["N+"])
     @test all(du_ion[idx] < 0.0 for idx in ion_indices.all_indices["N2+"])
     @test du_ion[n_ground_idx] > 0.0
@@ -130,7 +134,9 @@
     neutral_prepared = terra._prepare_sources(layout, config, u_base,
                                               terra.SourceTermsConfig(; wall_losses = neutral_wall_cfg);
                                               wall_inputs = wall_inputs)
-    neutral_indices = neutral_prepared.wall_losses.species_index_data
+    neutral_prepared_wall = terra.source_operator(neutral_prepared,
+                                                  terra.PreparedWallLossData)::terra.PreparedWallLossData
+    neutral_indices = neutral_prepared_wall.species_index_data
     u_neutral = zeros(length(u_base))
     u_neutral[neutral_indices.ground_indices["N"]] = 4.0e-12
     neutral_excited_idx = first(setdiff(neutral_indices.all_indices["N"],
@@ -138,7 +144,7 @@
     u_neutral[neutral_excited_idx] = 6.0e-12
 
     du_neutral = zeros(length(u_base))
-    terra._apply_wall_losses!(du_neutral, u_neutral, neutral_prepared.wall_losses)
+    terra.apply_source!(du_neutral, u_neutral, neutral_prepared_wall)
     @test du_neutral[neutral_indices.ground_indices["N"]] < 0.0
     @test du_neutral[neutral_indices.ground_indices["N2"]] > 0.0
     @test all(du_neutral[idx] == 0.0
@@ -159,15 +165,14 @@
               config = config,
               teex_const = state.teex_const,
               teex_const_vec = fill(config.reactor.thermal.Te, layout.nsp),
-              sources = terra.PreparedSources(nothing, prepared.wall_losses))
+              sources = terra.PreparedSources(prepared_wall))
 
     @test_nowarn terra.terra_ode_system!(du_base, u_base, p_base, 0.0)
     @test_nowarn terra.terra_ode_system!(du_wall, u_base, p_wall, 0.0)
-    terra._apply_wall_losses!(du_expected_wall, u_base, prepared.wall_losses)
+    terra.apply_source!(du_expected_wall, u_base, prepared_wall)
     @test any(abs.(du_expected_wall) .> 0.0)
     @test du_wall .- du_base ≈ du_expected_wall rtol = 1e-12 atol = 1e-13
-    @test (du_wall .- du_base)[prepared.wall_losses.species_index_data.ground_indices["N2"]] >
-          0.0
+    @test (du_wall .- du_base)[prepared_wall.species_index_data.ground_indices["N2"]] > 0.0
     @test any((du_wall .- du_base)[idx] < 0.0
-              for idx in prepared.wall_losses.species_index_data.all_indices["N2+"])
+              for idx in prepared_wall.species_index_data.all_indices["N2+"])
 end

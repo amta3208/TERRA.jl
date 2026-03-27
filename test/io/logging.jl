@@ -148,4 +148,18 @@ end
             rm(off_runtime.case_path; recursive = true, force = true)
         end
     end
+
+    @testset "Chain scalar rendering covers common value families" begin
+        @test terra._chain_scalar(nothing) == "null"
+        @test terra._chain_scalar(true) == "true"
+        @test terra._chain_scalar(:full_state) == "full_state"
+        @test terra._chain_scalar(7) == "7"
+        @test terra._chain_scalar(0.0) == "0.0"
+        @test terra._chain_scalar(1.5e5) == "1.500000e+05"
+        @test terra._chain_scalar("chain") == "chain"
+        @test terra._chain_scalar([1, 2]) == repr([1, 2])
+        @test terra._chain_scalar(Dict("N" => 1.0)) == repr(Dict("N" => 1.0))
+        @test terra._chain_scalar((handoff = "full_state",)) ==
+              repr((handoff = "full_state",))
+    end
 end

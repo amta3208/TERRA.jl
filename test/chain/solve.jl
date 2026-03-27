@@ -386,7 +386,7 @@
                                                                                                     Tee = 2000.0,
                                                                                                     Te = 115000.0)))
         marching = terra.AxialMarchingConfig(;
-                                             handoff_mode = :full_state,
+                                             handoff_policy = terra.FullStateHandoff(),
                                              override_tt_K = 800.0,
                                              override_tv_K = 900.0,)
 
@@ -637,7 +637,7 @@
         cleanup_terra!()
     end
 
-    @testset "Unsupported termination mode" begin
+    @testset "Unsupported termination policy" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],
@@ -651,7 +651,7 @@
         @test_throws ArgumentError terra.solve_terra_chain_steady(config,
                                                                   profile;
                                                                   marching = terra.AxialMarchingConfig(;
-                                                                                                       termination_mode = :steady_state),)
+                                                                                                       termination_policy = terra.SteadyStateTermination()),)
 
         cleanup_terra!()
     end

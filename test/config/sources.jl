@@ -37,12 +37,14 @@ end
 @testset "WallLossConfig" begin
     ion_model = terra.IonNeutralizationWallModel(; products = Dict("N" => 1.0))
     cfg = terra.WallLossConfig(; species_models = Dict("N+" => ion_model))
-    @test cfg.enabled == true
     @test haskey(cfg.species_models, "N+")
     @test cfg.species_models["N+"] === ion_model
 
     @test_throws ArgumentError terra.WallLossConfig(;
                                                     species_models = Dict("" => ion_model))
+    @test_throws MethodError terra.WallLossConfig(;
+                                                  enabled = true,
+                                                  species_models = Dict("N+" => ion_model))
     @test_throws MethodError terra.WallLossConfig(;
                                                   use_ion_losses = false,
                                                   species_models = Dict("N+" => ion_model))
@@ -55,24 +57,26 @@ end
     u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
 
     rt_default = terra.ResidenceTimeConfig(1.0, u_species)
-    @test rt_default.enabled == true
     @test rt_default.L == 1.0
     @test rt_default.U_species == u_species
 
-    rt_disabled = terra.ResidenceTimeConfig(; enabled = false, L = 1.5,
-                                            U_species = u_species,
-                                            U_energy = 3.0)
-    @test rt_disabled.enabled == false
-    @test rt_disabled.U_energy == 3.0
+    rt_custom = terra.ResidenceTimeConfig(; L = 1.5,
+                                          U_species = u_species,
+                                          U_energy = 3.0)
+    @test rt_custom.U_energy == 3.0
 
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
 
     rt_inlet_reactor = terra.ResidenceTimeConfig(;
-                                                 enabled = true,
                                                  L = 1.0,
                                                  U_species = u_species,
                                                  inlet_reactor = base_config.reactor)
     @test rt_inlet_reactor.inlet_reactor == base_config.reactor
+
+    @test_throws MethodError terra.ResidenceTimeConfig(;
+                                                       enabled = false,
+                                                       L = 1.5,
+                                                       U_species = u_species)
 
     @test_throws MethodError terra.ResidenceTimeConfig(;
                                                        enabled = true,
