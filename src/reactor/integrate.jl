@@ -202,11 +202,12 @@ function _integrate_0d_system(config::Config,
     tlim = config.numerics.time.duration
     solver_cfg = config.numerics.solver
 
-    _log_run_event(runtime, :info, "Preparing ODE integration";
-                   console = :never,
-                   :tlim => tlim,
-                   :dt => dt,
-                   :saveat_count => solver_cfg.saveat_count)
+    emit!(RUN_LOG, runtime,
+          EventEntry(:info, "Preparing ODE integration";
+                     console = :never,
+                     :tlim => tlim,
+                     :dt => dt,
+                     :saveat_count => solver_cfg.saveat_count))
 
     native_outputs_requested = runtime.write_native_state_files
     integration_detail_requested = runtime.logging.integration_detail_mode != :off
@@ -249,11 +250,12 @@ function _integrate_0d_system(config::Config,
                            rho_erot = rho_erot0,
                            rho_evib = rho_evib0)
 
-    _log_run_event(runtime, :info, "Initial state vector prepared";
-                   console = :never,
-                   :length_u0 => length(u0),
-                   :neq => layout.neq,
-                   :n_species => n_species)
+    emit!(RUN_LOG, runtime,
+          EventEntry(:info, "Initial state vector prepared";
+                     console = :never,
+                     :length_u0 => length(u0),
+                     :neq => layout.neq,
+                     :n_species => n_species))
 
     tspan = (0.0, tlim)
 
@@ -294,10 +296,11 @@ function _integrate_0d_system(config::Config,
     callback = progress_reporter === nothing ? ramp_callback :
                CallbackSet(ramp_callback, integration_progress_callback())
 
-    _log_run_event(runtime, :info, _integration_start_message(presentation_obj);
-                   console = :minimal,
-                   :reltol => solver_cfg.reltol,
-                   :abstol_density => solver_cfg.abstol_density)
+    emit!(RUN_LOG, runtime,
+          EventEntry(:info, _integration_start_message(presentation_obj);
+                     console = :minimal,
+                     :reltol => solver_cfg.reltol,
+                     :abstol_density => solver_cfg.abstol_density))
 
     local_reltol = is_isothermal ? max(1e-7, solver_cfg.reltol) : solver_cfg.reltol
     local_abstol_density = solver_cfg.abstol_density
@@ -398,7 +401,7 @@ function _integrate_0d_system(config::Config,
                                                                    rho_evib = iso.rho_evib,
                                                                    has_electronic_states = has_electronic_states,
                                                                    electronic_state_counts = electronic_state_counts)
-                    _emit_integration_detail(runtime, detail_text)
+                    emit!(RUN_LOG, runtime, IntegrationDetailEntry(detail_text))
                 end
             else
                 _reconstruct_rho_sp_rho_ex_from_compact!(work_rho_sp, rho_ex_arg, ui,
@@ -438,7 +441,7 @@ function _integrate_0d_system(config::Config,
                                                                               Float64(ui[layout.idx_evib]),
                                                                    has_electronic_states = has_electronic_states,
                                                                    electronic_state_counts = electronic_state_counts)
-                    _emit_integration_detail(runtime, detail_text)
+                    emit!(RUN_LOG, runtime, IntegrationDetailEntry(detail_text))
                 end
             end
         end
@@ -463,11 +466,12 @@ function _integrate_0d_system(config::Config,
         message = success ? "success!" :
                   "ODE integration terminated: $(rc)"
         completion_message = _integration_completion_message(presentation_obj, message)
-        _log_run_event(runtime, success ? :info : :warn, completion_message;
-                       console = _integration_completion_console_visibility(presentation_obj,
-                                                                            success),
-                       :retcode => sol.retcode,
-                       :saved_points => n_times)
+        emit!(RUN_LOG, runtime,
+              EventEntry(success ? :info : :warn, completion_message;
+                         console = _integration_completion_console_visibility(presentation_obj,
+                                                                              success),
+                         :retcode => sol.retcode,
+                         :saved_points => n_times))
 
         frames = Vector{ReactorFrame}(undef, n_times)
         for i in 1:n_times
@@ -490,11 +494,12 @@ function _integrate_0d_system(config::Config,
                              metadata = result_metadata), final_state_cache
 
     catch e
-        _log_run_exception(runtime, :error,
-                           _integration_completion_message(presentation_obj,
-                                                           "ODE integration failed"),
-                           e;
-                           console = :minimal)
+        emit!(RUN_LOG, runtime,
+              ExceptionEntry(:error,
+                             _integration_completion_message(presentation_obj,
+                                                             "ODE integration failed"),
+                             e;
+                             console = :minimal))
         return _failed_reactor_result(config, initial_state,
                                       "ODE integration failed: $(string(e))";
                                       metadata = result_metadata), nothing
@@ -503,10 +508,11 @@ function _integrate_0d_system(config::Config,
             try
                 close_api_output_files_wrapper()
             catch close_err
-                _log_run_exception(runtime, :warn,
-                                   "Failed to close native TERRA outputs after integration",
-                                   close_err;
-                                   console = :never)
+                emit!(RUN_LOG, runtime,
+                      ExceptionEntry(:warn,
+                                     "Failed to close native TERRA outputs after integration",
+                                     close_err;
+                                     console = :never))
             end
             outputs_opened = false
         end

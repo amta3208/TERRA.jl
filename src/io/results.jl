@@ -58,7 +58,7 @@ end
 # Shared JSON coercion and validation
 # -----------------------------------------------------------------------------
 
-const CHAIN_RESULTS_SCHEMA_VERSION = "terra_chain_results_v2"
+const CHAIN_RESULTS_SCHEMA_VERSION = "terra_chain_results_v3"
 
 function json_value(value)
     if value === nothing
@@ -98,6 +98,38 @@ function read_json_value(value)
         return Any[read_json_value(entry) for entry in value]
     end
     return value
+end
+
+function _wall_species_model_metadata(raw::AbstractDict)
+    model = Dict{String, Any}(String(key) => value for (key, value) in pairs(raw))
+    haskey(model, "model_type") ||
+        throw(ArgumentError("Wall-loss species model metadata is missing required `model_type`."))
+    return model
+end
+
+function _reactor_metadata(metadata::AbstractDict)
+    result = Dict{String, Any}(String(key) => value for (key, value) in pairs(metadata))
+    wall_losses = get(result, "wall_losses", nothing)
+    wall_losses === nothing && return result
+    wall_losses isa AbstractDict ||
+        throw(ArgumentError("Expected `wall_losses` in reactor metadata to be an object."))
+
+    wall_metadata = Dict{String, Any}(String(key) => value for (key, value) in pairs(wall_losses))
+    species_models = get(wall_metadata, "species_models", nothing)
+    if species_models !== nothing
+        species_models isa AbstractDict ||
+            throw(ArgumentError("Expected `species_models` in reactor metadata wall losses to be an object."))
+        wall_metadata["species_models"] = Dict{String, Any}(String(reactant) =>
+                                                            begin
+                                                                raw_model isa AbstractDict ||
+                                                                    throw(ArgumentError("Expected wall-loss metadata for reactant `$reactant` to be an object."))
+                                                                _wall_species_model_metadata(raw_model)
+                                                            end
+                                                            for (reactant, raw_model) in pairs(species_models))
+    end
+
+    result["wall_losses"] = wall_metadata
+    return result
 end
 
 function required_array(container::AbstractDict, key::AbstractString,
@@ -295,7 +327,7 @@ function reactor_result(raw::AbstractDict)
                          message = required_string(raw, "message", "reactor result"),
                          source_terms = source_terms_raw === nothing ? nothing :
                                         namedtuple_value(source_terms_raw),
-                         metadata = read_json_value(metadata_raw))
+                         metadata = _reactor_metadata(read_json_value(metadata_raw)))
 end
 
 reactor_config_dict(config::ReactorConfig) = Dict{String, Any}(

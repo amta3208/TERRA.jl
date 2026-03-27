@@ -23,8 +23,9 @@ function _solve_terra_0d_internal(config::Config;
                                                           presentation = presentation_obj)
         return results, final_state_cache
     catch e
-        _log_run_exception(config.runtime, :error, "TERRA simulation failed", e;
-                           console = :minimal)
+        emit!(RUN_LOG, config.runtime,
+              ExceptionEntry(:error, "TERRA simulation failed", e;
+                             console = :minimal))
         return _failed_reactor_result("Simulation failed: $(string(e))"), nothing
     end
 end

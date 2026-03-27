@@ -28,8 +28,6 @@ function _resolve_log_dir(case_path::AbstractString, logging::LoggingConfig)::St
            normpath(joinpath(case_path, logging.log_dir))
 end
 
-_resolve_log_dir(runtime::RuntimeConfig) = _resolve_log_dir(runtime.case_path, runtime.logging)
-
 function CaseLayout(runtime::RuntimeConfig)
     case_path = normpath(runtime.case_path)
     input_dir = normpath(joinpath(case_path, "input"))

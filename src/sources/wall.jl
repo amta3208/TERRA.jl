@@ -438,26 +438,16 @@ function _wall_loss_metadata(wall_losses::Union{Nothing, PreparedWallLossData})
     wall_losses === nothing && return nothing
 
     species_models = Dict{String, Any}()
-    enabled_flags = Dict{String, Bool}("use_ion_losses" => false,
-                                       "use_neutral_recombination" => false,
-                                       "use_electronic_quenching" => false)
     for model in wall_losses.models
         reaction = _reaction(model)
         config_model = _config_wall_model(model)
-        species_models[reaction.reactant] = Dict{String, Any}("class" => String(_wall_model_class(config_model)),
-                                                              "rate_model" => String(_wall_model_rate_model(config_model)),
+        species_models[reaction.reactant] = Dict{String, Any}("model_type" => _wall_model_type_name(config_model),
                                                               "charge_state" => reaction.charge_state,
                                                               "parameters" => _wall_parameter_dict(config_model),
                                                               "products" => copy(reaction.product_branching),
                                                               "reactant_indices" => copy(reaction.reactant_indices),
                                                               "reactant_ground_index" => reaction.reactant_ground_index,
                                                               "product_indices" => copy(reaction.product_indices))
-        if config_model isa IonNeutralizationWallModel
-            enabled_flags["use_ion_losses"] = true
-        elseif config_model isa BallisticNeutralRecombinationWallModel ||
-               config_model isa ConstantNeutralRecombinationWallModel
-            enabled_flags["use_neutral_recombination"] = true
-        end
     end
 
     return Dict{String, Any}("species_order" => copy(wall_losses.species_index_data.species_order),
@@ -467,6 +457,5 @@ function _wall_loss_metadata(wall_losses::Union{Nothing, PreparedWallLossData})
                                                                    "ion_edge_to_center_ratio" => wall_losses.wall_inputs.ion_edge_to_center_ratio,
                                                                    "tt_K" => wall_losses.segment_tt_K,
                                                                    "te_K" => wall_losses.segment_te_K),
-                             "enabled_flags" => enabled_flags,
                              "species_models" => species_models)
 end

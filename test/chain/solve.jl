@@ -556,10 +556,13 @@
         @test wall_frame.source_terms.wall_losses.species_mass_density_rates["N2+"] < 0.0
         @test wall_frame.source_terms.wall_losses.species_mass_density_rates["N2"] > 0.0
         @test haskey(chain_wall.cells[1].reactor.metadata, "wall_losses")
-        @test chain_wall.cells[1].reactor.metadata["wall_losses"]["species_models"]["N+"]["rate_model"] ==
-              "bohm_gap"
-        @test chain_wall.cells[1].reactor.metadata["wall_losses"]["enabled_flags"]["use_electronic_quenching"] ==
-              false
+        species_model = chain_wall.cells[1].reactor.metadata["wall_losses"]["species_models"]["N+"]
+        @test species_model["model_type"] == "IonNeutralizationWallModel"
+        @test sort!(collect(keys(chain_wall.cells[1].reactor.metadata["wall_losses"]))) ==
+              ["segment_inputs", "species_models", "species_order"]
+        @test sort!(collect(keys(species_model))) ==
+              ["charge_state", "model_type", "parameters", "product_indices", "products",
+               "reactant_ground_index", "reactant_indices"]
 
         missing_wall_profile = terra.AxialChainProfile(z_m = [0.0],
                                                        dx_m = [0.01],

@@ -132,14 +132,6 @@ stream_mode(::RunLog, ::LoggingConfig) = :file
 stream_mode(::NativeLog, logging::LoggingConfig) = logging.native_stream_mode
 stream_mode(::ChainLog, logging::LoggingConfig) = logging.chain_detail_mode
 
-function _prepare_log_path(path::AbstractString)
-    mkpath(dirname(path))
-    open(path, "w") do io
-        write(io, "")
-    end
-    return String(path)
-end
-
 function _append_log_text(path::AbstractString, text::AbstractString)
     mkpath(dirname(path))
     open(path, "a") do io
@@ -156,7 +148,12 @@ function prepare!(::ChainLog, runtime::RuntimeConfig)
     mode == :off && return nothing
     _writes_file(mode) || return nothing
     ensure_case_layout!(runtime)
-    return _prepare_log_path(log_path(CHAIN_LOG, runtime))
+    path = log_path(CHAIN_LOG, runtime)
+    mkpath(dirname(path))
+    open(path, "w") do io
+        write(io, "")
+    end
+    return String(path)
 end
 
 function _native_console_level(logging::LoggingConfig)
@@ -179,7 +176,14 @@ function prepare!(::NativeLog, runtime::RuntimeConfig)
     file_level = _native_file_level(runtime.logging)
     ensure_case_layout!(runtime)
     path = file_level == API_NATIVE_LOG_OFF ? nothing :
-           _prepare_log_path(log_path(NATIVE_LOG, runtime))
+           begin
+               native_path = log_path(NATIVE_LOG, runtime)
+               mkpath(dirname(native_path))
+               open(native_path, "w") do io
+                   write(io, "")
+               end
+               String(native_path)
+           end
     return (console_level = console_level, file_level = file_level, log_path = path)
 end
 
@@ -447,34 +451,30 @@ function emit!(::RunLog, runtime::RuntimeConfig, entry::IntegrationDetailEntry)
     return nothing
 end
 
-function _chain_summary_entry(entry::ChainHeaderEntry)
+function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainHeaderEntry)
     profile = entry.profile
     marching = entry.marching
     lines = [CHAIN_RUN_BANNER,
-        @sprintf("segments: %d", length(profile.z_m)),
-        "handoff_mode: $(marching.handoff_mode)",
-        "termination_mode: $(marching.termination_mode)",
-        "is_isothermal_teex: $(marching.is_isothermal_teex)"]
-    return EventEntry(:info, join(lines, "\n"); console = :minimal)
+             @sprintf("segments: %d", length(profile.z_m)),
+             "handoff_mode: $(marching.handoff_mode)",
+             "termination_mode: $(marching.termination_mode)",
+             "is_isothermal_teex: $(marching.is_isothermal_teex)"]
+    emit!(RUN_LOG, runtime, EventEntry(:info, join(lines, "\n"); console = :minimal))
+    return nothing
 end
 
-function _chain_summary_entry(entry::ChainSegmentEntry)
+function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainSegmentEntry)
     message = @sprintf("\n===== Segment %d/%d 0D Simulation =====",
                        entry.segment_index, length(entry.profile.z_m))
-    return EventEntry(:info, message; console = :minimal)
+    emit!(RUN_LOG, runtime, EventEntry(:info, message; console = :minimal))
+    return nothing
 end
 
-function _chain_summary_entry(entry::ChainResultEntry)
+function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainResultEntry)
     level = entry.result.success ? :info : :warn
     message = entry.result.success ? "\n$(entry.result.message)" : entry.result.message
-    return EventEntry(level, string(message, "\n", CHAIN_RUN_FOOTER); console = :minimal)
-end
-
-function emit!(::RunLog, runtime::RuntimeConfig,
-               entry::Union{ChainHeaderEntry,
-                            ChainSegmentEntry,
-                            ChainResultEntry})
-    emit!(RUN_LOG, runtime, _chain_summary_entry(entry))
+    emit!(RUN_LOG, runtime,
+          EventEntry(level, string(message, "\n", CHAIN_RUN_FOOTER); console = :minimal))
     return nothing
 end
 
@@ -492,24 +492,6 @@ function emit!(::ChainLog, runtime::RuntimeConfig,
     if _writes_console(mode)
         _emit_console_text(text)
     end
-    return nothing
-end
-
-function _log_run_event(runtime::RuntimeConfig, level::Symbol, message::AbstractString;
-                        console::Symbol = :never, fields...)
-    emit!(RUN_LOG, runtime, EventEntry(level, message; console = console, fields...))
-    return nothing
-end
-
-function _log_run_exception(runtime::RuntimeConfig, level::Symbol, message::AbstractString,
-                            exception; console::Symbol = :never, fields...)
-    emit!(RUN_LOG, runtime,
-          ExceptionEntry(level, message, exception; console = console, fields...))
-    return nothing
-end
-
-function _emit_integration_detail(runtime::RuntimeConfig, detail_text::AbstractString)
-    emit!(RUN_LOG, runtime, IntegrationDetailEntry(detail_text))
     return nothing
 end
 
@@ -535,9 +517,10 @@ end
 
 function _report_progress!(runtime::RuntimeConfig, progress::FractionProgressReporter,
                            t::Real)
-    _log_run_event(runtime, :info, _progress_message(progress, t);
-                   console = :minimal,
-                   :t => Float64(t),
-                   :tlim => progress.tlim)
+    emit!(RUN_LOG, runtime,
+          EventEntry(:info, _progress_message(progress, t);
+                     console = :minimal,
+                     :t => Float64(t),
+                     :tlim => progress.tlim))
     return nothing
 end

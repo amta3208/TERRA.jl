@@ -23,33 +23,15 @@ end
     @test constant_model.k_wall_1_s == 2.0e5
     @test constant_model.products["N2"] == 0.5
 
-    compat_model = terra.SpeciesWallModel(;
-                                          class = :ion_neutralization,
-                                          rate_model = :bohm_gap,
-                                          parameters = Dict("bohm_scale" => 0.5),
-                                          products = Dict("N" => 1.0))
-    @test compat_model isa terra.IonNeutralizationWallModel
-
     @test_throws ArgumentError terra.IonNeutralizationWallModel(;
                                                                 bohm_scale = -1.0)
     @test_throws ArgumentError terra.BallisticNeutralRecombinationWallModel(;
                                                                             gamma = -1.0)
     @test_throws ArgumentError terra.ConstantNeutralRecombinationWallModel(;
                                                                            k_wall_1_s = -1.0)
-    @test_throws ArgumentError terra.SpeciesWallModel(;
-                                                      class = :unsupported,
-                                                      rate_model = :bohm_gap)
-    @test_throws ArgumentError terra.SpeciesWallModel(;
-                                                      class = :ion_neutralization,
-                                                      rate_model = :unsupported)
-    @test_throws ArgumentError terra.SpeciesWallModel(;
-                                                      class = :neutral_recombination,
-                                                      rate_model = :ballistic_sticking,
-                                                      parameters = Dict("gamma" => -1.0))
-    @test_throws ArgumentError terra.SpeciesWallModel(;
-                                                      class = :electronic_quench,
-                                                      rate_model = :constant,
-                                                      parameters = Dict("k_wall_1_s" => 1.0))
+    @test_throws MethodError terra.SpeciesWallModel(;
+                                                    class = :unsupported,
+                                                    rate_model = :bohm_gap)
 end
 
 @testset "WallLossConfig" begin
@@ -61,12 +43,12 @@ end
 
     @test_throws ArgumentError terra.WallLossConfig(;
                                                     species_models = Dict("" => ion_model))
-    @test_throws ArgumentError terra.WallLossConfig(;
-                                                    use_ion_losses = false,
-                                                    species_models = Dict("N+" => ion_model))
-    @test_throws ArgumentError terra.WallLossConfig(;
-                                                    use_electronic_quenching = true,
-                                                    species_models = Dict("N+" => ion_model))
+    @test_throws MethodError terra.WallLossConfig(;
+                                                  use_ion_losses = false,
+                                                  species_models = Dict("N+" => ion_model))
+    @test_throws MethodError terra.WallLossConfig(;
+                                                  use_electronic_quenching = true,
+                                                  species_models = Dict("N+" => ion_model))
 end
 
 @testset "ResidenceTimeConfig" begin
