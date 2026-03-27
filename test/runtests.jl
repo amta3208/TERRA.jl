@@ -58,6 +58,11 @@ include("helpers/shared.jl")
         include("chain/marching.jl")
     end
 
+    @testset "Sources" begin
+        include("sources/residence.jl")
+        include("sources/wall.jl")
+    end
+
     @testset "IO" begin
         include("io/input.jl")
         include("io/logging.jl")
@@ -70,8 +75,6 @@ include("helpers/shared.jl")
         include("solver/initial_state.jl")
         include("solver/state_vector.jl")
         include("solver/rhs.jl")
-        include("solver/residence_time.jl")
-        include("solver/wall_losses.jl")
         include("solver/driver.jl")
         include("solver/integrate_0d.jl")
         include("solver/chain_cstr.jl")

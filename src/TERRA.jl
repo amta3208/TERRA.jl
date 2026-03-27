@@ -48,11 +48,12 @@ include("io/input.jl")
 include("io/profile.jl")
 include("io/results.jl")
 
+include("sources/core.jl")
+include("sources/residence.jl")
+include("sources/wall.jl")
+
 include("solver/initial_state.jl")
 include("solver/state_vector.jl")
-include("solver/residence_time.jl")
-include("solver/wall_losses.jl")
-include("solver/source_terms.jl")
 include("solver/rhs.jl")
 include("solver/integrate_0d.jl")
 include("solver/driver.jl")
@@ -63,7 +64,9 @@ export Config, ReactorConfig, ReactorComposition, ReactorThermalState
 export ModelConfig, TimeConfig, ODESolverConfig, SpaceConfig
 export NumericsConfig, LoggingConfig, RuntimeConfig, ResidenceTimeConfig,
        SourceTermsConfig
-export SpeciesWallModel, WallLossConfig, ChainWallProfile
+export SpeciesWallModel, IonNeutralizationWallModel,
+       BallisticNeutralRecombinationWallModel,
+       ConstantNeutralRecombinationWallModel, WallLossConfig, ChainWallProfile
 export ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export ReactorFrame, ReactorResult, ChainCellResult, ChainMetadata

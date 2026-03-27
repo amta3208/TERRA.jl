@@ -36,10 +36,8 @@ end
 
 @testset "Config Modifiers" begin
     wall_cfg = terra.WallLossConfig(;
-                                    species_models = Dict("N+" => terra.SpeciesWallModel(;
-                                                                                         class = :ion_neutralization,
-                                                                                         rate_model = :bohm_gap,
-                                                                                         products = Dict("N" => 1.0),)),)
+                                    species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
+                                                                                                    products = Dict("N" => 1.0))),)
     config = terra.Config(;
                           reactor = terra.ReactorConfig(;
                                                         composition = terra.ReactorComposition(;

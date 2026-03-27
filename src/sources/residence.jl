@@ -1,3 +1,12 @@
+struct PreparedResidenceTimeSource
+    u_in::Vector{Float64}
+    species_order::Vector{String}
+    species_indices::Dict{String, Vector{Int}}
+    energy_indices::Vector{Int}
+    inv_tau_species::Dict{String, Float64}
+    inv_tau_energy::Float64
+end
+
 function _build_residence_time_continuity_indices(layout::ApiLayout,
                                                   species_names::AbstractVector{<:AbstractString})
     length(species_names) == layout.nsp ||
@@ -9,7 +18,6 @@ function _build_residence_time_continuity_indices(layout::ApiLayout,
 
     idx = 1
 
-    # Vibrational STS entries (if any)
     if layout.n_eq_vib > 0
         @inbounds for isp in 1:(layout.nsp)
             if layout.ies[isp] == 0 || layout.ih[isp] != 2
@@ -30,7 +38,6 @@ function _build_residence_time_continuity_indices(layout::ApiLayout,
         end
     end
 
-    # Electronic STS entries
     if layout.is_elec_sts
         @inbounds for isp in 1:(layout.nsp)
             if layout.ies[isp] == 0
@@ -48,7 +55,6 @@ function _build_residence_time_continuity_indices(layout::ApiLayout,
         end
     end
 
-    # Species-density entries for non-electronic-specific species (except charge-balanced electrons)
     @inbounds for isp in 1:(layout.nsp)
         if layout.ies[isp] == 1
             continue
@@ -62,7 +68,7 @@ function _build_residence_time_continuity_indices(layout::ApiLayout,
         idx += 1
     end
 
-    @assert idx==layout.mom_range.start "Internal error: continuity index mismatch while building residence-time indices"
+    @assert idx == layout.mom_range.start "Internal error: continuity index mismatch while building residence-time indices"
 
     return (species_order = species_order, species_indices = species_indices)
 end
@@ -75,19 +81,20 @@ function _build_residence_time_energy_indices(layout::ApiLayout, is_isothermal_t
     return indices
 end
 
-@inline function _apply_residence_time_term!(du::Vector{Float64}, u::Vector{Float64}, rt)
-    if rt === nothing
-        return nothing
-    end
-    u_in = rt.u_in
-    @inbounds for name in rt.species_order
-        inv_tau = rt.inv_tau_species[name]
-        for i in rt.species_indices[name]
+@inline _apply_residence_time!(du::Vector{Float64}, u::Vector{Float64}, ::Nothing) = nothing
+
+function _apply_residence_time!(du::Vector{Float64},
+                                u::Vector{Float64},
+                                residence_time::PreparedResidenceTimeSource)
+    u_in = residence_time.u_in
+    @inbounds for name in residence_time.species_order
+        inv_tau = residence_time.inv_tau_species[name]
+        for i in residence_time.species_indices[name]
             du[i] += (u_in[i] - u[i]) * inv_tau
         end
     end
-    @inbounds for i in rt.energy_indices
-        du[i] += (u_in[i] - u[i]) * rt.inv_tau_energy
+    @inbounds for i in residence_time.energy_indices
+        du[i] += (u_in[i] - u[i]) * residence_time.inv_tau_energy
     end
     return nothing
 end
@@ -105,11 +112,26 @@ function _validate_residence_time_species(rt_cfg::ResidenceTimeConfig,
                             "Missing: $(isempty(missing_species) ? "none" : join(missing_species, ", ")); " *
                             "Extra: $(isempty(extra_species) ? "none" : join(extra_species, ", "))."))
     end
+
+    return nothing
 end
 
-function _prepare_residence_time_data(layout::ApiLayout, config::Config,
-                                      u0::Vector{Float64}, rt_cfg::ResidenceTimeConfig;
-                                      inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+@inline function _prepare_residence_time_source(layout::ApiLayout,
+                                                config::Config,
+                                                u0::Vector{Float64},
+                                                ::Nothing;
+                                                inlet_state_cache::Union{Nothing,
+                                                                         ReactorStateCache} = nothing)
+    return nothing
+end
+
+function _prepare_residence_time_source(layout::ApiLayout,
+                                        config::Config,
+                                        u0::Vector{Float64},
+                                        rt_cfg::ResidenceTimeConfig;
+                                        inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+    rt_cfg.enabled || return nothing
+
     continuity = _build_residence_time_continuity_indices(layout,
                                                           config.reactor.composition.species)
     species_order = continuity.species_order
@@ -128,15 +150,14 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         if inlet_reactor.composition.species != config.reactor.composition.species
             error("ResidenceTimeConfig inlet_reactor species must match the initialized TERRA species ordering.")
         end
+
         inlet_config = Config(;
                               reactor = inlet_reactor,
                               models = config.models,
                               sources = config.sources,
                               numerics = config.numerics,
                               runtime = config.runtime)
-
-        inlet_state = config_to_initial_state(inlet_config;
-                                              state_cache = inlet_state_cache)
+        inlet_state = config_to_initial_state(inlet_config; state_cache = inlet_state_cache)
         energy_scalar_in = config.models.physics.is_isothermal_teex ? inlet_state.rho_rem :
                            inlet_state.rho_energy
         rho_ex_in = layout.is_elec_sts ? inlet_state.rho_ex : nothing
@@ -155,8 +176,7 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
     end
 
     inlet_state = unpack_state_vector(u_in, layout)
-
-    U_energy = if rt_cfg.U_energy === nothing
+    u_energy = if rt_cfg.U_energy === nothing
         rho_weighted_u = 0.0
         rho_total = 0.0
         @inbounds for isp in 1:(layout.nsp)
@@ -176,12 +196,10 @@ function _prepare_residence_time_data(layout::ApiLayout, config::Config,
         rt_cfg.U_energy
     end
 
-    inv_tau_energy = U_energy / rt_cfg.L
-
-    return (u_in = u_in,
-            species_order = species_order,
-            species_indices = species_indices,
-            energy_indices = energy_indices,
-            inv_tau_species = inv_tau_species,
-            inv_tau_energy = inv_tau_energy)
+    return PreparedResidenceTimeSource(u_in,
+                                       species_order,
+                                       species_indices,
+                                       energy_indices,
+                                       inv_tau_species,
+                                       u_energy / rt_cfg.L)
 end

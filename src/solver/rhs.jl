@@ -464,7 +464,7 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
     if !is_isothermal
         calculate_rhs_api_wrapper!(du, u_eval)
         if hasproperty(p, :sources)
-            _apply_source_terms!(du, u_eval, p.sources)
+            _apply_sources!(du, u_eval, p.sources)
         end
         if needs_clamp
             _compact_apply_shampine_positivity!(du, u, layout)
@@ -489,7 +489,7 @@ function terra_ode_system!(du::Vector{Float64}, u::Vector{Float64}, p, t::Float6
                                                tex = teex_vec)
 
     if hasproperty(p, :sources)
-        _apply_source_terms!(du, u_eval, p.sources)
+        _apply_sources!(du, u_eval, p.sources)
     end
     if needs_clamp
         _compact_apply_shampine_positivity!(du, u, layout)

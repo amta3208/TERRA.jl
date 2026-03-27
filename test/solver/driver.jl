@@ -64,10 +64,8 @@ end
 @testset "Direct 0D solve rejects wall-loss configs without profile inputs" begin
     base = terra.nitrogen_10ev_config(; isothermal = false)
     wall_cfg = terra.WallLossConfig(;
-                                    species_models = Dict("N+" => terra.SpeciesWallModel(;
-                                                                                         class = :ion_neutralization,
-                                                                                         rate_model = :bohm_gap,
-                                                                                         products = Dict("N" => 1.0),)),)
+                                    species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
+                                                                                                    products = Dict("N" => 1.0))),)
     config = terra.Config(;
                           reactor = base.reactor,
                           models = base.models,

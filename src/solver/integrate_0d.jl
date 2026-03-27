@@ -280,10 +280,10 @@ function _integrate_0d_system(config::Config, initial_state;
     work_rho_sp = zeros(Float64, layout.nsp)
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
-    prepared_sources = _prepare_source_terms_data(layout, config, u0, sources;
-                                                  wall_inputs = wall_inputs,
-                                                  inlet_state_cache = inlet_state_cache)
-    result_metadata = _source_terms_result_metadata(prepared_sources)
+    prepared_sources = _prepare_sources(layout, config, u0, sources;
+                                        wall_inputs = wall_inputs,
+                                        inlet_state_cache = inlet_state_cache)
+    result_metadata = _source_result_metadata(prepared_sources)
 
     progress_reporter = _progress_reporter(runtime, tlim)
 
@@ -499,8 +499,8 @@ function _integrate_0d_system(config::Config, initial_state;
         for i in 1:n_times
             frame_temps = (tt = temperatures_tt[i], te = temperatures_te[i],
                            tv = temperatures_tv[i])
-            frame_source_terms = _source_terms_frame_snapshot(sol.u[i], prepared_sources,
-                                                              config.runtime.unit_system)
+            frame_source_terms = _source_frame_snapshot(sol.u[i], prepared_sources,
+                                                        config.runtime.unit_system)
             frames[i] = ReactorFrame(;
                                      t = time_points[i],
                                      species_densities = species_densities_si[:, i],

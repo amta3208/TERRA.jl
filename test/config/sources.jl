@@ -4,17 +4,38 @@
     @test cfg.wall_losses === nothing
 end
 
-@testset "SpeciesWallModel" begin
-    model = terra.SpeciesWallModel(;
-                                   class = :ion_neutralization,
-                                   rate_model = :bohm_gap,
-                                   parameters = Dict("alpha" => 0.5),
-                                   products = Dict("N" => 1.0),)
-    @test model.class == :ion_neutralization
-    @test model.rate_model == :bohm_gap
-    @test model.parameters["alpha"] == 0.5
-    @test model.products["N"] == 1.0
+@testset "Concrete wall model types" begin
+    ion_model = terra.IonNeutralizationWallModel(;
+                                                 bohm_scale = 0.5,
+                                                 products = Dict("N" => 1.0))
+    @test ion_model.bohm_scale == 0.5
+    @test ion_model.products["N"] == 1.0
 
+    ballistic_model = terra.BallisticNeutralRecombinationWallModel(;
+                                                                   gamma = 0.25,
+                                                                   products = Dict("N2" => 0.5))
+    @test ballistic_model.gamma == 0.25
+    @test ballistic_model.products["N2"] == 0.5
+
+    constant_model = terra.ConstantNeutralRecombinationWallModel(;
+                                                                 k_wall_1_s = 2.0e5,
+                                                                 products = Dict("N2" => 0.5))
+    @test constant_model.k_wall_1_s == 2.0e5
+    @test constant_model.products["N2"] == 0.5
+
+    compat_model = terra.SpeciesWallModel(;
+                                          class = :ion_neutralization,
+                                          rate_model = :bohm_gap,
+                                          parameters = Dict("bohm_scale" => 0.5),
+                                          products = Dict("N" => 1.0))
+    @test compat_model isa terra.IonNeutralizationWallModel
+
+    @test_throws ArgumentError terra.IonNeutralizationWallModel(;
+                                                                bohm_scale = -1.0)
+    @test_throws ArgumentError terra.BallisticNeutralRecombinationWallModel(;
+                                                                            gamma = -1.0)
+    @test_throws ArgumentError terra.ConstantNeutralRecombinationWallModel(;
+                                                                           k_wall_1_s = -1.0)
     @test_throws ArgumentError terra.SpeciesWallModel(;
                                                       class = :unsupported,
                                                       rate_model = :bohm_gap)
@@ -22,24 +43,30 @@ end
                                                       class = :ion_neutralization,
                                                       rate_model = :unsupported)
     @test_throws ArgumentError terra.SpeciesWallModel(;
-                                                      class = :ion_neutralization,
-                                                      rate_model = :bohm_gap,
-                                                      parameters = Dict("alpha" => -1.0))
+                                                      class = :neutral_recombination,
+                                                      rate_model = :ballistic_sticking,
+                                                      parameters = Dict("gamma" => -1.0))
+    @test_throws ArgumentError terra.SpeciesWallModel(;
+                                                      class = :electronic_quench,
+                                                      rate_model = :constant,
+                                                      parameters = Dict("k_wall_1_s" => 1.0))
 end
 
 @testset "WallLossConfig" begin
-    cfg = terra.WallLossConfig(;
-                               species_models = Dict("N+" => terra.SpeciesWallModel(;
-                                                                                    class = :ion_neutralization,
-                                                                                    rate_model = :bohm_gap,
-                                                                                    products = Dict("N" => 1.0),)),)
+    ion_model = terra.IonNeutralizationWallModel(; products = Dict("N" => 1.0))
+    cfg = terra.WallLossConfig(; species_models = Dict("N+" => ion_model))
     @test cfg.enabled == true
-    @test cfg.use_ion_losses == true
-    @test cfg.use_neutral_recombination == false
-    @test cfg.use_electronic_quenching == false
     @test haskey(cfg.species_models, "N+")
+    @test cfg.species_models["N+"] === ion_model
+
     @test_throws ArgumentError terra.WallLossConfig(;
-                                                    species_models = Dict("" => cfg.species_models["N+"]))
+                                                    species_models = Dict("" => ion_model))
+    @test_throws ArgumentError terra.WallLossConfig(;
+                                                    use_ion_losses = false,
+                                                    species_models = Dict("N+" => ion_model))
+    @test_throws ArgumentError terra.WallLossConfig(;
+                                                    use_electronic_quenching = true,
+                                                    species_models = Dict("N+" => ion_model))
 end
 
 @testset "ResidenceTimeConfig" begin

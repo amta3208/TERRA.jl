@@ -435,21 +435,14 @@
     @testset "Wall losses change the chain solution and expose diagnostics" begin
         base_config = build_chain_test_config()
         wall_cfg = terra.WallLossConfig(;
-                                        use_neutral_recombination = true,
-                                        species_models = Dict("N+" => terra.SpeciesWallModel(;
-                                                                                             class = :ion_neutralization,
-                                                                                             rate_model = :bohm_gap,
-                                                                                             parameters = Dict("bohm_scale" => 1.25),
-                                                                                             products = Dict("N" => 1.0),),
-                                                              "N2+" => terra.SpeciesWallModel(;
-                                                                                              class = :ion_neutralization,
-                                                                                              rate_model = :bohm_gap,
-                                                                                              products = Dict("N2" => 1.0),),
-                                                              "N" => terra.SpeciesWallModel(;
-                                                                                            class = :neutral_recombination,
-                                                                                            rate_model = :constant,
-                                                                                            parameters = Dict("k_wall_1_s" => 4.0e5),
-                                                                                            products = Dict("N2" => 0.5),)),)
+                                        species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
+                                                                                                        bohm_scale = 1.25,
+                                                                                                        products = Dict("N" => 1.0)),
+                                                              "N2+" => terra.IonNeutralizationWallModel(;
+                                                                                                         products = Dict("N2" => 1.0)),
+                                                              "N" => terra.ConstantNeutralRecombinationWallModel(;
+                                                                                                                 k_wall_1_s = 4.0e5,
+                                                                                                                 products = Dict("N2" => 0.5))),)
         wall_config = terra.Config(;
                                    reactor = base_config.reactor,
                                    models = base_config.models,

@@ -42,10 +42,8 @@ struct WallLossSpeciesIndexData
     is_electronic_resolved::Dict{String, Bool}
 end
 
-struct PreparedWallLossModel
+struct PreparedWallReactionData
     reactant::String
-    class::Symbol
-    rate_model::Symbol
     reactant_indices::Vector{Int}
     reactant_ground_index::Int
     product_indices::Dict{String, Int}
@@ -53,17 +51,26 @@ struct PreparedWallLossModel
     reactant_molecular_weight::Float64
     product_molecular_weights::Dict{String, Float64}
     charge_state::Int
-    parameters::Dict{String, Float64}
+end
+
+abstract type PreparedWallSpeciesModel end
+
+struct PreparedWallReaction{M <: SpeciesWallModel} <: PreparedWallSpeciesModel
+    reaction::PreparedWallReactionData
+    model::M
 end
 
 struct PreparedWallLossData
     wall_config::WallLossConfig
     wall_inputs::SegmentWallInputs
     species_index_data::WallLossSpeciesIndexData
-    models::Vector{PreparedWallLossModel}
+    models::Vector{PreparedWallSpeciesModel}
     segment_tt_K::Float64
     segment_te_K::Float64
 end
+
+@inline _reaction(model::PreparedWallReaction) = model.reaction
+@inline _config_wall_model(model::PreparedWallReaction) = model.model
 
 @inline function _wall_losses_enabled(sources::Union{Nothing, SourceTermsConfig})
     return sources !== nothing &&
@@ -157,7 +164,7 @@ function _build_wall_loss_index_data(layout::ApiLayout,
         idx += 1
     end
 
-    @assert idx==layout.mom_range.start "Internal error: wall-loss continuity index mismatch."
+    @assert idx == layout.mom_range.start "Internal error: wall-loss continuity index mismatch."
 
     return WallLossSpeciesIndexData(species_order,
                                     species_positions,
@@ -176,7 +183,7 @@ function _validate_wall_loss_species(wall_cfg::WallLossConfig,
                                          if !(name in active_species)])
     invalid_product_species = sort!(unique(String[product_name
                                                   for model in values(wall_cfg.species_models)
-                                                  for product_name in keys(model.products)
+                                                  for product_name in keys(_wall_model_products(model))
                                                   if !(product_name in active_species)]))
 
     if !isempty(invalid_model_species) || !isempty(invalid_product_species)
@@ -184,118 +191,103 @@ function _validate_wall_loss_species(wall_cfg::WallLossConfig,
                             "Invalid species_models keys: $(isempty(invalid_model_species) ? "none" : join(invalid_model_species, ", ")); " *
                             "invalid product species: $(isempty(invalid_product_species) ? "none" : join(invalid_product_species, ", "))."))
     end
+
+    return nothing
 end
 
-@inline function _wall_loss_class_enabled(wall_cfg::WallLossConfig, class::Symbol)
-    if class == :ion_neutralization
-        return wall_cfg.use_ion_losses
-    elseif class == :neutral_recombination
-        return wall_cfg.use_neutral_recombination
-    elseif class == :electronic_quench
-        return wall_cfg.use_electronic_quenching
-    end
-    return false
-end
-
-function _validate_wall_parameters(reactant::AbstractString,
-                                   model::SpeciesWallModel)
-    if model.class == :electronic_quench
-        throw(ArgumentError("SpeciesWallModel for `$reactant` uses `:electronic_quench`, which is not currently supported by the wall-loss implementation."))
-    end
-
-    allowed = Set{String}()
-    required = String[]
-    validated = Dict{String, Float64}()
-
-    if model.class == :ion_neutralization
-        model.rate_model == :bohm_gap ||
-            throw(ArgumentError("SpeciesWallModel for `$reactant`: `:ion_neutralization` supports only `:bohm_gap`."))
-        push!(allowed, "bohm_scale")
-        validated["bohm_scale"] = get(model.parameters, "bohm_scale", 1.0)
-    elseif model.class == :neutral_recombination
-        if model.rate_model == :ballistic_sticking
-            push!(allowed, "gamma")
-            push!(required, "gamma")
-        elseif model.rate_model == :constant
-            push!(allowed, "k_wall_1_s")
-            push!(required, "k_wall_1_s")
-        else
-            throw(ArgumentError("SpeciesWallModel for `$reactant`: `:neutral_recombination` supports only `:ballistic_sticking` or `:constant`."))
-        end
-    else
-        throw(ArgumentError("SpeciesWallModel for `$reactant`: unsupported class `$(model.class)` in wall-loss preparation."))
-    end
-
-    missing = sort!(String[name for name in required if !haskey(model.parameters, name)])
-    extra = sort!(String[name for name in keys(model.parameters) if !(name in allowed)])
-    if !isempty(missing) || !isempty(extra)
-        throw(ArgumentError("SpeciesWallModel for `$reactant`: invalid parameters for `$(model.class)`/`$(model.rate_model)`. " *
-                            "Missing: $(isempty(missing) ? "none" : join(missing, ", ")); " *
-                            "Extra: $(isempty(extra) ? "none" : join(extra, ", "))."))
-    end
-
-    for name in allowed
-        if haskey(model.parameters, name)
-            validated[name] = model.parameters[name]
-        end
-    end
-
-    return validated
-end
-
-function _prepare_wall_loss_model(reactant::String,
-                                  model::SpeciesWallModel,
-                                  wall_cfg::WallLossConfig,
-                                  species_index_data::WallLossSpeciesIndexData,
-                                  molecular_weights::Dict{String, Float64})
-    model.class == :electronic_quench && _validate_wall_parameters(reactant, model)
-    _wall_loss_class_enabled(wall_cfg, model.class) || return nothing
-
-    parameters = _validate_wall_parameters(reactant, model)
+function _build_prepared_wall_reaction(reactant::String,
+                                       model::SpeciesWallModel,
+                                       reactant_indices::Vector{Int},
+                                       species_index_data::WallLossSpeciesIndexData,
+                                       molecular_weights::Dict{String, Float64},
+                                       charge_state::Int)
     haskey(species_index_data.ground_indices, reactant) ||
         throw(ArgumentError("SpeciesWallModel for `$reactant`: no ground reservoir could be identified in the compact state layout."))
-
-    reactant_charge = get(species_index_data.charge_states, reactant, 0)
-    if model.class == :ion_neutralization && reactant_charge <= 0
-        throw(ArgumentError("SpeciesWallModel for `$reactant`: `:ion_neutralization` requires a positively charged reactant."))
-    end
-    if model.class == :neutral_recombination && reactant_charge != 0
-        throw(ArgumentError("SpeciesWallModel for `$reactant`: `:neutral_recombination` requires a neutral reactant."))
-    end
-
-    reactant_indices = if model.class == :ion_neutralization
-        copy(species_index_data.all_indices[reactant])
-    else
-        [species_index_data.ground_indices[reactant]]
-    end
     isempty(reactant_indices) &&
         throw(ArgumentError("SpeciesWallModel for `$reactant`: no compact continuity indices were found for the configured reactant."))
 
     product_indices = Dict{String, Int}()
     product_molecular_weights = Dict{String, Float64}()
-    for product in keys(model.products)
+    product_branching = Dict{String, Float64}()
+
+    for (product, coefficient) in pairs(_wall_model_products(model))
         haskey(species_index_data.ground_indices, product) ||
             throw(ArgumentError("SpeciesWallModel for `$reactant`: no ground reservoir could be identified for product `$product`."))
         product_indices[product] = species_index_data.ground_indices[product]
         product_molecular_weights[product] = molecular_weights[product]
+        product_branching[product] = coefficient
     end
 
-    return PreparedWallLossModel(reactant,
-                                 model.class,
-                                 model.rate_model,
-                                 reactant_indices,
-                                 species_index_data.ground_indices[reactant],
-                                 product_indices,
-                                 Dict{String, Float64}(model.products),
-                                 molecular_weights[reactant],
-                                 product_molecular_weights,
-                                 reactant_charge,
-                                 parameters)
+    reaction = PreparedWallReactionData(reactant,
+                                        reactant_indices,
+                                        species_index_data.ground_indices[reactant],
+                                        product_indices,
+                                        product_branching,
+                                        molecular_weights[reactant],
+                                        product_molecular_weights,
+                                        charge_state)
+    return PreparedWallReaction(reaction, model)
 end
 
-function _prepare_wall_loss_data(layout::ApiLayout, config::Config,
-                                 wall_cfg::WallLossConfig;
-                                 wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
+function _prepare_wall_species_model(reactant::String,
+                                     model::IonNeutralizationWallModel,
+                                     species_index_data::WallLossSpeciesIndexData,
+                                     molecular_weights::Dict{String, Float64})
+    reactant_charge = get(species_index_data.charge_states, reactant, 0)
+    reactant_charge > 0 ||
+        throw(ArgumentError("SpeciesWallModel for `$reactant`: `:ion_neutralization` requires a positively charged reactant."))
+    reactant_indices = copy(species_index_data.all_indices[reactant])
+    return _build_prepared_wall_reaction(reactant,
+                                         model,
+                                         reactant_indices,
+                                         species_index_data,
+                                         molecular_weights,
+                                         reactant_charge)
+end
+
+function _prepare_wall_species_model(reactant::String,
+                                     model::BallisticNeutralRecombinationWallModel,
+                                     species_index_data::WallLossSpeciesIndexData,
+                                     molecular_weights::Dict{String, Float64})
+    reactant_charge = get(species_index_data.charge_states, reactant, 0)
+    reactant_charge == 0 ||
+        throw(ArgumentError("SpeciesWallModel for `$reactant`: `:neutral_recombination` requires a neutral reactant."))
+    reactant_indices = [species_index_data.ground_indices[reactant]]
+    return _build_prepared_wall_reaction(reactant,
+                                         model,
+                                         reactant_indices,
+                                         species_index_data,
+                                         molecular_weights,
+                                         reactant_charge)
+end
+
+function _prepare_wall_species_model(reactant::String,
+                                     model::ConstantNeutralRecombinationWallModel,
+                                     species_index_data::WallLossSpeciesIndexData,
+                                     molecular_weights::Dict{String, Float64})
+    reactant_charge = get(species_index_data.charge_states, reactant, 0)
+    reactant_charge == 0 ||
+        throw(ArgumentError("SpeciesWallModel for `$reactant`: `:neutral_recombination` requires a neutral reactant."))
+    reactant_indices = [species_index_data.ground_indices[reactant]]
+    return _build_prepared_wall_reaction(reactant,
+                                         model,
+                                         reactant_indices,
+                                         species_index_data,
+                                         molecular_weights,
+                                         reactant_charge)
+end
+
+@inline function _prepare_wall_losses(layout::ApiLayout,
+                                      config::Config,
+                                      ::Nothing;
+                                      wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
+    return nothing
+end
+
+function _prepare_wall_losses(layout::ApiLayout,
+                              config::Config,
+                              wall_cfg::WallLossConfig;
+                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     wall_cfg.enabled || return nothing
     wall_inputs === nothing &&
         throw(ArgumentError("WallLossConfig is enabled, but no segment wall inputs were provided. " *
@@ -313,14 +305,13 @@ function _prepare_wall_loss_data(layout::ApiLayout, config::Config,
         molecular_weight_dict[species_name] = molecular_weights[isp]
     end
 
-    prepared_models = PreparedWallLossModel[]
+    prepared_models = PreparedWallSpeciesModel[]
     for reactant in sort!(collect(keys(wall_cfg.species_models)))
-        prepared_model = _prepare_wall_loss_model(reactant,
-                                                  wall_cfg.species_models[reactant],
-                                                  wall_cfg,
-                                                  species_index_data,
-                                                  molecular_weight_dict)
-        prepared_model === nothing || push!(prepared_models, prepared_model)
+        push!(prepared_models,
+              _prepare_wall_species_model(reactant,
+                                          wall_cfg.species_models[reactant],
+                                          species_index_data,
+                                          molecular_weight_dict))
     end
 
     return PreparedWallLossData(wall_cfg,
@@ -331,38 +322,38 @@ function _prepare_wall_loss_data(layout::ApiLayout, config::Config,
                                 Float64(config.reactor.thermal.Te))
 end
 
-@inline _wall_mass_density_to_number_density_cgs(rho_cgs::Real, molecular_weight::Real) = Float64(rho_cgs) *
-                                                                                          AVOGADRO /
-                                                                                          Float64(molecular_weight)
+@inline _wall_mass_density_to_number_density_cgs(rho_cgs::Real, molecular_weight::Real) =
+    Float64(rho_cgs) * AVOGADRO / Float64(molecular_weight)
 
-@inline _wall_number_density_to_mass_density_cgs(n_cgs::Real, molecular_weight::Real) = Float64(n_cgs) *
-                                                                                        Float64(molecular_weight) /
-                                                                                        AVOGADRO
+@inline _wall_number_density_to_mass_density_cgs(n_cgs::Real, molecular_weight::Real) =
+    Float64(n_cgs) * Float64(molecular_weight) / AVOGADRO
 
 @inline _molecular_mass_kg(molecular_weight_g_mol::Real) = Float64(molecular_weight_g_mol) *
                                                            1.0e-3 / AVOGADRO
 
-function _wall_rate_1_s(model::PreparedWallLossModel, wall_losses::PreparedWallLossData)
-    if model.class == :ion_neutralization
-        bohm_scale = get(model.parameters, "bohm_scale", 1.0)
-        h_i = wall_losses.wall_inputs.ion_edge_to_center_ratio === nothing ?
-              DEFAULT_ION_EDGE_TO_CENTER_RATIO :
-              wall_losses.wall_inputs.ion_edge_to_center_ratio
-        u_bohm = bohm_scale *
-                 sqrt(model.charge_state * BOLTZMANN_J_PER_K * wall_losses.segment_te_K /
-                      _molecular_mass_kg(model.reactant_molecular_weight))
-        return wall_losses.wall_inputs.a_wall_over_v_m_inv * h_i * u_bohm
-    elseif model.class == :neutral_recombination
-        if model.rate_model == :ballistic_sticking
-            gamma = model.parameters["gamma"]
-            cbar = sqrt(8.0 * BOLTZMANN_J_PER_K * wall_losses.segment_tt_K /
-                        (pi * _molecular_mass_kg(model.reactant_molecular_weight)))
-            return gamma * cbar * 0.25 * wall_losses.wall_inputs.a_wall_over_v_m_inv
-        elseif model.rate_model == :constant
-            return model.parameters["k_wall_1_s"]
-        end
-    end
-    throw(ArgumentError("Unsupported prepared wall-loss model for `$(model.reactant)`: $(model.class) / $(model.rate_model)."))
+function _wall_rate_1_s(model::PreparedWallReaction{IonNeutralizationWallModel},
+                        wall_losses::PreparedWallLossData)
+    reaction = _reaction(model)
+    h_i = wall_losses.wall_inputs.ion_edge_to_center_ratio === nothing ?
+          DEFAULT_ION_EDGE_TO_CENTER_RATIO :
+          wall_losses.wall_inputs.ion_edge_to_center_ratio
+    u_bohm = model.model.bohm_scale *
+             sqrt(reaction.charge_state * BOLTZMANN_J_PER_K * wall_losses.segment_te_K /
+                  _molecular_mass_kg(reaction.reactant_molecular_weight))
+    return wall_losses.wall_inputs.a_wall_over_v_m_inv * h_i * u_bohm
+end
+
+function _wall_rate_1_s(model::PreparedWallReaction{BallisticNeutralRecombinationWallModel},
+                        wall_losses::PreparedWallLossData)
+    reaction = _reaction(model)
+    cbar = sqrt(8.0 * BOLTZMANN_J_PER_K * wall_losses.segment_tt_K /
+                (pi * _molecular_mass_kg(reaction.reactant_molecular_weight)))
+    return model.model.gamma * cbar * 0.25 * wall_losses.wall_inputs.a_wall_over_v_m_inv
+end
+
+function _wall_rate_1_s(model::PreparedWallReaction{ConstantNeutralRecombinationWallModel},
+                        wall_losses::PreparedWallLossData)
+    return model.model.k_wall_1_s
 end
 
 function _accumulate_wall_loss_sources!(du::Union{Nothing, Vector{Float64}},
@@ -371,52 +362,56 @@ function _accumulate_wall_loss_sources!(du::Union{Nothing, Vector{Float64}},
                                         species_net_drho::Union{Nothing, Vector{Float64}} = nothing,
                                         k_wall_dict::Union{Nothing, Dict{String, Float64}} = nothing)
     for model in wall_losses.models
+        reaction = _reaction(model)
         k_wall = _wall_rate_1_s(model, wall_losses)
-        k_wall_dict === nothing || (k_wall_dict[model.reactant] = k_wall)
+        k_wall_dict === nothing || (k_wall_dict[reaction.reactant] = k_wall)
 
         total_lost_number_rate = 0.0
         total_lost_drho = 0.0
-        @inbounds for idx in model.reactant_indices
+        @inbounds for idx in reaction.reactant_indices
             rho_val = Float64(u[idx])
             rho_val <= 0.0 && continue
             drho_val = -k_wall * rho_val
             du === nothing || (du[idx] += drho_val)
             total_lost_drho -= drho_val
             total_lost_number_rate += _wall_mass_density_to_number_density_cgs(-drho_val,
-                                                                               model.reactant_molecular_weight)
+                                                                               reaction.reactant_molecular_weight)
         end
 
         if species_net_drho !== nothing && total_lost_drho > 0.0
-            species_net_drho[wall_losses.species_index_data.species_positions[model.reactant]] -= total_lost_drho
+            species_net_drho[wall_losses.species_index_data.species_positions[reaction.reactant]] -=
+                total_lost_drho
         end
 
         total_lost_number_rate <= 0.0 && continue
-        for (product, coefficient) in pairs(model.product_branching)
+        for (product, coefficient) in pairs(reaction.product_branching)
             coefficient == 0.0 && continue
             product_drho = _wall_number_density_to_mass_density_cgs(coefficient *
                                                                     total_lost_number_rate,
-                                                                    model.product_molecular_weights[product])
-            du === nothing || (du[model.product_indices[product]] += product_drho)
+                                                                    reaction.product_molecular_weights[product])
+            du === nothing || (du[reaction.product_indices[product]] += product_drho)
             if species_net_drho !== nothing
-                species_net_drho[wall_losses.species_index_data.species_positions[product]] += product_drho
+                species_net_drho[wall_losses.species_index_data.species_positions[product]] +=
+                    product_drho
             end
         end
     end
     return nothing
 end
 
-@inline function _apply_wall_loss_term!(du::Vector{Float64},
-                                        u::Vector{Float64},
-                                        wall_losses)
-    wall_losses === nothing && return nothing
+@inline _apply_wall_losses!(du::Vector{Float64}, u::Vector{Float64}, ::Nothing) = nothing
+
+function _apply_wall_losses!(du::Vector{Float64},
+                             u::Vector{Float64},
+                             wall_losses::PreparedWallLossData)
     isempty(wall_losses.models) && return nothing
     _accumulate_wall_loss_sources!(du, u, wall_losses)
     return nothing
 end
 
-function _wall_loss_source_snapshot(u::Vector{Float64},
-                                    wall_losses::Union{Nothing, PreparedWallLossData},
-                                    unit_system::Symbol)
+function _wall_loss_frame_snapshot(u::Vector{Float64},
+                                   wall_losses::Union{Nothing, PreparedWallLossData},
+                                   unit_system::Symbol)
     wall_losses === nothing && return nothing
     isempty(wall_losses.models) && return nothing
 
@@ -439,7 +434,7 @@ function _wall_loss_source_snapshot(u::Vector{Float64},
             k_wall_1_s = k_wall)
 end
 
-function _wall_loss_metadata_dict(wall_losses::Union{Nothing, PreparedWallLossData})
+function _wall_loss_metadata(wall_losses::Union{Nothing, PreparedWallLossData})
     wall_losses === nothing && return nothing
 
     species_models = Dict{String, Any}()
@@ -447,20 +442,21 @@ function _wall_loss_metadata_dict(wall_losses::Union{Nothing, PreparedWallLossDa
                                        "use_neutral_recombination" => false,
                                        "use_electronic_quenching" => false)
     for model in wall_losses.models
-        species_models[model.reactant] = Dict{String, Any}("class" => String(model.class),
-                                                           "rate_model" => String(model.rate_model),
-                                                           "charge_state" => model.charge_state,
-                                                           "parameters" => copy(model.parameters),
-                                                           "products" => copy(model.product_branching),
-                                                           "reactant_indices" => copy(model.reactant_indices),
-                                                           "reactant_ground_index" => model.reactant_ground_index,
-                                                           "product_indices" => copy(model.product_indices))
-        if model.class == :ion_neutralization
+        reaction = _reaction(model)
+        config_model = _config_wall_model(model)
+        species_models[reaction.reactant] = Dict{String, Any}("class" => String(_wall_model_class(config_model)),
+                                                              "rate_model" => String(_wall_model_rate_model(config_model)),
+                                                              "charge_state" => reaction.charge_state,
+                                                              "parameters" => _wall_parameter_dict(config_model),
+                                                              "products" => copy(reaction.product_branching),
+                                                              "reactant_indices" => copy(reaction.reactant_indices),
+                                                              "reactant_ground_index" => reaction.reactant_ground_index,
+                                                              "product_indices" => copy(reaction.product_indices))
+        if config_model isa IonNeutralizationWallModel
             enabled_flags["use_ion_losses"] = true
-        elseif model.class == :neutral_recombination
+        elseif config_model isa BallisticNeutralRecombinationWallModel ||
+               config_model isa ConstantNeutralRecombinationWallModel
             enabled_flags["use_neutral_recombination"] = true
-        elseif model.class == :electronic_quench
-            enabled_flags["use_electronic_quenching"] = true
         end
     end
 
