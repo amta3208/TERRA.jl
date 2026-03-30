@@ -34,6 +34,11 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Diagnose dylib
+        run: |
+          otool -L "$TERRA_LIB_PATH"
+          xattr "$TERRA_LIB_PATH"
+          julia -e 'using Libdl; println(dlopen(ENV["TERRA_LIB_PATH"]))'
       - name: Download private dylib (macOS arm64)
         if: matrix.os == 'macos-latest' && matrix.arch == 'aarch64'
         env:
@@ -46,6 +51,7 @@ jobs:
             --repo amta3208/terra-binaries \
             --pattern "terra-${VER}-macos-arm64.dylib" \
             --dir test/lib
+          xattr -dr com.apple.quarantine test/lib/ 2>/dev/null || true
           echo "TERRA_LIB_PATH=$(pwd)/test/lib/terra-${VER}-macos-arm64.dylib" >> "$GITHUB_ENV"
       - name: Install Open MPI runtime
         if: matrix.os == 'macos-latest'
