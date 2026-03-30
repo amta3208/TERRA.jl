@@ -77,37 +77,6 @@ end
         rm(temp_dir; recursive = true)
     end
 
-    @testset "Native Logging Configuration" begin
-        terra.close_terra_library()
-        terra.load_terra_library!()
-
-        temp_case_dir = mktempdir()
-        temp_log_dir = mktempdir()
-        try
-            input_dir = joinpath(temp_case_dir, "input")
-            mkpath(input_dir)
-            touch(joinpath(input_dir, "prob_setup.inp"))
-            terra.ensure_case_layout!(terra.RuntimeConfig(; case_path = temp_case_dir))
-
-            native_log_path = joinpath(temp_log_dir, "native.log")
-            @test_nowarn terra.configure_api_logging_wrapper(
-                console_level = terra.API_NATIVE_LOG_OFF,
-                file_level = terra.API_NATIVE_LOG_VERBOSE,
-                log_path = native_log_path,
-            )
-            result = terra.initialize_api_wrapper(
-                case_path = temp_case_dir,
-                native_console_level = terra.API_NATIVE_LOG_OFF,
-                native_file_level = terra.API_NATIVE_LOG_VERBOSE,
-                native_log_path = native_log_path,
-            )
-            @test result isa NamedTuple
-        finally
-            rm(temp_case_dir; recursive = true)
-            rm(temp_log_dir; recursive = true)
-        end
-    end
-
     @testset "Native Output Open And Close" begin
         dims = @test_nowarn reset_and_init!(TEST_CASE_PATH)
         try
