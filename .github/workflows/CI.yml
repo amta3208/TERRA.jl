@@ -57,8 +57,28 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+      - name: Dump TERRA logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          found_logs=0
+          for root in "${RUNNER_TEMP:-}" "${TMPDIR:-}" "$GITHUB_WORKSPACE"; do
+            if [[ -z "$root" || ! -d "$root" ]]; then
+              continue
+            fi
+            while IFS= read -r logfile; do
+              found_logs=1
+              echo "::group::$logfile"
+              cat "$logfile"
+              echo "::endgroup::"
+            done < <(find "$root" -type f \( -name 'run.log' -o -name 'native.log' -o -name 'chain.log' \) -print 2>/dev/null)
+          done
+          if [[ "$found_logs" -eq 0 ]]; then
+            echo "No TERRA log files were found under runner temp directories or the workspace."
+          fi
       - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
