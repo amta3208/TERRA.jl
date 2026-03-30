@@ -56,13 +56,16 @@ jobs:
           brew install open-mpi
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
-      - name: Run tests directly
+      - name: Configure test environment
+        shell: julia --project=test --color=yes {0}
         run: |
-          julia --project=. -e '
-            using Pkg
-            Pkg.instantiate()
-            include("test/runtests.jl")
-          '
+          using Pkg
+          Pkg.develop(Pkg.PackageSpec(path = pwd()))
+          Pkg.instantiate()
+      - name: Run tests directly
+        shell: julia --project=test --color=yes --check-bounds=yes --code-coverage=user {0}
+        run: |
+          include("test/runtests.jl")
       - uses: julia-actions/julia-processcoverage@v1
       - uses: codecov/codecov-action@v6
         with:
