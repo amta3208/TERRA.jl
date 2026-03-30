@@ -15,10 +15,10 @@
     end
     @testset "Maximum Species Count" begin
         # Ensure library path is set
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Test error when library not loaded
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
         @test_throws ErrorException terra.get_max_number_of_species_wrapper()
 
         # Test error message content
@@ -31,7 +31,7 @@
         end
 
         # Reload library for actual test
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         max_species = terra.get_max_number_of_species_wrapper()
 
@@ -45,10 +45,10 @@
 
     @testset "Species Names" begin
         # Ensure library is loaded
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Test error when library not loaded
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
         @test_throws ErrorException terra.get_species_names_wrapper()
 
         # Test error message content
@@ -93,10 +93,10 @@
 
     @testset "Electronic States Parameters" begin
         # Ensure library is loaded
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Test error when library not loaded
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
         @test_throws ErrorException terra.get_max_number_of_atomic_electronic_states_wrapper()
         @test_throws ErrorException terra.get_max_number_of_molecular_electronic_states_wrapper()
 
@@ -110,7 +110,7 @@
         end
 
         # Reload library for actual test
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Test atomic electronic states
         max_atomic_states = terra.get_max_number_of_atomic_electronic_states_wrapper()

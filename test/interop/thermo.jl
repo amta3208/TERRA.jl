@@ -37,7 +37,7 @@
     end
 
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         @test_throws ErrorException terra.calculate_vibrational_temperature_wrapper(
             1.0, rho_sp)
@@ -46,7 +46,7 @@ end
 
 @testset "Temperature Calculation" begin
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
@@ -63,12 +63,7 @@ end
 
     @testset "Error Handling Without Initialization" begin
         # Ensure Fortran API is not initialized for this block
-        try
-            terra.finalize_api_wrapper()
-        catch
-        end
-        terra.close_terra_library()
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
@@ -129,7 +124,7 @@ end
 
 @testset "Vibrational Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         tvib = 1000.0
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -227,7 +222,7 @@ end
 
 @testset "Electron-Electronic Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         teex = 10000.0
         tvib = 2000.0
@@ -293,7 +288,7 @@ end
 
 @testset "Electronic Boltzmann Distribution" begin
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         tex = 10000.0
@@ -347,9 +342,8 @@ end
     end
 
     @testset "Function Signature and Return Structure" begin
-        terra.load_terra_library!()
         test_case_path = TEST_CASE_PATH
-        terra.initialize_api_wrapper(case_path = test_case_path)
+        @test_nowarn reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         tex = 10000.0
@@ -371,9 +365,8 @@ end
     end
 
     @testset "Temperature Variations" begin
-        terra.load_terra_library!()
         test_case_path = TEST_CASE_PATH
-        terra.initialize_api_wrapper(case_path = test_case_path)
+        @test_nowarn reset_and_init!(test_case_path)
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
 
@@ -434,7 +427,7 @@ end
 
 @testset "Total Energy Calculation" begin
     @testset "Error Handling Without Library" begin
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         tt = 1000.0
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -484,7 +477,7 @@ end
 @testset "Source Terms Calculation" begin
     @testset "Error Handling Without Library" begin
         # Ensure library is not loaded
-        terra.close_terra_library()
+        unload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4

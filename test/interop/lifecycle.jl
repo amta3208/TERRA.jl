@@ -20,8 +20,7 @@ end
 @testset "Input And Lifecycle Handling" begin
     @testset "Initialization Input Validation" begin
         # Ensure library is loaded and Fortran not initialized
-        terra.close_terra_library()
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Test with non-existent case path
         @test_throws ErrorException terra.initialize_api_wrapper(case_path = "/nonexistent/path")
@@ -56,7 +55,7 @@ end
     end
 
     @testset "Directory Management" begin
-        terra.load_terra_library!()
+        reload_terra_library_for_tests!()
 
         # Store original directory
         original_dir = pwd()

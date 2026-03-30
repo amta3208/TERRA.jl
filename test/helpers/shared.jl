@@ -1,23 +1,59 @@
 const TEST_PACKAGE_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const TEST_CASES_ROOT = normpath(joinpath(@__DIR__, "..", "cases"))
-const TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH = normpath(joinpath(
-    TEST_CASES_ROOT, "terra_fortran", "reference_case"))
+const TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT,
+                                                                 "terra_fortran",
+                                                                 "reference_case"))
 const TEST_CASE_PATH = TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH
-const TEST_HET_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
-    TEST_CASES_ROOT, "hallthruster_jl", "chain_interface_case"))
-const TEST_TERRA_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(
-    TEST_CASES_ROOT, "terra_jl", "chain_interface_case"))
+const TEST_HET_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT,
+                                                             "hallthruster_jl",
+                                                             "chain_interface_case"))
+const TEST_TERRA_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT, "terra_jl",
+                                                               "chain_interface_case"))
 const _HALLTHRUSTER_EXPORT_TOOL = Ref{Union{Nothing, Module}}(nothing)
 
 function hallthruster_export_tool()
     tool = _HALLTHRUSTER_EXPORT_TOOL[]
     if tool === nothing
         tool = Module(gensym(:HallThrusterExportTool))
-        Base.include(tool, joinpath(
-            TEST_PACKAGE_ROOT, "tools", "hallthruster_jl", "export_chain_profile.jl"))
+        Base.include(tool,
+                     joinpath(TEST_PACKAGE_ROOT, "tools", "hallthruster_jl",
+                              "export_chain_profile.jl"))
         _HALLTHRUSTER_EXPORT_TOOL[] = tool
     end
     return tool::Module
+end
+
+"""
+This avoids calling `dlclose` on an initialized Fortran/MPI runtime by
+disabling MPI finalization for tests, finalizing the API if needed, and
+only then unloading the library handle.
+"""
+function unload_terra_library_for_tests!()
+    try
+        terra.set_api_finalize_mpi_wrapper(false)
+    catch
+        # ignore if the library is not loaded yet or the symbol is unavailable
+    end
+    try
+        terra.finalize_api_wrapper()
+    catch
+        # ignore cleanup errors in tests
+    end
+    try
+        terra.close_terra_library()
+    catch
+        # ignore cleanup errors in tests
+    end
+    return nothing
+end
+
+"""
+Reset the native TERRA library to a loaded-but-not-initialized state for tests.
+"""
+function reload_terra_library_for_tests!()
+    unload_terra_library_for_tests!()
+    terra.load_terra_library!()
+    return nothing
 end
 
 """
@@ -31,18 +67,8 @@ Reset the TERRA state (Fortran + Julia) and initialize from scratch.
 Returns a NamedTuple with `(num_species, num_dimensions)`.
 """
 function reset_and_init!(case_path::AbstractString;
-        config::Union{Nothing, terra.Config} = nothing)
-    # Best-effort cleanup (ignore errors if library is not loaded yet)
-    try
-        terra.finalize_api_wrapper()
-    catch
-        # ignore
-    end
-    try
-        terra.close_terra_library()
-    catch
-        # ignore
-    end
+                         config::Union{Nothing, terra.Config} = nothing)
+    unload_terra_library_for_tests!()
 
     # Fresh load + init
     terra.load_terra_library!()
