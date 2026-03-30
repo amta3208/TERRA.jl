@@ -1,4 +1,4 @@
-@testset "AxialMarchingConfig" begin
+ @progress_testset "AxialMarchingConfig" begin
     marching = terra.AxialMarchingConfig()
     @test marching.handoff_policy isa terra.FullStateHandoff
     @test marching.termination_policy isa terra.FinalTimeTermination

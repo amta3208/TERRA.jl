@@ -1,5 +1,5 @@
-@testset "TimeConfig" begin
-    @testset "Valid Construction" begin
+ @progress_testset "TimeConfig" begin
+     @progress_testset "Valid Construction" begin
         time = terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4, duration = 1e-3,
                                 nstep = 1000, method = 2)
         @test time.dt == 1e-6
@@ -9,7 +9,7 @@
         @test time.method == 2
     end
 
-    @testset "Invalid Construction" begin
+     @progress_testset "Invalid Construction" begin
         @test_throws ArgumentError terra.TimeConfig(; dt = -1e-6, dt_output = 1e-4,
                                                     duration = 1e-3)
         @test_throws ArgumentError terra.TimeConfig(; dt = 1e-6, dt_output = 1e-4,
@@ -19,7 +19,7 @@
     end
 end
 
-@testset "ODESolverConfig" begin
+ @progress_testset "ODESolverConfig" begin
     solver = terra.ODESolverConfig(;
                                    reltol = 1e-8,
                                    abstol_density = 1e-10,
@@ -36,7 +36,7 @@ end
     @test_throws ArgumentError terra.ODESolverConfig(; saveat_count = 0)
 end
 
-@testset "SpaceConfig" begin
+ @progress_testset "SpaceConfig" begin
     space = terra.SpaceConfig(; nd = 0, dr = nothing)
     @test space.nd == 0
     @test space.dr === nothing

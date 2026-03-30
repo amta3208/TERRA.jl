@@ -1,10 +1,10 @@
-@testset "Library Management" begin
-    @testset "Library Loading and Status" begin
+ @progress_testset "Library Management" begin
+     @progress_testset "Library Loading and Status" begin
         # Test initial state - no library loaded
         @test !terra.is_terra_loaded()
     end
 
-    @testset "Library Path Setting" begin
+     @progress_testset "Library Path Setting" begin
         # Test setting library path with non-existent file
         fake_path = "/nonexistent/path/libterra.so"
         @test_throws ErrorException terra.load_terra_library!(fake_path)
@@ -22,7 +22,7 @@
         @test !terra.is_terra_loaded()
     end
 
-    @testset "Library Cleanup" begin
+     @progress_testset "Library Cleanup" begin
         # Test closing library when none is loaded (should be safe)
         @test_nowarn terra.close_terra_library()
         @test !terra.is_terra_loaded()

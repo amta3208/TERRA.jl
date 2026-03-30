@@ -1,4 +1,4 @@
-@testset "Config (Nested)" begin
+ @progress_testset "Config (Nested)" begin
     reactor = terra.ReactorConfig(;
                                   composition = terra.ReactorComposition(;
                                                                          species = ["N",
@@ -34,7 +34,7 @@
     @test config.runtime == runtime
 end
 
-@testset "Config Modifiers" begin
+ @progress_testset "Config Modifiers" begin
     wall_cfg = terra.WallLossConfig(;
                                     species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
                                                                                                     products = Dict("N" => 1.0))),)

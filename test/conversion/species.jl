@@ -1,5 +1,5 @@
-@testset "Data Validation and Species Utilities" begin
-    @testset "Species Data Validation" begin
+ @progress_testset "Data Validation and Species Utilities" begin
+     @progress_testset "Species Data Validation" begin
         # Test valid species data
         species_names = ["N2", "N", "N+", "N2+", "E-"]
         terra_species = ["N2", "N", "N+", "N2+", "E-", "O2", "O"]
@@ -41,7 +41,7 @@
               true
     end
 
-    @testset "Species Mapping" begin
+     @progress_testset "Species Mapping" begin
         # Test common species mappings
         ht_species = ["N", "N2", "N+", "N2+", "e-"]
         terra_species = ["N", "N2", "N+", "N2+", "E-"]
@@ -100,8 +100,8 @@
 end
 
 
-@testset "get_molecular_weights" begin
-    @testset "Known Species" begin
+ @progress_testset "get_molecular_weights" begin
+     @progress_testset "Known Species" begin
         # Test nitrogen species
         weights = terra.get_molecular_weights(["N", "N2", "N+", "N2+", "E-"])
         @test weights[1] ≈ 14.007  # N
@@ -120,7 +120,7 @@ end
         @test weights_xe[2] ≈ 131.293  # Xe+
     end
 
-    @testset "Unknown Species" begin
+     @progress_testset "Unknown Species" begin
         @test_throws ErrorException terra.get_molecular_weights(["UNKNOWN"])
         @test_throws ErrorException terra.get_molecular_weights(["N", "UNKNOWN", "E-"])
     end

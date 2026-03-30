@@ -43,8 +43,8 @@ function _capture_stdout(f::Function)
     return read(capture_pipe, String)
 end
 
-@testset "Logging" begin
-    @testset "Run log routes to file and console" begin
+ @progress_testset "Logging" begin
+     @progress_testset "Run log routes to file and console" begin
         temp_dir = mktempdir()
         try
             runtime = terra.RuntimeConfig(; case_path = temp_dir,
@@ -65,7 +65,7 @@ end
         end
     end
 
-    @testset "Exception entries keep exception detail in file output" begin
+     @progress_testset "Exception entries keep exception detail in file output" begin
         temp_dir = mktempdir()
         try
             runtime = terra.RuntimeConfig(; case_path = temp_dir,
@@ -81,7 +81,7 @@ end
         end
     end
 
-    @testset "Chain detail routing honors file, console, and off modes" begin
+     @progress_testset "Chain detail routing honors file, console, and off modes" begin
         temp_file = mktempdir()
         temp_console = mktempdir()
         temp_off = mktempdir()
@@ -127,7 +127,7 @@ end
         end
     end
 
-    @testset "Progress gating follows logging policy" begin
+     @progress_testset "Progress gating follows logging policy" begin
         summary_logging = terra.LoggingConfig(; progress_mode = :summary)
         quiet_auto_logging = terra.LoggingConfig(; console_mode = :quiet, progress_mode = :auto)
         off_logging = terra.LoggingConfig(; progress_mode = :off)
@@ -149,7 +149,7 @@ end
         end
     end
 
-    @testset "Chain scalar rendering covers common value families" begin
+     @progress_testset "Chain scalar rendering covers common value families" begin
         @test terra._chain_scalar(nothing) == "null"
         @test terra._chain_scalar(true) == "true"
         @test terra._chain_scalar(:full_state) == "full_state"

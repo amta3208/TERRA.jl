@@ -1,4 +1,4 @@
-@testset "State Vector Layout (rhs_api)" begin
+ @progress_testset "State Vector Layout (rhs_api)" begin
     test_case_path = TEST_CASE_PATH
     @test_nowarn reset_and_init!(test_case_path)
 

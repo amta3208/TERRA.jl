@@ -66,10 +66,10 @@ function _write_chain_profile_json(path::AbstractString; schema_version::Abstrac
     end
 end
 
-@testset "load_chain_profile" begin
+ @progress_testset "load_chain_profile" begin
     export_tool = hallthruster_export_tool()
 
-    @testset "Loads Exported Fixture Profile" begin
+     @progress_testset "Loads Exported Fixture Profile" begin
         temp_case = mktempdir()
         try
             input_path = joinpath(TEST_HET_CHAIN_INTERFACE_CASE_PATH,
@@ -104,7 +104,7 @@ end
         end
     end
 
-    @testset "Supports Missing Optional Diagnostics" begin
+     @progress_testset "Supports Missing Optional Diagnostics" begin
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_v4.json")
@@ -125,7 +125,7 @@ end
         end
     end
 
-    @testset "Rejects Unsupported Schema Version" begin
+     @progress_testset "Rejects Unsupported Schema Version" begin
         temp_dir = mktempdir()
         try
             for schema_version in ("terra_chain_profile_v3", "terra_chain_profile_v2", "terra_chain_profile_v1")
@@ -138,7 +138,7 @@ end
         end
     end
 
-    @testset "Rejects Non-monotone Coordinates" begin
+     @progress_testset "Rejects Non-monotone Coordinates" begin
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_z.json")
@@ -152,7 +152,7 @@ end
         end
     end
 
-    @testset "Rejects Per-Species Length Mismatch" begin
+     @progress_testset "Rejects Per-Species Length Mismatch" begin
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_length.json")
@@ -171,7 +171,7 @@ end
         end
     end
 
-    @testset "Rejects Non-positive Species Velocities" begin
+     @progress_testset "Rejects Non-positive Species Velocities" begin
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_species_velocity.json")
@@ -190,7 +190,7 @@ end
         end
     end
 
-    @testset "Rejects Malformed Wall Profile Arrays" begin
+     @progress_testset "Rejects Malformed Wall Profile Arrays" begin
         temp_dir = mktempdir()
         try
             profile_path = joinpath(temp_dir, "chain_profile_bad_wall_profile.json")

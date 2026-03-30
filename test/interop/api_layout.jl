@@ -1,4 +1,4 @@
-@testset "ApiLayout" begin
+ @progress_testset "ApiLayout" begin
     reset_and_init!(TEST_CASE_PATH)
 
     raw = terra.get_api_layout_wrapper()

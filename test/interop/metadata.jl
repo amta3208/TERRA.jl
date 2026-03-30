@@ -1,5 +1,5 @@
-@testset "Utility Functions" begin
-    @testset "C API Accessors" begin
+ @progress_testset "Utility Functions" begin
+     @progress_testset "C API Accessors" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -13,7 +13,7 @@
         @test length(species_names) == active_species
         @test all(!isempty, species_names)
     end
-    @testset "Maximum Species Count" begin
+     @progress_testset "Maximum Species Count" begin
         # Ensure library path is set
         reload_terra_library_for_tests!()
 
@@ -43,7 +43,7 @@
         @test max_species <= 100  # Reasonable upper bound
     end
 
-    @testset "Species Names" begin
+     @progress_testset "Species Names" begin
         # Ensure library is loaded
         reload_terra_library_for_tests!()
 
@@ -91,7 +91,7 @@
         @test length(species_names) == length(unique(species_names))
     end
 
-    @testset "Electronic States Parameters" begin
+     @progress_testset "Electronic States Parameters" begin
         # Ensure library is loaded
         reload_terra_library_for_tests!()
 

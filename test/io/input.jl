@@ -1,5 +1,5 @@
-@testset "generate_input_files" begin
-    @testset "Directory Structure Creation" begin
+ @progress_testset "generate_input_files" begin
+     @progress_testset "Directory Structure Creation" begin
         temp_dir = mktempdir()
         try
             config = terra.nitrogen_10ev_config()
@@ -20,7 +20,7 @@
         end
     end
 
-    @testset "Config Input Generation" begin
+     @progress_testset "Config Input Generation" begin
         temp_dir = mktempdir()
         try
             config = terra.nitrogen_10ev_config()
@@ -39,7 +39,7 @@
         end
     end
 
-    @testset "File Content Validation" begin
+     @progress_testset "File Content Validation" begin
         temp_dir = mktempdir()
         try
             config = terra.nitrogen_10ev_config()

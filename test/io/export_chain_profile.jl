@@ -1,6 +1,6 @@
 using JSON
 
-@testset "export_chain_profile" begin
+ @progress_testset "export_chain_profile" begin
     export_tool = hallthruster_export_tool()
 
     temp_case = mktempdir()

@@ -1,5 +1,5 @@
-@testset "Vibrational Temperature Wrapper" begin
-    @testset "Round-trip Evib ↔ Tvib" begin
+ @progress_testset "Vibrational Temperature Wrapper" begin
+     @progress_testset "Round-trip Evib ↔ Tvib" begin
         # Initialize a consistent state
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
@@ -36,7 +36,7 @@
         end
     end
 
-    @testset "Error Handling Without Library" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         @test_throws ErrorException terra.calculate_vibrational_temperature_wrapper(
@@ -44,8 +44,8 @@
     end
 end
 
-@testset "Temperature Calculation" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Temperature Calculation" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -61,24 +61,25 @@ end
         end
     end
 
-    @testset "Error Handling Without Initialization" begin
+     @progress_testset "Error Handling Without Initialization" begin
         # Ensure Fortran API is not initialized for this block
         reload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
         rho_etot = 1e4
 
-        @test_throws ArgumentError terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
+        @test_throws ErrorException terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
 
         try
             terra.calculate_temperatures_wrapper(rho_sp, rho_etot)
             @test false
         catch e
-            @test occursin("rho_ex must be provided when electronic STS is active", e.msg)
+            @test occursin("TERRA not initialized. Call initialize_api_wrapper() first.",
+                           e.msg)
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -122,8 +123,8 @@ end
     end
 end
 
-@testset "Vibrational Energy Calculation" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Vibrational Energy Calculation" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
 
         tvib = 1000.0
@@ -139,7 +140,7 @@ end
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -187,7 +188,7 @@ end
         end
     end
 
-    @testset "Input Validation and Edge Cases" begin
+     @progress_testset "Input Validation and Edge Cases" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -220,8 +221,8 @@ end
     end
 end
 
-@testset "Electron-Electronic Energy Calculation" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Electron-Electronic Energy Calculation" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
 
         teex = 10000.0
@@ -239,7 +240,7 @@ end
         end
     end
 
-    @testset "Input Validation" begin
+     @progress_testset "Input Validation" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -267,7 +268,7 @@ end
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -286,8 +287,8 @@ end
     end
 end
 
-@testset "Electronic Boltzmann Distribution" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Electronic Boltzmann Distribution" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
 
         rho_sp = [1e-3, 1e-6, 1e-7, 1e-7, 1e-10]
@@ -306,7 +307,7 @@ end
         end
     end
 
-    @testset "Input Validation" begin
+     @progress_testset "Input Validation" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -341,7 +342,7 @@ end
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         test_case_path = TEST_CASE_PATH
         @test_nowarn reset_and_init!(test_case_path)
 
@@ -364,7 +365,7 @@ end
         end
     end
 
-    @testset "Temperature Variations" begin
+     @progress_testset "Temperature Variations" begin
         test_case_path = TEST_CASE_PATH
         @test_nowarn reset_and_init!(test_case_path)
 
@@ -391,7 +392,7 @@ end
     end
 end
 
-@testset "Dimension Validations" begin
+ @progress_testset "Dimension Validations" begin
     test_case_path = TEST_CASE_PATH
     reset_and_init!(test_case_path)
 
@@ -425,8 +426,8 @@ end
     end
 end
 
-@testset "Total Energy Calculation" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Total Energy Calculation" begin
+     @progress_testset "Error Handling Without Library" begin
         unload_terra_library_for_tests!()
 
         tt = 1000.0
@@ -442,7 +443,7 @@ end
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)
 
@@ -474,8 +475,8 @@ end
     end
 end
 
-@testset "Source Terms Calculation" begin
-    @testset "Error Handling Without Library" begin
+ @progress_testset "Source Terms Calculation" begin
+     @progress_testset "Error Handling Without Library" begin
         # Ensure library is not loaded
         unload_terra_library_for_tests!()
 
@@ -494,7 +495,7 @@ end
         end
     end
 
-    @testset "Function Signature and Return Structure" begin
+     @progress_testset "Function Signature and Return Structure" begin
         # Initialize a consistent state
         test_case_path = TEST_CASE_PATH
         reset_and_init!(test_case_path)

@@ -1,4 +1,4 @@
-@testset "Initialization" begin
+ @progress_testset "Initialization" begin
     # Ensure library path is set
     test_case_path = TEST_CASE_PATH
 
@@ -17,8 +17,8 @@
     end
 end
 
-@testset "Input And Lifecycle Handling" begin
-    @testset "Initialization Input Validation" begin
+ @progress_testset "Input And Lifecycle Handling" begin
+     @progress_testset "Initialization Input Validation" begin
         # Ensure library is loaded and Fortran not initialized
         reload_terra_library_for_tests!()
 
@@ -54,7 +54,7 @@ end
         end
     end
 
-    @testset "Directory Management" begin
+     @progress_testset "Directory Management" begin
         reload_terra_library_for_tests!()
 
         # Store original directory
@@ -76,7 +76,7 @@ end
         rm(temp_dir; recursive = true)
     end
 
-    @testset "Native Output Open And Close" begin
+     @progress_testset "Native Output Open And Close" begin
         dims = @test_nowarn reset_and_init!(TEST_CASE_PATH)
         try
             @test dims isa NamedTuple

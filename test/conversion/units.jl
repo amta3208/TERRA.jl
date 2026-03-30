@@ -1,5 +1,5 @@
-@testset "Unit Conversions" begin
-    @testset "Density Conversions" begin
+ @progress_testset "Unit Conversions" begin
+     @progress_testset "Density Conversions" begin
         # Test SI to CGS density conversion
         rho_si = [1000.0, 2000.0, 500.0]  # kg/m³
         rho_cgs_expected = [1.0, 2.0, 0.5]  # g/cm³
@@ -29,7 +29,7 @@
         @test terra.convert_density_si_to_cgs(int_si) ≈ [1e-3, 2e-3, 3e-3]
     end
 
-    @testset "Energy Density Conversions" begin
+     @progress_testset "Energy Density Conversions" begin
         # Test SI to CGS energy density conversion
         energy_si = 1e6  # J/m³
         energy_cgs_expected = 1e7  # erg/cm³
@@ -53,7 +53,7 @@
         end
     end
 
-    @testset "Pressure Conversions" begin
+     @progress_testset "Pressure Conversions" begin
         # Test SI to CGS pressure conversion
         pressure_si = 101325.0  # Pa (1 atm)
         pressure_cgs_expected = 1.01325e6  # dyne/cm²
@@ -78,7 +78,7 @@
         end
     end
 
-    @testset "Number Density Conversions" begin
+     @progress_testset "Number Density Conversions" begin
         # Test SI to CGS number density conversion
         n_si = 1e20  # 1/m³
         n_cgs_expected = 1e14  # 1/cm³
@@ -110,8 +110,8 @@
     end
 end
 
-@testset "State Vector Conversions" begin
-    @testset "SI to CGS State Conversion" begin
+ @progress_testset "State Vector Conversions" begin
+     @progress_testset "SI to CGS State Conversion" begin
         # Test basic state conversion
         rho_sp_si = [1000.0, 2000.0, 500.0]  # kg/m³
         rho_etot_si = 1e6  # J/m³
@@ -155,7 +155,7 @@ end
         @test nitrogen_state.number_density > 0
     end
 
-    @testset "CGS to SI State Conversion" begin
+     @progress_testset "CGS to SI State Conversion" begin
         # Test basic state conversion back
         rho_sp_cgs = [1.0, 2.0, 0.5]  # g/cm³
         rho_etot_cgs = 1e4  # erg/cm³
@@ -189,7 +189,7 @@ end
         @test si_state.rho_etot≈original_rho_etot rtol=1e-12
     end
 
-    @testset "Source Terms Conversion" begin
+     @progress_testset "Source Terms Conversion" begin
         # Test source terms conversion (same units as state per time)
         drho_sp_cgs = [0.1, 0.2, -0.05]  # g/cm³/s
         drho_etot_cgs = 100.0  # erg/cm³/s
@@ -222,8 +222,8 @@ end
 end
 
 
-@testset "Chemistry Conversions" begin
-    @testset "Mole Fractions to Mass Densities" begin
+ @progress_testset "Chemistry Conversions" begin
+     @progress_testset "Mole Fractions to Mass Densities" begin
         # Test with nitrogen species (from TERRA example)
         species_names = ["N2", "N", "N+", "N2+", "E-"]
         mole_fractions = [0.9998, 1e-20, 1e-20, 0.0001, 0.0001]
@@ -265,7 +265,7 @@ end
             [0.5, 0.5], [0.0, 20.0], 1e15)
     end
 
-    @testset "Mass Densities to Mole Fractions" begin
+     @progress_testset "Mass Densities to Mole Fractions" begin
         # Test conversion back from mass densities
         molecular_weights = [28.0, 14.0, 14.0, 28.0, 0.000549]
         mass_densities = [1e-9, 1e-12, 1e-13, 1e-12, 1e-16]  # g/cm³
@@ -304,7 +304,7 @@ end
             [1e-10, 1e-10], [20.0, 0.0])
     end
 
-    @testset "Roundtrip Consistency" begin
+     @progress_testset "Roundtrip Consistency" begin
         # Test that mole_fractions -> mass_densities -> mole_fractions gives original values
         original_fractions = [0.7, 0.2, 0.05, 0.04, 0.01]
         molecular_weights = [28.0, 14.0, 14.0, 28.0, 0.000549]

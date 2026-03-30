@@ -1,4 +1,4 @@
-@testset "PhysicsConfig" begin
+ @progress_testset "PhysicsConfig" begin
     physics = terra.PhysicsConfig()
     @test physics.bbh_model == 4
     @test physics.esc_model == 1
@@ -18,7 +18,7 @@
     @test custom.et_relax_set == 2
 end
 
-@testset "ProcessConfig" begin
+ @progress_testset "ProcessConfig" begin
     processes = terra.ProcessConfig()
     @test processes.consider_elec_bbe == 1
     @test processes.consider_rad == 0

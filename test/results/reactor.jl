@@ -1,4 +1,4 @@
-@testset "ReactorResult and ReactorFrame" begin
+ @progress_testset "ReactorResult and ReactorFrame" begin
     frame1 = terra.ReactorFrame(;
                                 t = 0.0,
                                 species_densities = [1e-3, 1e-6, 1e-8],

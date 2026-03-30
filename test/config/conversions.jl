@@ -1,11 +1,11 @@
-@testset "convert_config_units" begin
-    @testset "No Conversion Needed" begin
+ @progress_testset "convert_config_units" begin
+     @progress_testset "No Conversion Needed" begin
         config = terra.nitrogen_10ev_config()  # Default is CGS
         converted = terra.convert_config_units(config, :CGS)
         @test converted === config  # Should return same object
     end
 
-    @testset "SI to CGS Conversion" begin
+     @progress_testset "SI to CGS Conversion" begin
         base = terra.nitrogen_10ev_config()
 
         config_si = terra.Config(;
@@ -40,7 +40,7 @@
         @test converted.sources.wall_losses === config_si.sources.wall_losses
     end
 
-    @testset "CGS to SI Conversion" begin
+     @progress_testset "CGS to SI Conversion" begin
         config_cgs = terra.nitrogen_10ev_config()  # CGS by default
         converted = terra.convert_config_units(config_cgs, :SI)
 
@@ -56,7 +56,7 @@
         @test converted.sources.wall_losses === config_cgs.sources.wall_losses
     end
 
-    @testset "Invalid Conversion" begin
+     @progress_testset "Invalid Conversion" begin
         config = terra.nitrogen_10ev_config()
         @test_throws ErrorException terra.convert_config_units(config, :INVALID)
     end

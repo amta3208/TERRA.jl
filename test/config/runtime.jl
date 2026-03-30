@@ -1,4 +1,4 @@
-@testset "LoggingConfig" begin
+ @progress_testset "LoggingConfig" begin
     logging = terra.LoggingConfig()
     @test logging.console_mode == :minimal
     @test logging.progress_mode == :auto
@@ -12,7 +12,7 @@
     @test_throws ArgumentError terra.LoggingConfig(; log_dir = "   ")
 end
 
-@testset "RuntimeConfig rejects legacy aliases" begin
+ @progress_testset "RuntimeConfig rejects legacy aliases" begin
     @test_throws MethodError terra.RuntimeConfig(; case_path = pwd(),
                                                  write_native_outputs = true)
     @test_throws MethodError terra.RuntimeConfig(; case_path = pwd(),
