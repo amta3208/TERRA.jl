@@ -56,7 +56,11 @@ jobs:
           brew install open-mpi
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+      - name: Run tests verbosely
+        shell: julia --project=. --color=yes {0}
+        run: |
+          using Pkg
+          Pkg.test(; coverage=true)
       - name: Dump TERRA logs on failure
         if: failure()
         shell: bash
