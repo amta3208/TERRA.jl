@@ -218,3 +218,20 @@ function mass_densities_to_mole_fractions(mass_densities::AbstractVector{<:Real}
 
     return mole_fractions
 end
+
+function mass_densities_to_total_number_density(mass_densities::AbstractVector{<:Real},
+                                                molecular_weights::AbstractVector{<:Real})
+    if length(mass_densities) != length(molecular_weights)
+        error("Mass densities and molecular weights arrays must have same length")
+    end
+
+    if any(mass_densities .< 0)
+        error("Mass densities must be non-negative")
+    end
+
+    if any(molecular_weights .<= 0)
+        error("Molecular weights must be positive")
+    end
+
+    return sum(mass_densities .* AVOGADRO ./ molecular_weights)
+end

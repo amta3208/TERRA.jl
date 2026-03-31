@@ -1,4 +1,6 @@
-@testset "Chain Result Save/Load" begin
+using JSON
+
+function _chain_result_fixture()
     frame1 = terra.ReactorFrame(;
         t = 0.0,
         species_densities = [1e-3, 1e-6, 1e-8],
@@ -23,6 +25,28 @@
         metadata = Dict{String, Any}(
             "solver" => "ode",
             "step_stats" => Dict{String, Any}("accepted_steps" => 24),
+            "wall_losses" => Dict{String, Any}(
+                "species_order" => ["N", "N2", "N+", "N2+"],
+                "segment_inputs" => Dict{String, Any}(
+                    "a_wall_over_v_m_inv" => 129.03225806451613,
+                    "channel_gap_m" => 0.0155,
+                    "wall_temperature_K" => nothing,
+                    "ion_edge_to_center_ratio" => nothing,
+                    "tt_K" => 310.0,
+                    "te_K" => 9800.0,
+                ),
+                "species_models" => Dict{String, Any}(
+                    "N+" => Dict{String, Any}(
+                        "model_type" => "IonNeutralizationWallModel",
+                        "charge_state" => 1,
+                        "parameters" => Dict{String, Any}("bohm_scale" => 1.0),
+                        "products" => Dict{String, Any}("N" => 1.0),
+                        "reactant_indices" => [3, 4],
+                        "reactant_ground_index" => 3,
+                        "product_indices" => Dict{String, Any}("N" => 1),
+                    ),
+                ),
+            ),
         ),
     )
 
@@ -98,9 +122,32 @@
         message = "Chain integration failed at cell 2",
     )
 
-    output_path = tempname() * ".json"
-    @test terra.save_results(chain, output_path)
+    return (reactor = reactor1, chain = chain)
+end
+
+ @testset "Reactor Result Save" begin
+    fixture = _chain_result_fixture()
+    output_path = tempname() * ".csv"
+
+    @test terra.save_results(fixture.reactor, output_path)
     @test isfile(output_path)
+
+    lines = split(chomp(read(output_path, String)), '\n')
+    @test length(lines) == 3
+    @test startswith(lines[1], "time,total_energy,T_trans,T_electron,T_vib")
+    @test occursin("species_1_density", lines[1])
+    @test occursin("0.0,10000.0,300.0,10000.0,320.0", lines[2])
+end
+
+ @testset "Chain Result Save/Load" begin
+    fixture = _chain_result_fixture()
+    output_path = tempname() * ".json"
+
+    @test terra.save_results(fixture.chain, output_path)
+    @test isfile(output_path)
+
+    saved = JSON.parsefile(output_path)
+    @test saved["schema_version"] == "terra_chain_results_v3"
 
     loaded = terra.load_results_chain(output_path)
 
@@ -114,15 +161,58 @@
     @test loaded.cells[1].endpoint_reactor !== nothing
     @test loaded.cells[1].endpoint_reactor.composition.species == ["N", "N2", "E-"]
     @test loaded.cells[1].reactor.frames[2].temperatures.te ≈ 9800.0
+    @test terra.temperature_history(loaded.cells[1].reactor).te[2] ≈ 9800.0
+    @test size(terra.species_density_matrix(loaded.cells[1].reactor)) == (3, 2)
     @test loaded.cells[1].species_u_m_s["N+"] == 15000.0
     @test loaded.cells[1].reactor.frames[1].source_terms !== nothing
     @test loaded.cells[1].reactor.frames[1].source_terms.production ≈ 1.0
     @test loaded.cells[1].reactor.source_terms !== nothing
     @test loaded.cells[1].reactor.source_terms.net == [1.0, 2.0]
+    species_model = loaded.cells[1].reactor.metadata["wall_losses"]["species_models"]["N+"]
+    @test species_model["model_type"] == "IonNeutralizationWallModel"
+    @test sort!(collect(keys(loaded.cells[1].reactor.metadata["wall_losses"]))) ==
+          ["segment_inputs", "species_models", "species_order"]
+    @test sort!(collect(keys(species_model))) ==
+          ["charge_state", "model_type", "parameters", "product_indices", "products",
+           "reactant_ground_index", "reactant_indices"]
     @test loaded.cells[2].endpoint_reactor === nothing
     @test loaded.cells[2].reactor.success == false
     @test loaded.cells[2].reactor.frames[1].diagnostics["reason"] == "mock failure"
 
     missing_path = joinpath(mktempdir(), "missing_chain_results.json")
     @test_throws ArgumentError terra.load_results_chain(missing_path)
+end
+
+ @testset "Chain Result Validation" begin
+    fixture = _chain_result_fixture()
+    output_path = tempname() * ".json"
+    @test terra.save_results(fixture.chain, output_path)
+
+    bad_schema_path = tempname() * ".json"
+    bad_schema = JSON.parsefile(output_path)
+    bad_schema["schema_version"] = "terra_chain_results_v1"
+    open(bad_schema_path, "w") do io
+        JSON.print(io, bad_schema, 2)
+        println(io)
+    end
+    @test_throws ArgumentError terra.load_results_chain(bad_schema_path)
+
+    bad_count_path = tempname() * ".json"
+    bad_count = JSON.parsefile(output_path)
+    bad_count["metadata"]["retained_point_count"] = 5
+    open(bad_count_path, "w") do io
+        JSON.print(io, bad_count, 2)
+        println(io)
+    end
+    @test_throws ArgumentError terra.load_results_chain(bad_count_path)
+
+    bad_metadata_path = tempname() * ".json"
+    bad_metadata = JSON.parsefile(output_path)
+    delete!(bad_metadata["cells"][1]["reactor"]["metadata"]["wall_losses"]["species_models"]["N+"],
+            "model_type")
+    open(bad_metadata_path, "w") do io
+        JSON.print(io, bad_metadata, 2)
+        println(io)
+    end
+    @test_throws ArgumentError terra.load_results_chain(bad_metadata_path)
 end

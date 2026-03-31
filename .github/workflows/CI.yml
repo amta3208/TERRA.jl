@@ -20,7 +20,7 @@ jobs:
       actions: write
       contents: read
     env:
-      TERRA_BINARY_VERSION: v0.3.0
+      TERRA_BINARY_VERSION: v0.4.0
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +46,7 @@ jobs:
             --repo amta3208/terra-binaries \
             --pattern "terra-${VER}-macos-arm64.dylib" \
             --dir test/lib
+          xattr -dr com.apple.quarantine test/lib/ 2>/dev/null || true
           echo "TERRA_LIB_PATH=$(pwd)/test/lib/terra-${VER}-macos-arm64.dylib" >> "$GITHUB_ENV"
       - name: Install Open MPI runtime
         if: matrix.os == 'macos-latest'
@@ -54,11 +55,20 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           brew install open-mpi
-      - uses: julia-actions/cache@v2
+      - name: Diagnose dylib
+        if: matrix.os == 'macos-latest' && matrix.arch == 'aarch64'
+        run: |
+          ls -la "$TERRA_LIB_PATH"
+          otool -L "$TERRA_LIB_PATH"
+          xattr "$TERRA_LIB_PATH"
+          julia -e 'using Libdl; println(dlopen(ENV["TERRA_LIB_PATH"]))'
+      - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        with:
+          test_args: 'benchmarks'
       - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -75,7 +85,7 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.12'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
       - name: Configure doc environment
         shell: julia --project=docs --color=yes {0}
         run: |

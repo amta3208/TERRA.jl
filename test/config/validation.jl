@@ -1,4 +1,4 @@
-@testset "TERRA Fortran Interface Validation Tests" begin
+ @testset "TERRA Fortran Interface Validation Tests" begin
     build_config(; validate_species_against_terra::Bool = false) = terra.Config(;
         reactor = terra.ReactorConfig(;
             composition = terra.ReactorComposition(;
@@ -14,15 +14,15 @@
             unit_system = :CGS,
             validate_species_against_terra = validate_species_against_terra))
 
-    @testset "validate_config_against_terra" begin
-        @testset "Basic Functionality" begin
+     @testset "validate_config_against_terra" begin
+         @testset "Basic Functionality" begin
             config = build_config()
 
             # Should return true (may show warnings if library not loaded)
             @test terra.validate_config_against_terra(config) == true
         end
 
-        @testset "With Species Validation Enabled" begin
+         @testset "With Species Validation Enabled" begin
             config = build_config(; validate_species_against_terra = true)
 
             # Should return true (may show warnings if library not loaded or species not found)
@@ -30,14 +30,14 @@
         end
     end
 
-    @testset "validate_species_against_terra_database (Enhanced)" begin
-        @testset "Validation Disabled" begin
+     @testset "validate_species_against_terra_database (Enhanced)" begin
+         @testset "Validation Disabled" begin
             config = build_config(; validate_species_against_terra = false)
 
             @test terra.validate_species_against_terra_database(config) == true
         end
 
-        @testset "Validation Enabled" begin
+         @testset "Validation Enabled" begin
             config = build_config(; validate_species_against_terra = true)
 
             # Should return true (may show warnings if library not loaded or species not found)
@@ -46,10 +46,10 @@
     end
 end
 
-@testset "Chain marching validation" begin
+ @testset "Chain marching validation" begin
     @test terra.validate_axial_marching_config(terra.AxialMarchingConfig()) == true
     @test terra.validate_axial_marching_config(
-        terra.AxialMarchingConfig(; handoff_mode = :full_state)) == true
+        terra.AxialMarchingConfig(; handoff_policy = terra.FullStateHandoff())) == true
     @test_throws ArgumentError terra.validate_axial_marching_config(
-        terra.AxialMarchingConfig(; termination_mode = :steady_state))
+        terra.AxialMarchingConfig(; termination_policy = terra.SteadyStateTermination()))
 end

@@ -60,9 +60,8 @@ config = with_case_path(config, mktempdir())
 
 initialize_terra(config)
 try
-    # Use closed-reactor behavior for this run
-    results = solve_terra_0d(config; use_residence_time = false)
-    @info "Final translational temperature (K)" results.temperatures.tt[end]
+    results = solve_terra_0d(config)
+    @info "Final translational temperature (K)" temperature_history(results).tt[end]
 finally
     finalize_terra()
 end
@@ -74,10 +73,10 @@ For convenience, this same case is also available out of the box:
 using TERRA
 
 results = nitrogen_10ev_example()
-@info "Final translational temperature (K)" results.temperatures.tt[end]
+@info "Final translational temperature (K)" temperature_history(results).tt[end]
 ```
 
-The returned `SimulationResult` object contains the full time history of species densities, temperatures, and energy modes. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
+The returned `ReactorResult` object contains the full time history of species densities, temperatures, and energy modes. Use `species_density_matrix`, `temperature_history`, and `total_energy_history` to access the saved histories directly. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
 
 ## Tools & MATLAB Post-Processing
 
@@ -102,7 +101,7 @@ bash configure_matlab_path.sh
 
 Once completed, MATLAB-ready results can be generated from a Julia run by:
 
-1. Set native mirroring in runtime settings, for example with `config = with_runtime(config; write_native_outputs = true)`.
+1. Set native mirroring in runtime settings, for example with `config = with_runtime(config; write_native_state_files = true)`.
 2. Run your simulation via `solve_terra_0d` (or `nitrogen_10ev_example` for the packaged reference case).
 3. Execute the post-processing script, pointing it to the case directory:
 
