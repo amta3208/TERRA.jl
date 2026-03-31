@@ -66,6 +66,28 @@ function configure_api_logging_wrapper(; console_level::Integer = API_NATIVE_LOG
     return nothing
 end
 
+function ensure_api_case_layout!(case_path::AbstractString;
+                                 native_log_path::Union{Nothing, AbstractString} = nothing)
+    output_dir = normpath(joinpath(case_path, "output"))
+    sources_dir = normpath(joinpath(output_dir, "sources"))
+    states_dir = normpath(joinpath(output_dir, "states"))
+    logs_dir = normpath(joinpath(output_dir, "logs"))
+
+    for dir in (output_dir, sources_dir, states_dir, logs_dir)
+        isdir(dir) || mkpath(dir)
+    end
+
+    if native_log_path !== nothing
+        log_path = String(native_log_path)
+        if !isempty(log_path)
+            log_dir = dirname(isabspath(log_path) ? log_path : joinpath(case_path, log_path))
+            isdir(log_dir) || mkpath(log_dir)
+        end
+    end
+
+    return nothing
+end
+
 function initialize_api_wrapper(; case_path::String = pwd(),
                                 native_console_level::Union{Nothing, Integer} = nothing,
                                 native_file_level::Union{Nothing, Integer} = nothing,
@@ -96,6 +118,8 @@ function initialize_api_wrapper(; case_path::String = pwd(),
     file_level = native_file_level === nothing ? API_NATIVE_LOG_VERBOSE :
                  Int32(native_file_level)
     resolved_log_path = native_log_path === nothing ? nothing : String(native_log_path)
+
+    ensure_api_case_layout!(case_path; native_log_path = resolved_log_path)
 
     configure_api_logging_wrapper(; console_level = console_level,
                                   file_level = file_level,
@@ -209,6 +233,7 @@ function open_api_output_files_wrapper()
     end
 
     case_path = TERRA_CASE_PATH[]
+    ensure_api_case_layout!(case_path)
     try
         cd(case_path) do
             ccall((:open_api_output_files, get_terra_lib_path()), Cvoid, ())

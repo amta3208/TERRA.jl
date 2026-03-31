@@ -15,6 +15,47 @@
         @test result.num_species > 0
         @test result.num_dimensions >= 0
     end
+
+     @progress_testset "Initialization Creates Missing Output Layout" begin
+        temp_case_path = mktempdir()
+        try
+            input_dir = joinpath(temp_case_path, "input")
+            mkpath(input_dir)
+
+            for name in ("prob_setup.inp", "sources_setup.inp", "tau_scaling.inp")
+                cp(joinpath(TEST_CASE_PATH, "input", name), joinpath(input_dir, name))
+            end
+
+            prob_setup_path = joinpath(input_dir, "prob_setup.inp")
+            prob_setup_text = read(prob_setup_path, String)
+            database_path = normpath(joinpath(TEST_CASE_PATH,
+                                              "..", "..", "..", "..",
+                                              "database", "n2",
+                                              "elec_sts_expanded_electron_fits"))
+            prob_setup_text = replace(prob_setup_text,
+                                      r"(?m)^DATABASE_PATH=.*$" =>
+                                      "DATABASE_PATH=$(database_path)")
+            write(prob_setup_path, prob_setup_text)
+
+            @test !isdir(joinpath(temp_case_path, "output", "states"))
+
+            dims = @test_nowarn reset_and_init!(temp_case_path)
+            try
+                @test dims isa NamedTuple
+                @test isdir(joinpath(temp_case_path, "output"))
+                @test isdir(joinpath(temp_case_path, "output", "sources"))
+                @test isdir(joinpath(temp_case_path, "output", "states"))
+                @test isdir(joinpath(temp_case_path, "output", "logs"))
+            finally
+                try
+                    terra.finalize_api_wrapper()
+                catch
+                end
+            end
+        finally
+            rm(temp_case_path; recursive = true)
+        end
+    end
 end
 
  @progress_testset "Input And Lifecycle Handling" begin
