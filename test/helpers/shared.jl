@@ -15,52 +15,9 @@ const _HALLTHRUSTER_EXPORT_TOOL = let tool = Module(gensym(:HallThrusterExportTo
                           "export_chain_profile.jl"))
     tool
 end
-const TEST_PROGRESS_ENABLED = get(ENV, "TERRA_TEST_PROGRESS", "1") != "0"
-const TEST_PROGRESS_STACK = String[]
 
 function hallthruster_export_tool()
     return _HALLTHRUSTER_EXPORT_TOOL
-end
-
-function emit_test_progress(event::AbstractString, label::AbstractString)
-    TEST_PROGRESS_ENABLED || return nothing
-    println(stderr, "[$event] $label")
-    flush(stderr)
-    return nothing
-end
-
-function _with_progress_testset(f::Function, name)
-    name_string = String(name)
-    path = isempty(TEST_PROGRESS_STACK) ? name_string :
-           string(join(TEST_PROGRESS_STACK, " > "), " > ", name_string)
-    emit_test_progress("testset:start", path)
-    push!(TEST_PROGRESS_STACK, name_string)
-    try
-        return f()
-    finally
-        isempty(TEST_PROGRESS_STACK) || pop!(TEST_PROGRESS_STACK)
-        emit_test_progress("testset:done", path)
-    end
-end
-
-macro progress_testset(name, block)
-    return quote
-        local _progress_name = $(esc(name))
-        _with_progress_testset(_progress_name) do
-            @testset "$_progress_name" begin
-                $(esc(block))
-            end
-        end
-    end
-end
-
-function include_with_progress(label::AbstractString, relpath::AbstractString)
-    emit_test_progress("include:start", string(label, " -> ", relpath))
-    try
-        return include(relpath)
-    finally
-        emit_test_progress("include:done", string(label, " -> ", relpath))
-    end
 end
 
 """

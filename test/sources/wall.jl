@@ -1,4 +1,4 @@
- @progress_testset "Wall losses prepare, validate, and apply on the compact state" begin
+ @testset "Wall losses prepare, validate, and apply on the compact state" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 

@@ -16,7 +16,7 @@ function _with_reactor_thermal(config::terra.Config;
     )
 end
 
- @progress_testset "Initial-state rho_ex handoff" begin
+ @testset "Initial-state rho_ex handoff" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)

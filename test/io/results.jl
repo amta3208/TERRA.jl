@@ -125,7 +125,7 @@ function _chain_result_fixture()
     return (reactor = reactor1, chain = chain)
 end
 
- @progress_testset "Reactor Result Save" begin
+ @testset "Reactor Result Save" begin
     fixture = _chain_result_fixture()
     output_path = tempname() * ".csv"
 
@@ -139,7 +139,7 @@ end
     @test occursin("0.0,10000.0,300.0,10000.0,320.0", lines[2])
 end
 
- @progress_testset "Chain Result Save/Load" begin
+ @testset "Chain Result Save/Load" begin
     fixture = _chain_result_fixture()
     output_path = tempname() * ".json"
 
@@ -183,7 +183,7 @@ end
     @test_throws ArgumentError terra.load_results_chain(missing_path)
 end
 
- @progress_testset "Chain Result Validation" begin
+ @testset "Chain Result Validation" begin
     fixture = _chain_result_fixture()
     output_path = tempname() * ".json"
     @test terra.save_results(fixture.chain, output_path)

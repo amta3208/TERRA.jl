@@ -1,10 +1,10 @@
- @progress_testset "SourceTermsConfig" begin
+ @testset "SourceTermsConfig" begin
     cfg = terra.SourceTermsConfig()
     @test cfg.residence_time === nothing
     @test cfg.wall_losses === nothing
 end
 
- @progress_testset "Concrete wall model types" begin
+ @testset "Concrete wall model types" begin
     ion_model = terra.IonNeutralizationWallModel(;
                                                  bohm_scale = 0.5,
                                                  products = Dict("N" => 1.0))
@@ -34,7 +34,7 @@ end
                                                     rate_model = :bohm_gap)
 end
 
- @progress_testset "WallLossConfig" begin
+ @testset "WallLossConfig" begin
     ion_model = terra.IonNeutralizationWallModel(; products = Dict("N" => 1.0))
     cfg = terra.WallLossConfig(; species_models = Dict("N+" => ion_model))
     @test haskey(cfg.species_models, "N+")
@@ -53,7 +53,7 @@ end
                                                   species_models = Dict("N+" => ion_model))
 end
 
- @progress_testset "ResidenceTimeConfig" begin
+ @testset "ResidenceTimeConfig" begin
     u_species = Dict("N" => 1.0, "N2" => 1.5, "N+" => 2.0, "N2+" => 2.5)
 
     rt_default = terra.ResidenceTimeConfig(1.0, u_species)

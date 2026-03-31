@@ -1,5 +1,5 @@
- @progress_testset "nitrogen_10ev_config" begin
-     @progress_testset "Default Configuration" begin
+ @testset "nitrogen_10ev_config" begin
+     @testset "Default Configuration" begin
         config = terra.nitrogen_10ev_config()
 
         @test config.reactor.composition.species == ["N", "N2", "N+", "N2+", "E-"]
@@ -21,7 +21,7 @@
     end
 end
 
- @progress_testset "Nested Config solver controls" begin
+ @testset "Nested Config solver controls" begin
     base = terra.nitrogen_10ev_config(; isothermal = false)
     case_path = mktempdir()
 
@@ -61,7 +61,7 @@ end
     run_log = read(run_log_path, String)
 end
 
- @progress_testset "Direct 0D solve rejects wall-loss configs without profile inputs" begin
+ @testset "Direct 0D solve rejects wall-loss configs without profile inputs" begin
     base = terra.nitrogen_10ev_config(; isothermal = false)
     wall_cfg = terra.WallLossConfig(;
                                     species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
@@ -76,7 +76,7 @@ end
     @test_throws ArgumentError terra.solve_terra_0d(config; sources = config.sources)
 end
 
- @progress_testset "Native Output Generation" begin
+ @testset "Native Output Generation" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir(cleanup = false)
     config = terra.with_case_path(base_config, temp_case_path)
@@ -138,7 +138,7 @@ end
     terra.finalize_terra()
 end
 
- @progress_testset "Run Log Detail Output" begin
+ @testset "Run Log Detail Output" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(base_config, temp_case_path)
@@ -177,7 +177,7 @@ end
     @test occursin("success!", run_log)
 end
 
- @progress_testset "0D Console Progress Routing" begin
+ @testset "0D Console Progress Routing" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(base_config, temp_case_path)

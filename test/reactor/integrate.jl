@@ -1,4 +1,4 @@
- @progress_testset "Integrate 0D (adiabatic)" begin
+ @testset "Integrate 0D (adiabatic)" begin
     # Initialize using the config-driven input to ensure the selected
     # database and options are honored (rather than a stale case file).
 
@@ -27,7 +27,7 @@
     @test all(isfinite, temperatures.tv)
 end
 
- @progress_testset "Integrate 0D (isothermal)" begin
+ @testset "Integrate 0D (isothermal)" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
@@ -53,7 +53,7 @@ end
     @test all(isfinite, temperatures.tv)
 end
 
- @progress_testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
+ @testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
@@ -92,7 +92,7 @@ end
     @test densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
 end
 
- @progress_testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
+ @testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)

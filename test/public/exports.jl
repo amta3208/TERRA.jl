@@ -1,4 +1,4 @@
- @progress_testset "Export Surface" begin
+ @testset "Export Surface" begin
     expected_exports = (
         :initialize_terra, :finalize_terra,
         :solve_terra_0d, :solve_terra_chain_steady,

@@ -1,4 +1,4 @@
- @progress_testset "ChainWallProfile" begin
+ @testset "ChainWallProfile" begin
     wall_profile = terra.ChainWallProfile(;
                                           a_wall_over_v_m_inv = [100.0, 101.0],
                                           channel_gap_m = [0.02, 0.02],)

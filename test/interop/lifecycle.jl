@@ -1,4 +1,4 @@
- @progress_testset "Initialization" begin
+ @testset "Initialization" begin
     # Ensure library path is set
     test_case_path = TEST_CASE_PATH
 
@@ -16,7 +16,7 @@
         @test result.num_dimensions >= 0
     end
 
-     @progress_testset "Initialization Creates Missing Output Layout" begin
+     @testset "Initialization Creates Missing Output Layout" begin
         temp_case_path = mktempdir()
         try
             input_dir = joinpath(temp_case_path, "input")
@@ -58,8 +58,8 @@
     end
 end
 
- @progress_testset "Input And Lifecycle Handling" begin
-     @progress_testset "Initialization Input Validation" begin
+ @testset "Input And Lifecycle Handling" begin
+     @testset "Initialization Input Validation" begin
         # Ensure library is loaded and Fortran not initialized
         reload_terra_library_for_tests!()
 
@@ -95,7 +95,7 @@ end
         end
     end
 
-     @progress_testset "Directory Management" begin
+     @testset "Directory Management" begin
         reload_terra_library_for_tests!()
 
         # Store original directory
@@ -117,7 +117,7 @@ end
         rm(temp_dir; recursive = true)
     end
 
-     @progress_testset "Native Output Open And Close" begin
+     @testset "Native Output Open And Close" begin
         dims = @test_nowarn reset_and_init!(TEST_CASE_PATH)
         try
             @test dims isa NamedTuple

@@ -1,4 +1,4 @@
- @progress_testset "ChainSimulationResult" begin
+ @testset "ChainSimulationResult" begin
     reactor_cfg = terra.ReactorConfig(;
                                       composition = terra.ReactorComposition(;
                                                                              species = ["N",
@@ -65,7 +65,7 @@
     @test chain.cells[1].reactor == reactor
 end
 
- @progress_testset "Nested Chain Cell Indexing" begin
+ @testset "Nested Chain Cell Indexing" begin
     reactor = terra.ReactorResult(;
                                   t = [0.0, 1.0],
                                   frames = [terra.ReactorFrame(;

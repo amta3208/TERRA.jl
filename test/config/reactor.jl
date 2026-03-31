@@ -1,5 +1,5 @@
- @progress_testset "ReactorComposition" begin
-     @progress_testset "Valid Construction" begin
+ @testset "ReactorComposition" begin
+     @testset "Valid Construction" begin
         composition = terra.ReactorComposition(;
                                                species = ["N", "N2", "E-"],
                                                mole_fractions = [0.1, 0.8, 0.1],
@@ -9,7 +9,7 @@
         @test composition.total_number_density == 1e13
     end
 
-     @progress_testset "Invalid Construction" begin
+     @testset "Invalid Construction" begin
         @test_throws ArgumentError terra.ReactorComposition(;
                                                             species = ["N", "N2"],
                                                             mole_fractions = [0.5],
@@ -33,8 +33,8 @@
     end
 end
 
- @progress_testset "ReactorThermalState" begin
-     @progress_testset "Valid Construction" begin
+ @testset "ReactorThermalState" begin
+     @testset "Valid Construction" begin
         thermal = terra.ReactorThermalState(; Tt = 300.0, Tv = 310.0, Tee = 320.0,
                                             Te = 10000.0)
         @test thermal.Tt == 300.0
@@ -43,7 +43,7 @@ end
         @test thermal.Te == 10000.0
     end
 
-     @progress_testset "Invalid Construction" begin
+     @testset "Invalid Construction" begin
         @test_throws ArgumentError terra.ReactorThermalState(; Tt = 0.0, Tv = 310.0,
                                                              Tee = 320.0, Te = 10000.0)
         @test_throws ArgumentError terra.ReactorThermalState(; Tt = 300.0, Tv = -1.0,

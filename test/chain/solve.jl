@@ -1,4 +1,4 @@
- @progress_testset "Chain solve" begin
+ @testset "Chain solve" begin
     function build_chain_test_config()
         config = terra.nitrogen_10ev_config(; isothermal = false)
         config = terra.with_case_path(config, mktempdir())
@@ -64,7 +64,7 @@
                                       channel_gap_m = fill(0.0155, n_segments),)
     end
 
-     @progress_testset "Single segment run" begin
+     @testset "Single segment run" begin
         config = build_chain_test_config()
         inlet_thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0,
                                                   Tee = config.reactor.thermal.Te,
@@ -129,7 +129,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain segment runtime logging stays file-only under segment case path" begin
+     @testset "Chain segment runtime logging stays file-only under segment case path" begin
         config = terra.nitrogen_10ev_config()
         config = terra.with_case_path(config, mktempdir())
         config = terra.with_logging(config;
@@ -160,7 +160,7 @@
         @test terra.log_dir(segment_config.runtime) == expected_segment_log_dir
     end
 
-     @progress_testset "Chain detail logging can be disabled" begin
+     @testset "Chain detail logging can be disabled" begin
         config = build_chain_test_config()
         config = terra.with_logging(config;
                                     console_mode = :quiet,
@@ -187,7 +187,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain segment presentation uses reactor-owned 0D seam" begin
+     @testset "Chain segment presentation uses reactor-owned 0D seam" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],
@@ -230,7 +230,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain detail logging can mirror to console and file" begin
+     @testset "Chain detail logging can mirror to console and file" begin
         config = build_chain_test_config()
         config = terra.with_logging(config;
                                     console_mode = :quiet,
@@ -263,7 +263,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain solve does not emit standalone 0D banner" begin
+     @testset "Chain solve does not emit standalone 0D banner" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],
@@ -295,7 +295,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain solve restores the top-level active runtime" begin
+     @testset "Chain solve restores the top-level active runtime" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],
@@ -321,7 +321,7 @@
         @test occursin("TERRA finalized successfully", run_log)
     end
 
-     @progress_testset "Two-segment handoff and Te profile enforcement" begin
+     @testset "Two-segment handoff and Te profile enforcement" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
                                           dx_m = [0.01, 0.01],
@@ -364,7 +364,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Two-segment full-state rho_ex handoff" begin
+     @testset "Two-segment full-state rho_ex handoff" begin
         config = build_chain_test_config()
         config = terra.with_time(config;
                                  dt = 5e-12,
@@ -429,7 +429,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Chain marching can opt out of isothermal Teex enforcement" begin
+     @testset "Chain marching can opt out of isothermal Teex enforcement" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
                                           dx_m = [0.01, 0.01],
@@ -454,7 +454,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Metadata propagation and compact/source mapping" begin
+     @testset "Metadata propagation and compact/source mapping" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0, 0.01],
                                           dx_m = [0.01, 0.01],
@@ -506,7 +506,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Wall losses change the chain solution and expose diagnostics" begin
+     @testset "Wall losses change the chain solution and expose diagnostics" begin
         base_config = build_chain_test_config()
         wall_cfg = terra.WallLossConfig(;
                                         species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
@@ -578,7 +578,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Failed segment returns partial chain result" begin
+     @testset "Failed segment returns partial chain result" begin
         base_config = build_chain_test_config()
         wall_cfg = terra.WallLossConfig(;
                                         species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
@@ -611,7 +611,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Rejects Missing or Extra Profile Species" begin
+     @testset "Rejects Missing or Extra Profile Species" begin
         config = build_chain_test_config()
 
         missing_profile = terra.AxialChainProfile(z_m = [0.0],
@@ -637,7 +637,7 @@
         cleanup_terra!()
     end
 
-     @progress_testset "Unsupported termination policy" begin
+     @testset "Unsupported termination policy" begin
         config = build_chain_test_config()
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],

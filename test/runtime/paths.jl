@@ -1,4 +1,4 @@
- @progress_testset "CaseLayout" begin
+ @testset "CaseLayout" begin
     temp_dir = mktempdir()
     try
         runtime = terra.RuntimeConfig(; case_path = temp_dir)
@@ -26,7 +26,7 @@
     end
 end
 
- @progress_testset "CaseLayout Custom Log Dir" begin
+ @testset "CaseLayout Custom Log Dir" begin
     temp_dir = mktempdir()
     custom_log_dir = mktempdir()
     try

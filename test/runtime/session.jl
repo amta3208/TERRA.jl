@@ -1,4 +1,4 @@
- @progress_testset "Active Runtime Context" begin
+ @testset "Active Runtime Context" begin
     runtime_a = terra.RuntimeConfig(; case_path = mktempdir())
     runtime_b = terra.RuntimeConfig(; case_path = mktempdir())
 
@@ -28,7 +28,7 @@
     end
 end
 
- @progress_testset "Native Logging Preparation" begin
+ @testset "Native Logging Preparation" begin
     temp_dir = mktempdir()
     custom_log_dir = mktempdir()
     try

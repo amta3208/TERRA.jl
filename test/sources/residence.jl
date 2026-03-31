@@ -1,4 +1,4 @@
- @progress_testset "RHS (rhs_api) with species-resolved residence time terms" begin
+ @testset "RHS (rhs_api) with species-resolved residence time terms" begin
     test_case_path = TEST_CASE_PATH
     @test_nowarn reset_and_init!(test_case_path)
 
@@ -78,7 +78,7 @@
     end
 end
 
- @progress_testset "Residence time rejects missing or extra species keys" begin
+ @testset "Residence time rejects missing or extra species keys" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
@@ -106,7 +106,7 @@ end
     @test_throws ArgumentError terra.prepare_source(layout, config, u_in, extra_rt)
 end
 
- @progress_testset "Isothermal Teex: residence time skips rho_eeex" begin
+ @testset "Isothermal Teex: residence time skips rho_eeex" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
@@ -154,7 +154,7 @@ end
     @test du_rt[layout.idx_eeex] == 0.0
 end
 
- @progress_testset "Source preparation respects empty and populated sources" begin
+ @testset "Source preparation respects empty and populated sources" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
@@ -181,7 +181,7 @@ end
     @test isempty(disabled.operators)
 end
 
- @progress_testset "Residence-time inlet_reactor support" begin
+ @testset "Residence-time inlet_reactor support" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
@@ -213,7 +213,7 @@ end
     @test any(abs.(rt.u_in .- u_base) .> 0.0)
 end
 
- @progress_testset "Residence-time inlet state cache preserves rho_ex handoff" begin
+ @testset "Residence-time inlet state cache preserves rho_ex handoff" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
