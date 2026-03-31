@@ -67,18 +67,15 @@ jobs:
       - name: Diagnose native initialization
         if: matrix.os == 'macos-latest' && matrix.arch == 'aarch64'
         env:
-          TERRA_REFERENCE_CASE_PATH: ${{ github.workspace }}/test/cases/terra_fortran/reference_case
+          TERRA_TEST_CASE_PATH: ${{ github.workspace }}/test/cases/terra_fortran/reference_case
           TERRA_NATIVE_DIAG_LOG: ${{ runner.temp }}/terra-native-init.log
         run: |
-          export DIAG_CASE_PATH="$RUNNER_TEMP/terra-ci-reference-case"
-          rm -rf "$DIAG_CASE_PATH"
-          cp -R "$TERRA_REFERENCE_CASE_PATH" "$DIAG_CASE_PATH"
           rm -f "$TERRA_NATIVE_DIAG_LOG"
           set +e
           julia --project=. -e '
             using TERRA: TERRA as terra
 
-            case_path = ENV["DIAG_CASE_PATH"]
+            case_path = ENV["TERRA_TEST_CASE_PATH"]
             log_path = ENV["TERRA_NATIVE_DIAG_LOG"]
 
             try
