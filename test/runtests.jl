@@ -59,6 +59,9 @@ include("helpers/shared.jl")
         include("reactor/rhs.jl")
         include("reactor/solve.jl")
         include("reactor/integrate.jl")
+        if "benchmarks" in ARGS
+            include("reactor/benchmarks.jl")
+        end
     end
 
     @testset "Sources" begin
