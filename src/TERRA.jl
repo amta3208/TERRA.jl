@@ -5,6 +5,7 @@ using DocStringExtensions
 using Libdl
 using JSON
 using OrdinaryDiffEq
+using PrecompileTools: @compile_workload, @setup_workload
 using SciMLBase: ODEProblem, solve, DiscreteCallback, CallbackSet, set_proposed_dt!,
                  u_modified!
 using Printf
@@ -75,5 +76,7 @@ export ChainWallProfile, ChainProfileInletComposition, ChainProfileInlet
 export AxialChainProfile, AxialMarchingConfig
 export FullStateHandoff, ReinitializeHandoff, FinalTimeTermination
 export ReactorResult, ChainSimulationResult
+
+include("precompile.jl")
 
 end

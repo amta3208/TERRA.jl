@@ -3,6 +3,24 @@ $(SIGNATURES)
 
 Create a default configuration for the 0D Nitrogen Te=10eV example.
 """
+_nitrogen_10ev_database_path() = abspath(joinpath(PACKAGE_ROOT, "database", "n2",
+                                                  "elec_sts_expanded_electron_fits"))
+
+function _validate_nitrogen_10ev_database_path(database_path::AbstractString)
+    if !isdir(database_path)
+        error("TERRA database directory not found: $database_path\n" *
+              "Please ensure the TERRA database exists and the path is correct.")
+    end
+
+    chemistry_file = joinpath(database_path, "chemistry.dat")
+    if !isfile(chemistry_file)
+        error("Required chemistry.dat file not found in database directory: $chemistry_file\n" *
+              "Please ensure the database is complete.")
+    end
+
+    return nothing
+end
+
 function nitrogen_10ev_config(; isothermal::Bool = false)
     species = ["N", "N2", "N+", "N2+", "E-"]
     mole_fractions = [1.0e-20, 0.9998, 1.0e-20, 0.0001, 0.0001]
@@ -23,22 +41,8 @@ function nitrogen_10ev_config(; isothermal::Bool = false)
                       nstep = 500000,
                       method = 2)
 
-    pkg_root = normpath(joinpath(@__DIR__, "..", ".."))
-    database_path = abspath(joinpath(pkg_root, "database", "n2",
-                                     "elec_sts_expanded_electron_fits"))
-
-    resolve_terra_library_path()
-
-    if !isdir(database_path)
-        error("TERRA database directory not found: $database_path\n" *
-              "Please ensure the TERRA database exists and the path is correct.")
-    end
-
-    chemistry_file = joinpath(database_path, "chemistry.dat")
-    if !isfile(chemistry_file)
-        error("Required chemistry.dat file not found in database directory: $chemistry_file\n" *
-              "Please ensure the database is complete.")
-    end
+    database_path = _nitrogen_10ev_database_path()
+    _validate_nitrogen_10ev_database_path(database_path)
 
     numerics = NumericsConfig(; time = time)
     sources = SourceTermsConfig()

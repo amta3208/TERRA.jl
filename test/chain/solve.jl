@@ -64,11 +64,8 @@
                                       channel_gap_m = fill(0.0155, n_segments),)
     end
 
-     @testset "Single segment run" begin
+    @testset "Single segment run" begin
         config = build_chain_test_config()
-        inlet_thermal = terra.ReactorThermalState(; Tt = 500.0, Tv = 500.0,
-                                                  Tee = config.reactor.thermal.Te,
-                                                  Te = config.reactor.thermal.Te)
         profile = terra.AxialChainProfile(z_m = [0.0],
                                           dx_m = [0.01],
                                           te_K = [config.reactor.thermal.Te],
@@ -76,13 +73,7 @@
                                                                                    n_segments = 1,
                                                                                    neutral_base = 180.0,
                                                                                    ion_base = 18000.0),
-                                          inlet = profile_inlet(config;
-                                                                mole_fractions = [0.2,
-                                                                    0.65,
-                                                                    0.05,
-                                                                    0.05,
-                                                                    0.05],
-                                                                thermal = inlet_thermal))
+                                          inlet = profile_inlet(config))
         marching = terra.AxialMarchingConfig()
 
         chain = terra.solve_terra_chain_steady(config, profile; marching = marching)
@@ -95,8 +86,8 @@
 
         segment_result = chain.cells[1].reactor
         @test !isempty(segment_result.t)
-        @test segment_result.frames[1].temperatures.tt ≈ inlet_thermal.Tt
-        @test segment_result.frames[1].temperatures.tv ≈ inlet_thermal.Tv
+        @test segment_result.frames[1].temperatures.tt ≈ config.reactor.thermal.Tt
+        @test segment_result.frames[1].temperatures.tv ≈ config.reactor.thermal.Tv
         @test all(abs(frame.temperatures.te - profile.te_K[1]) <= 1e-6
                   for
                   frame in segment_result.frames)

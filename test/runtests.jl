@@ -55,6 +55,7 @@ include("helpers/shared.jl")
 
     @testset "Reactor" begin
         include("reactor/initial.jl")
+        include("reactor/precompile.jl")
         include("reactor/state.jl")
         include("reactor/rhs.jl")
         include("reactor/solve.jl")
