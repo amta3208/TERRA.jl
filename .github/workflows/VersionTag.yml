@@ -1,0 +1,78 @@
+name: Version Tag
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Project.toml
+permissions:
+  contents: write
+concurrency:
+  group: version-tag-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DOCUMENTER_KEY }}
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+      - name: Detect version bump
+        id: version
+        shell: julia --color=yes {0}
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          using TOML
+
+          project = TOML.parsefile("Project.toml")
+          new_version = get(project, "version", nothing)
+          new_version === nothing && error("Project.toml is missing a version entry.")
+          VersionNumber(new_version)
+
+          old_version = nothing
+          before = ENV["BEFORE_SHA"]
+          if before != "0000000000000000000000000000000000000000"
+              try
+                  old_text = read(`git show $(before):Project.toml`, String)
+                  old_project = TOML.parse(old_text)
+                  old_version = get(old_project, "version", nothing)
+              catch err
+                  @info "Unable to read previous Project.toml; continuing as if no prior version was found." exception=(err, catch_backtrace())
+              end
+          end
+
+          changed = old_version != new_version
+          tag = "v$(new_version)"
+          open(ENV["GITHUB_OUTPUT"], "a") do io
+              println(io, "changed=$(changed)")
+              println(io, "version=$(new_version)")
+              println(io, "tag=$(tag)")
+          end
+      - name: Skip when version is unchanged
+        if: steps.version.outputs.changed != 'true'
+        run: echo "Project.toml version did not change; skipping tag creation."
+      - name: Ensure tag does not already exist
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+            exit 1
+          fi
+      - name: Create and push tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "refs/tags/$TAG"
