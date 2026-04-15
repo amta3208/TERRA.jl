@@ -16,7 +16,6 @@
         @test config.numerics.time.duration ≈ 1e-3
         @test config.numerics.time.nstep == 500000
         @test config.numerics.time.method == 2
-        @test config.sources.residence_time === nothing
         @test config.sources.wall_losses === nothing
     end
 end

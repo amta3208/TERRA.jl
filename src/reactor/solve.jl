@@ -13,22 +13,19 @@ function _solve_terra_0d_internal(config::Config;
 
     try
         initial_state = config_to_initial_state(config; state_cache = state_cache)
-        results, final_state_cache = _integrate_0d_system(config, initial_state;
-                                                          sources = sources,
-                                                          wall_inputs = wall_inputs,
-                                                          inlet_state_cache = state_cache)
-        return results, final_state_cache
+        return _integrate_0d_system(config, initial_state;
+                                    sources = sources,
+                                    wall_inputs = wall_inputs)
     catch e
         emit!(RUN_LOG, config.runtime,
               ExceptionEntry(:error, "TERRA simulation failed", e;
                              console = :minimal))
-        return _failed_reactor_result("Simulation failed: $(string(e))"), nothing
+        return _failed_reactor_result("Simulation failed: $(string(e))")
     end
 end
 
 function solve_terra_0d(config::Config;
                         sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
-    results, _ = _solve_terra_0d_internal(config; sources = sources)
-    return results
+    return _solve_terra_0d_internal(config; sources = sources)
 end

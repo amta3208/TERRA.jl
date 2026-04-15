@@ -55,7 +55,6 @@ include("helpers/shared.jl")
     end
 
     @testset "Sources" begin
-        include("sources/residence.jl")
         include("sources/wall.jl")
     end
 

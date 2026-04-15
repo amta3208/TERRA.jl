@@ -16,24 +16,17 @@ function source_operator(sources::PreparedSources, ::Type{T}) where {T <: Abstra
 end
 
 prepare_source(layout::ApiLayout, config::Config, u0::Vector{Float64}, ::Nothing;
-               wall_inputs = nothing,
-               inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing) = nothing
+               wall_inputs = nothing) = nothing
 
 function _prepare_sources(layout::ApiLayout, config::Config, u0::Vector{Float64}, ::Nothing;
-                          wall_inputs = nothing,
-                          inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                          wall_inputs = nothing)
     return PreparedSources()
 end
 
 function _prepare_sources(layout::ApiLayout, config::Config,
                           u0::Vector{Float64}, sources::SourceTermsConfig;
-                          wall_inputs = nothing,
-                          inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                          wall_inputs = nothing)
     operators = AbstractPreparedSource[]
-
-    residence_time = prepare_source(layout, config, u0, sources.residence_time;
-                                    inlet_state_cache = inlet_state_cache)
-    residence_time === nothing || push!(operators, residence_time)
 
     wall_losses = prepare_source(layout, config, u0, sources.wall_losses;
                                  wall_inputs = wall_inputs)

@@ -41,7 +41,6 @@
                                       wall_inputs = wall_inputs)
     prepared_wall = terra.source_operator(prepared,
                                           terra.PreparedWallLossData)::terra.PreparedWallLossData
-    @test terra.source_operator(prepared, terra.PreparedResidenceTimeSource) === nothing
     @test prepared_wall !== nothing
     @test prepared_wall.wall_inputs.channel_gap_m ≈ 0.0155
     @test !isempty(prepared_wall.models)

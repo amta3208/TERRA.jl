@@ -140,15 +140,13 @@ function integrate_0d_system(config::Config,
                              initial_state::ReactorInitialState;
                              sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
-    results, _ = _integrate_0d_system(config, initial_state; sources = sources)
-    return results
+    return _integrate_0d_system(config, initial_state; sources = sources)
 end
 
 function _integrate_0d_system(config::Config,
                               initial_state::ReactorInitialState;
                               sources::Union{Nothing, SourceTermsConfig} = config.sources,
-                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                              inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing)
+                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -222,8 +220,7 @@ function _integrate_0d_system(config::Config,
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
     prepared_sources = _prepare_sources(layout, config, u0, sources;
-                                        wall_inputs = wall_inputs,
-                                        inlet_state_cache = inlet_state_cache)
+                                        wall_inputs = wall_inputs)
     result_metadata = _source_result_metadata(prepared_sources)
     progress_reporter = _progress_reporter(runtime, tlim)
 
@@ -409,9 +406,6 @@ function _integrate_0d_system(config::Config,
             total_energies_si = total_energies
         end
 
-        final_state_cache = _extract_reactor_state_cache(species_names, context, layout,
-                                                         sol.u[end], is_isothermal)
-
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
@@ -442,7 +436,7 @@ function _integrate_0d_system(config::Config,
                              source_terms = nothing,
                              success = success,
                              message = message,
-                             metadata = result_metadata), final_state_cache
+                             metadata = result_metadata)
 
     catch e
         emit!(RUN_LOG, runtime,
@@ -452,7 +446,7 @@ function _integrate_0d_system(config::Config,
                              console = :minimal))
         return _failed_reactor_result(config, initial_state,
                                       "ODE integration failed: $(string(e))";
-                                      metadata = result_metadata), nothing
+                                      metadata = result_metadata)
     finally
         if outputs_opened
             try
