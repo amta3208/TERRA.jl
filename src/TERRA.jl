@@ -39,10 +39,6 @@ include("runtime/paths.jl")
 include("runtime/session.jl")
 
 include("results/reactor.jl")
-include("results/chain.jl")
-
-include("chain/profile.jl")
-include("chain/marching.jl")
 
 include("reactor/state.jl")
 include("reactor/rhs.jl")
@@ -51,7 +47,6 @@ include("reactor/initial.jl")
 include("io/codec.jl")
 include("io/logging.jl")
 include("io/input.jl")
-include("io/profile.jl")
 include("io/results.jl")
 
 include("sources/core.jl")
@@ -62,20 +57,12 @@ include("reactor/integrate.jl")
 include("reactor/solve.jl")
 include("reactor/examples.jl")
 
-include("chain/diagnostics.jl")
-include("chain/solve.jl")
-
 export initialize_terra, finalize_terra
-export solve_terra_0d, solve_terra_chain_steady
-export load_chain_profile, save_results, load_results_chain
+export solve_terra_0d, save_results
 export species_density_matrix, temperature_history, total_energy_history
-export WallLossConfig
 export IonNeutralizationWallModel, BallisticNeutralRecombinationWallModel,
        ConstantNeutralRecombinationWallModel
-export ChainWallProfile, ChainProfileInletComposition, ChainProfileInlet
-export AxialChainProfile, AxialMarchingConfig
-export FullStateHandoff, ReinitializeHandoff, FinalTimeTermination
-export ReactorResult, ChainSimulationResult
+export ReactorResult
 
 include("precompile.jl")
 

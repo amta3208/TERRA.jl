@@ -8,13 +8,11 @@ function with_logging(logging::LoggingConfig;
                       progress_mode::Symbol = logging.progress_mode,
                       native_stream_mode::Symbol = logging.native_stream_mode,
                       integration_detail_mode::Symbol = logging.integration_detail_mode,
-                      chain_detail_mode::Symbol = logging.chain_detail_mode,
                       log_dir::Union{Nothing, AbstractString} = logging.log_dir)
     return LoggingConfig(; console_mode = console_mode,
                          progress_mode = progress_mode,
                          native_stream_mode = native_stream_mode,
                          integration_detail_mode = integration_detail_mode,
-                         chain_detail_mode = chain_detail_mode,
                          log_dir = log_dir)
 end
 
@@ -28,14 +26,12 @@ function with_logging(config::Config;
                       progress_mode::Symbol = config.runtime.logging.progress_mode,
                       native_stream_mode::Symbol = config.runtime.logging.native_stream_mode,
                       integration_detail_mode::Symbol = config.runtime.logging.integration_detail_mode,
-                      chain_detail_mode::Symbol = config.runtime.logging.chain_detail_mode,
                       log_dir::Union{Nothing, AbstractString} = config.runtime.logging.log_dir)
     logging = with_logging(config.runtime.logging;
                            console_mode = console_mode,
                            progress_mode = progress_mode,
                            native_stream_mode = native_stream_mode,
                            integration_detail_mode = integration_detail_mode,
-                           chain_detail_mode = chain_detail_mode,
                            log_dir = log_dir)
     return with_runtime(config; logging = logging)
 end

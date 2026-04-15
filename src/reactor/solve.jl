@@ -6,8 +6,7 @@ Solve a 0D TERRA simulation.
 function _solve_terra_0d_internal(config::Config;
                                   sources::Union{Nothing, SourceTermsConfig} = config.sources,
                                   wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                                  state_cache::Union{Nothing, ReactorStateCache} = nothing,
-                                  presentation::AbstractReactorPresentation = STANDALONE_0D_PRESENTATION)
+                                  state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
@@ -17,8 +16,7 @@ function _solve_terra_0d_internal(config::Config;
         results, final_state_cache = _integrate_0d_system(config, initial_state;
                                                           sources = sources,
                                                           wall_inputs = wall_inputs,
-                                                          inlet_state_cache = state_cache,
-                                                          presentation = presentation)
+                                                          inlet_state_cache = state_cache)
         return results, final_state_cache
     catch e
         emit!(RUN_LOG, config.runtime,

@@ -35,14 +35,12 @@ struct LoggingConfig
     progress_mode::Symbol
     native_stream_mode::Symbol
     integration_detail_mode::Symbol
-    chain_detail_mode::Symbol
     log_dir::Union{Nothing, String}
 
     function LoggingConfig(; console_mode::Symbol = :minimal,
                            progress_mode::Symbol = :auto,
                            native_stream_mode::Symbol = :file,
                            integration_detail_mode::Symbol = :file,
-                           chain_detail_mode::Symbol = :file,
                            log_dir::Union{Nothing, AbstractString} = nothing)
         _validate_logging_mode("console_mode", console_mode, _LOGGING_CONSOLE_MODES)
         _validate_logging_mode("progress_mode", progress_mode, _LOGGING_PROGRESS_MODES)
@@ -50,14 +48,11 @@ struct LoggingConfig
                                _LOGGING_STREAM_MODES)
         _validate_logging_mode("integration_detail_mode", integration_detail_mode,
                                _LOGGING_STREAM_MODES)
-        _validate_logging_mode("chain_detail_mode", chain_detail_mode,
-                               _LOGGING_STREAM_MODES)
 
         return new(console_mode,
                    progress_mode,
                    native_stream_mode,
                    integration_detail_mode,
-                   chain_detail_mode,
                    _normalize_log_dir(log_dir))
     end
 end

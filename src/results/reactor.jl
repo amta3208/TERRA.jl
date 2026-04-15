@@ -41,7 +41,7 @@ end
 """
 $(SIGNATURES)
 
-Time-history container for one reactor (one chain cell).
+Time-history container for one reactor run.
 
 # Fields
 - `t::Vector{Float64}`: Saved times
