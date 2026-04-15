@@ -1,7 +1,7 @@
 """
 $(SIGNATURES)
 
-Concrete 0D initial state prepared from `Config` and the active TERRA API.
+Concrete reactor initial state prepared from `Config` and the active TERRA API.
 """
 struct ReactorInitialState
     rho_sp::Vector{Float64}
@@ -90,8 +90,8 @@ $(SIGNATURES)
 
 Convert nested `Config` to a reactor-owned initial state in CGS units.
 """
-function config_to_initial_state(config::Config;
-                                 state_cache::Union{Nothing, ReactorStateCache} = nothing)
+function build_initial_state(config::Config;
+                             state_cache::Union{Nothing, ReactorStateCache} = nothing)
     species = config.reactor.composition.species
     molecular_weights = get_molecular_weights(species)
 

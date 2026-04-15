@@ -1,43 +1,10 @@
 """
 $(SIGNATURES)
 
-Typed presentation policy for 0D integration logging and console routing.
+Shared banners for reactor integration logging and console routing.
 """
-abstract type AbstractReactorPresentation end
-
-struct Standalone0DPresentation <: AbstractReactorPresentation end
-struct ChainSegmentPresentation <: AbstractReactorPresentation end
-
-const STANDALONE_0D_PRESENTATION = Standalone0DPresentation()
-const CHAIN_SEGMENT_PRESENTATION = ChainSegmentPresentation()
-
-const STANDALONE_0D_BANNER = "\n" * "="^12 * " TERRA 0D Simulation " * "="^12
-const STANDALONE_0D_FOOTER = "="^(length(STANDALONE_0D_BANNER) - 1)
-
-_integration_emits_banner(::Standalone0DPresentation) = true
-_integration_emits_banner(::ChainSegmentPresentation) = false
-
-function _integration_start_message(presentation::AbstractReactorPresentation)
-    if _integration_emits_banner(presentation)
-        return string(STANDALONE_0D_BANNER, "\n", "starting ODE integration...")
-    end
-    return "starting ODE integration..."
-end
-
-function _integration_completion_message(::Standalone0DPresentation,
-                                         message::AbstractString)
-    return string(message, "\n", STANDALONE_0D_FOOTER)
-end
-
-_integration_completion_message(::ChainSegmentPresentation,
-                                message::AbstractString) = String(message)
-
-_integration_completion_console_visibility(::Standalone0DPresentation, success::Bool) = :minimal
-
-function _integration_completion_console_visibility(::ChainSegmentPresentation,
-                                                    success::Bool)
-    return success ? :verbose : :minimal
-end
+const REACTOR_INTEGRATION_BANNER = "\n" * "="^12 * " TERRA Reactor Integration " * "="^12
+const REACTOR_INTEGRATION_FOOTER = "="^(length(REACTOR_INTEGRATION_BANNER) - 1)
 
 mutable struct NativeRampLimiter{T <: Real}
     base_dt::T
@@ -169,23 +136,17 @@ function _failed_reactor_result(config::Config,
                          metadata = metadata)
 end
 
-function integrate_0d_system(config::Config,
-                             initial_state::ReactorInitialState;
-                             sources::Union{Nothing, SourceTermsConfig} = config.sources)
+function integrate_reactor(config::Config,
+                           initial_state::ReactorInitialState;
+                           sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
-    results, _ = _integrate_0d_system(config, initial_state;
-                                      sources = sources,
-                                      presentation = STANDALONE_0D_PRESENTATION)
-    return results
+    return _integrate_reactor(config, initial_state; sources = sources)
 end
 
-function _integrate_0d_system(config::Config,
-                              initial_state::ReactorInitialState;
-                              sources::Union{Nothing, SourceTermsConfig} = config.sources,
-                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                              inlet_state_cache::Union{Nothing, ReactorStateCache} = nothing,
-                              presentation::AbstractReactorPresentation = STANDALONE_0D_PRESENTATION)
-    presentation_obj = presentation
+function _integrate_reactor(config::Config,
+                            initial_state::ReactorInitialState;
+                            sources::Union{Nothing, SourceTermsConfig} = config.sources,
+                            wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -207,7 +168,7 @@ function _integrate_0d_system(config::Config,
         error("Invalid API layout: layout.neq=$(layout.neq). Ensure the Fortran API is initialized.")
     end
     if layout.nd != 0
-        error("integrate_0d_system currently supports nd=0 only (got nd=$(layout.nd)).")
+        error("integrate_reactor currently supports nd=0 only (got nd=$(layout.nd)).")
     end
     if layout.n_eq_vib > 0 || layout.is_vib_sts
         error("Vibrational STS is not yet supported (layout.n_eq_vib=$(layout.n_eq_vib)).")
@@ -259,8 +220,7 @@ function _integrate_0d_system(config::Config,
     work_rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
 
     prepared_sources = _prepare_sources(layout, config, u0, sources;
-                                        wall_inputs = wall_inputs,
-                                        inlet_state_cache = inlet_state_cache)
+                                        wall_inputs = wall_inputs)
     result_metadata = _source_result_metadata(prepared_sources)
     progress_reporter = _progress_reporter(runtime, tlim)
 
@@ -286,7 +246,8 @@ function _integrate_0d_system(config::Config,
                CallbackSet(ramp_callback, integration_progress_callback())
 
     emit!(RUN_LOG, runtime,
-          EventEntry(:info, _integration_start_message(presentation_obj);
+          EventEntry(:info, string(REACTOR_INTEGRATION_BANNER, "\n",
+                                   "starting ODE integration...");
                      console = :minimal,
                      :reltol => solver_cfg.reltol,
                      :abstol_density => solver_cfg.abstol_density))
@@ -446,19 +407,15 @@ function _integrate_0d_system(config::Config,
             total_energies_si = total_energies
         end
 
-        final_state_cache = _extract_reactor_state_cache(species_names, context, layout,
-                                                         sol.u[end], is_isothermal)
-
         rc = sol.retcode
         success = rc isa Symbol ? (rc in (:Success, :Terminated)) :
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
         message = success ? "success!" :
                   "ODE integration terminated: $(rc)"
-        completion_message = _integration_completion_message(presentation_obj, message)
+        completion_message = string(message, "\n", REACTOR_INTEGRATION_FOOTER)
         emit!(RUN_LOG, runtime,
               EventEntry(success ? :info : :warn, completion_message;
-                         console = _integration_completion_console_visibility(presentation_obj,
-                                                                              success),
+                         console = :minimal,
                          :retcode => sol.retcode,
                          :saved_points => n_times))
 
@@ -480,18 +437,18 @@ function _integrate_0d_system(config::Config,
                              source_terms = nothing,
                              success = success,
                              message = message,
-                             metadata = result_metadata), final_state_cache
+                             metadata = result_metadata)
 
     catch e
         emit!(RUN_LOG, runtime,
               ExceptionEntry(:error,
-                             _integration_completion_message(presentation_obj,
-                                                             "ODE integration failed"),
+                             string("ODE integration failed", "\n",
+                                    REACTOR_INTEGRATION_FOOTER),
                              e;
                              console = :minimal))
         return _failed_reactor_result(config, initial_state,
                                       "ODE integration failed: $(string(e))";
-                                      metadata = result_metadata), nothing
+                                      metadata = result_metadata)
     finally
         if outputs_opened
             try

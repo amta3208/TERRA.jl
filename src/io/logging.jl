@@ -1,6 +1,4 @@
 const DEFAULT_PROGRESS_FRACTION_STEP = 0.1
-const CHAIN_RUN_BANNER = "\n" * "="^9 * " TERRA 1D Chain Simulation " * "="^9
-const CHAIN_RUN_FOOTER = "="^(length(CHAIN_RUN_BANNER) - 1)
 
 # -----------------------------------------------------------------------------
 # Log targets and entries
@@ -9,11 +7,9 @@ const CHAIN_RUN_FOOTER = "="^(length(CHAIN_RUN_BANNER) - 1)
 abstract type AbstractLogTarget end
 
 struct RunLog <: AbstractLogTarget end
-struct ChainLog <: AbstractLogTarget end
 struct NativeLog <: AbstractLogTarget end
 
 const RUN_LOG = RunLog()
-const CHAIN_LOG = ChainLog()
 const NATIVE_LOG = NativeLog()
 
 abstract type AbstractLogEntry end
@@ -35,28 +31,6 @@ end
 
 struct IntegrationDetailEntry <: AbstractLogEntry
     text::String
-end
-
-struct ChainHeaderEntry <: AbstractLogEntry
-    config::Config
-    profile::AxialChainProfile
-    marching::AxialMarchingConfig
-    compact_to_source_index::Vector{Int}
-end
-
-struct ChainSegmentEntry <: AbstractLogEntry
-    base_config::Config
-    profile::AxialChainProfile
-    compact_to_source_index::Vector{Int}
-    segment_index::Int
-    segment_case_path::String
-    result::ReactorResult
-    endpoint_reactor::Union{Nothing, ReactorConfig}
-    state_cache_used::Bool
-end
-
-struct ChainResultEntry <: AbstractLogEntry
-    result::ChainSimulationResult
 end
 
 mutable struct FractionProgressReporter
@@ -92,31 +66,6 @@ end
 
 IntegrationDetailEntry(text::AbstractString) = IntegrationDetailEntry(String(text))
 
-function ChainHeaderEntry(config::Config,
-                          profile::AxialChainProfile,
-                          marching::AxialMarchingConfig,
-                          compact_to_source_index::AbstractVector{<:Integer})
-    return ChainHeaderEntry(config, profile, marching, Int.(compact_to_source_index))
-end
-
-function ChainSegmentEntry(base_config::Config,
-                           profile::AxialChainProfile,
-                           compact_to_source_index::AbstractVector{<:Integer},
-                           segment_index::Integer,
-                           segment_case_path::AbstractString,
-                           result::ReactorResult;
-                           endpoint_reactor::Union{Nothing, ReactorConfig} = nothing,
-                           state_cache_used::Bool = false)
-    return ChainSegmentEntry(base_config,
-                             profile,
-                             Int.(compact_to_source_index),
-                             Int(segment_index),
-                             String(segment_case_path),
-                             result,
-                             endpoint_reactor,
-                             state_cache_used)
-end
-
 # -----------------------------------------------------------------------------
 # File and console routing
 # -----------------------------------------------------------------------------
@@ -126,11 +75,9 @@ _writes_console(mode::Symbol) = mode == :console || mode == :both
 
 log_path(::RunLog, runtime::RuntimeConfig) = run_log_path(runtime)
 log_path(::NativeLog, runtime::RuntimeConfig) = native_log_path(runtime)
-log_path(::ChainLog, runtime::RuntimeConfig) = chain_log_path(runtime)
 
 stream_mode(::RunLog, ::LoggingConfig) = :file
 stream_mode(::NativeLog, logging::LoggingConfig) = logging.native_stream_mode
-stream_mode(::ChainLog, logging::LoggingConfig) = logging.chain_detail_mode
 
 function _append_log_text(path::AbstractString, text::AbstractString)
     mkpath(dirname(path))
@@ -142,19 +89,6 @@ function _append_log_text(path::AbstractString, text::AbstractString)
 end
 
 prepare!(::RunLog, runtime::RuntimeConfig) = (ensure_case_layout!(runtime); nothing)
-
-function prepare!(::ChainLog, runtime::RuntimeConfig)
-    mode = stream_mode(CHAIN_LOG, runtime.logging)
-    mode == :off && return nothing
-    _writes_file(mode) || return nothing
-    ensure_case_layout!(runtime)
-    path = log_path(CHAIN_LOG, runtime)
-    mkpath(dirname(path))
-    open(path, "w") do io
-        write(io, "")
-    end
-    return String(path)
-end
 
 function _native_console_level(logging::LoggingConfig)
     if !_writes_console(logging.native_stream_mode) || logging.console_mode == :quiet
@@ -267,153 +201,6 @@ end
 Base.show(io::IO, ::MIME"text/plain", entry::IntegrationDetailEntry) = print(io, entry.text)
 
 # -----------------------------------------------------------------------------
-# Chain rendering
-# -----------------------------------------------------------------------------
-
-_chain_scalar(::Nothing) = "null"
-_chain_scalar(value::Symbol) = String(value)
-_chain_scalar(value::Bool) = lowercase(string(value))
-_chain_scalar(value::Integer) = string(value)
-_chain_scalar(value::AbstractString) = String(value)
-_chain_scalar(value) = repr(value)
-
-function _chain_scalar(value::Real)
-    x = Float64(value)
-    if !isfinite(x)
-        return string(x)
-    elseif x == 0.0
-        return "0.0"
-    elseif abs(x) >= 1.0e4 || abs(x) < 1.0e-3
-        return @sprintf("%.6e", x)
-    end
-    return @sprintf("%.6f", x)
-end
-
-function _write_chain_line(io::IO, indent::Integer, key::AbstractString, value)
-    print(io, repeat(" ", indent), key, ": ", _chain_scalar(value), "\n")
-    return nothing
-end
-
-function _number_density_to_si(value::Real, unit_system::Symbol)
-    number_density = Float64(value)
-    return unit_system == :SI ? number_density :
-           convert_number_density_cgs_to_si(number_density)
-end
-
-function _species_number_density_pairs_m3(composition::ReactorComposition,
-                                          unit_system::Symbol)
-    total_number_density_m3 = _number_density_to_si(composition.total_number_density,
-                                                    unit_system)
-    return [name => mole_fraction * total_number_density_m3
-            for (name, mole_fraction) in zip(composition.species,
-                                             composition.mole_fractions)]
-end
-
-function _ordered_chain_velocity_pairs(profile::AxialChainProfile,
-                                       segment_index::Integer)
-    ordered_species = String[name
-                             for name in profile.inlet.composition.species
-                             if haskey(profile.species_u_m_s, name)]
-    seen = Set(ordered_species)
-    for name in sort!(collect(keys(profile.species_u_m_s)))
-        name in seen && continue
-        push!(ordered_species, name)
-    end
-    return [name => profile.species_u_m_s[name][segment_index] for name in ordered_species]
-end
-
-function Base.show(io::IO, ::MIME"text/plain", entry::ChainHeaderEntry)
-    config = entry.config
-    profile = entry.profile
-    marching = entry.marching
-
-    print(io, "# chain summary generated at ", _timestamp_string(), "\n")
-    print(io, "chain:\n")
-    _write_chain_line(io, 2, "case_path", config.runtime.case_path)
-    _write_chain_line(io, 2, "unit_system", config.runtime.unit_system)
-    _write_chain_line(io, 2, "segments", length(profile.z_m))
-    _write_chain_line(io, 2, "chain_detail_mode", config.runtime.logging.chain_detail_mode)
-    if _writes_file(stream_mode(CHAIN_LOG, config.runtime.logging))
-        _write_chain_line(io, 2, "chain_log_path", chain_log_path(config.runtime))
-    end
-    _write_chain_line(io, 2, "handoff_mode", chain_policy_name(marching.handoff_policy))
-    _write_chain_line(io, 2, "termination_mode", chain_policy_name(marching.termination_policy))
-    _write_chain_line(io, 2, "is_isothermal_teex", marching.is_isothermal_teex)
-    _write_chain_line(io, 2, "compact_to_source_index", repr(entry.compact_to_source_index))
-    _write_chain_line(io, 2, "species", repr(config.reactor.composition.species))
-
-    print(io, "  inlet:\n")
-    _write_chain_line(io, 4, "source_compact_index", profile.inlet.source_compact_index)
-    _write_chain_line(io, 4, "total_number_density_m3",
-                      profile.inlet.composition.total_number_density_m3)
-
-    print(io, "    temperatures_K:\n")
-    _write_chain_line(io, 6, "Tt", profile.inlet.thermal.Tt)
-    _write_chain_line(io, 6, "Tv", profile.inlet.thermal.Tv)
-    _write_chain_line(io, 6, "Tee", profile.inlet.thermal.Tee)
-    _write_chain_line(io, 6, "Te", profile.inlet.thermal.Te)
-
-    print(io, "    mole_fractions:\n")
-    for (name, mole_fraction) in zip(profile.inlet.composition.species,
-                                     profile.inlet.composition.mole_fractions)
-        _write_chain_line(io, 6, name, mole_fraction)
-    end
-
-    print(io, "  profile:\n")
-    _write_chain_line(io, 4, "z_start_m", first(profile.z_m))
-    _write_chain_line(io, 4, "z_end_m", last(profile.z_m))
-    _write_chain_line(io, 4, "retained_point_count", length(profile.z_m))
-    return nothing
-end
-
-function Base.show(io::IO, ::MIME"text/plain", entry::ChainSegmentEntry)
-    print(io, "segment ", entry.segment_index, "/", length(entry.profile.z_m), ":\n")
-    _write_chain_line(io, 2, "source_cell_index",
-                      entry.compact_to_source_index[entry.segment_index])
-    _write_chain_line(io, 2, "case_path", entry.segment_case_path)
-    _write_chain_line(io, 2, "z_m", entry.profile.z_m[entry.segment_index])
-    _write_chain_line(io, 2, "dx_m", entry.profile.dx_m[entry.segment_index])
-    _write_chain_line(io, 2, "te_target_K", entry.profile.te_K[entry.segment_index])
-    _write_chain_line(io, 2, "rho_ex_handoff_used", entry.state_cache_used)
-    _write_chain_line(io, 2, "status", entry.result.success ? "success" : "failed")
-    _write_chain_line(io, 2, "message", entry.result.message)
-
-    print(io, "  species_u_m_s:\n")
-    for (name, velocity) in _ordered_chain_velocity_pairs(entry.profile,
-                                                          entry.segment_index)
-        _write_chain_line(io, 4, name, velocity)
-    end
-
-    if entry.endpoint_reactor !== nothing
-        total_number_density_m3 = _number_density_to_si(entry.endpoint_reactor.composition.total_number_density,
-                                                        entry.base_config.runtime.unit_system)
-        print(io, "  endpoint:\n")
-        _write_chain_line(io, 4, "total_number_density_m3", total_number_density_m3)
-
-        print(io, "    temperatures_K:\n")
-        _write_chain_line(io, 6, "Tt", entry.endpoint_reactor.thermal.Tt)
-        _write_chain_line(io, 6, "Tv", entry.endpoint_reactor.thermal.Tv)
-        _write_chain_line(io, 6, "Tee", entry.endpoint_reactor.thermal.Tee)
-        _write_chain_line(io, 6, "Te", entry.endpoint_reactor.thermal.Te)
-
-        print(io, "    number_density_m3:\n")
-        for (name, number_density) in _species_number_density_pairs_m3(entry.endpoint_reactor.composition,
-                                                                       entry.base_config.runtime.unit_system)
-            _write_chain_line(io, 6, name, number_density)
-        end
-    end
-    return nothing
-end
-
-function Base.show(io::IO, ::MIME"text/plain", entry::ChainResultEntry)
-    print(io, "result:\n")
-    _write_chain_line(io, 2, "success", entry.result.success)
-    _write_chain_line(io, 2, "failed_cell", entry.result.failed_cell)
-    _write_chain_line(io, 2, "message", entry.result.message)
-    return nothing
-end
-
-# -----------------------------------------------------------------------------
 # Runtime entrypoints and progress reporting
 # -----------------------------------------------------------------------------
 
@@ -436,55 +223,11 @@ function emit!(::RunLog, runtime::RuntimeConfig, entry::IntegrationDetailEntry)
     mode == :off && return nothing
 
     if _writes_file(mode)
-        header = _render(EventEntry(:detail, "0D integration snapshot"))
+        header = _render(EventEntry(:detail, "reactor integration snapshot"))
         _append_log_text(log_path(RUN_LOG, runtime), string(header, "\n", _render(entry)))
     end
     if _writes_console(mode)
         _emit_console_text(entry.text)
-    end
-    return nothing
-end
-
-function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainHeaderEntry)
-    profile = entry.profile
-    marching = entry.marching
-    lines = [CHAIN_RUN_BANNER,
-             @sprintf("segments: %d", length(profile.z_m)),
-             "handoff_mode: $(chain_policy_name(marching.handoff_policy))",
-             "termination_mode: $(chain_policy_name(marching.termination_policy))",
-             "is_isothermal_teex: $(marching.is_isothermal_teex)"]
-    emit!(RUN_LOG, runtime, EventEntry(:info, join(lines, "\n"); console = :minimal))
-    return nothing
-end
-
-function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainSegmentEntry)
-    message = @sprintf("\n===== Segment %d/%d 0D Simulation =====",
-                       entry.segment_index, length(entry.profile.z_m))
-    emit!(RUN_LOG, runtime, EventEntry(:info, message; console = :minimal))
-    return nothing
-end
-
-function emit!(::RunLog, runtime::RuntimeConfig, entry::ChainResultEntry)
-    level = entry.result.success ? :info : :warn
-    message = entry.result.success ? "\n$(entry.result.message)" : entry.result.message
-    emit!(RUN_LOG, runtime,
-          EventEntry(level, string(message, "\n", CHAIN_RUN_FOOTER); console = :minimal))
-    return nothing
-end
-
-function emit!(::ChainLog, runtime::RuntimeConfig,
-               entry::Union{ChainHeaderEntry,
-                            ChainSegmentEntry,
-                            ChainResultEntry})
-    mode = stream_mode(CHAIN_LOG, runtime.logging)
-    mode == :off && return nothing
-
-    text = _render(entry)
-    if _writes_file(mode)
-        _append_log_text(log_path(CHAIN_LOG, runtime), text)
-    end
-    if _writes_console(mode)
-        _emit_console_text(text)
     end
     return nothing
 end

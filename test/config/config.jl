@@ -28,7 +28,6 @@
 
     @test config.reactor == reactor
     @test config.models == models
-    @test config.sources.residence_time === sources.residence_time
     @test config.sources.wall_losses === nothing
     @test config.numerics == numerics
     @test config.runtime == runtime
@@ -82,7 +81,6 @@ end
     @test config_time.numerics.time.dt_output == config.numerics.time.dt_output
     @test config_time.numerics.time.method == 1
     @test config.numerics.time.dt == 1e-6
-    @test config_time.sources.residence_time === config.sources.residence_time
     @test config_time.sources.wall_losses === config.sources.wall_losses
 
     config_runtime = terra.with_runtime(config;
@@ -92,27 +90,19 @@ end
     @test config_runtime.runtime.unit_system == :SI
     @test config_runtime.runtime.print_source_terms == true
     @test config_runtime.runtime.write_native_state_files == true
-    @test config_runtime.sources.residence_time === config.sources.residence_time
     @test config_runtime.sources.wall_losses === config.sources.wall_losses
 
     config_logging = terra.with_logging(config;
                                         console_mode = :verbose,
                                         progress_mode = :summary,
                                         integration_detail_mode = :both,
-                                        chain_detail_mode = :both,
                                         log_dir = "logs/custom")
     @test config_logging.runtime.logging.console_mode == :verbose
     @test config_logging.runtime.logging.progress_mode == :summary
     @test config_logging.runtime.logging.integration_detail_mode == :both
-    @test config_logging.runtime.logging.chain_detail_mode == :both
     @test config_logging.runtime.logging.log_dir == normpath("logs/custom")
     @test config.runtime.logging.console_mode == :minimal
 
     @test_throws ArgumentError terra.with_case_path(config, joinpath(temp_case, "missing"))
     @test_throws ArgumentError terra.with_time(config; method = 9)
-    @test_throws MethodError terra.NumericsConfig(;
-                                                  time = terra.TimeConfig(; dt = 1e-6,
-                                                                          dt_output = 1e-4,
-                                                                          duration = 1e-3),
-                                                  residence_time = nothing)
 end

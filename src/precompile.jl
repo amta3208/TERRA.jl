@@ -3,34 +3,6 @@ const _PRECOMPILE_0D_DT_OUTPUT = 1e-8
 const _PRECOMPILE_0D_DURATION = 1e-8
 const _PRECOMPILE_0D_NSTEP = 1000
 const _PRECOMPILE_0D_SAVEAT_COUNT = 8
-const _PRECOMPILE_CHAIN_TT = 500.0
-const _PRECOMPILE_CHAIN_TV = 500.0
-const _PRECOMPILE_CHAIN_DX_M = 0.01
-
-function _precompile_chain_profile(config::Config)
-    total_number_density_m3 = config.runtime.unit_system == :SI ?
-                              config.reactor.composition.total_number_density :
-                              convert_number_density_cgs_to_si(config.reactor.composition.total_number_density)
-    inlet_composition = ChainProfileInletComposition(;
-                                                     species = config.reactor.composition.species,
-                                                     mole_fractions = [0.2, 0.65, 0.05, 0.05, 0.05],
-                                                     total_number_density_m3 = total_number_density_m3)
-    inlet_thermal = ReactorThermalState(; Tt = _PRECOMPILE_CHAIN_TT,
-                                        Tv = _PRECOMPILE_CHAIN_TV,
-                                        Tee = config.reactor.thermal.Te,
-                                        Te = config.reactor.thermal.Te)
-    inlet = ChainProfileInlet(; composition = inlet_composition,
-                              thermal = inlet_thermal,
-                              source_compact_index = 1)
-    return AxialChainProfile(; z_m = [0.0],
-                             dx_m = [_PRECOMPILE_CHAIN_DX_M],
-                             te_K = [config.reactor.thermal.Te],
-                             species_u_m_s = Dict("N" => [200.0],
-                                                  "N2" => [180.0],
-                                                  "N+" => [18000.0],
-                                                  "N2+" => [19000.0]),
-                             inlet = inlet)
-end
 
 function _native_precompile_ready()
     database_path = _nitrogen_10ev_database_path()
@@ -64,8 +36,7 @@ function _precompile_0d_config(isothermal::Bool)
                           console_mode = :quiet,
                           progress_mode = :off,
                           native_stream_mode = :off,
-                          integration_detail_mode = :off,
-                          chain_detail_mode = :off)
+                          integration_detail_mode = :off)
 
     solver = ODESolverConfig(; reltol = config.numerics.solver.reltol,
                              abstol_density = config.numerics.solver.abstol_density,
@@ -95,36 +66,8 @@ function _run_native_0d_precompile_case(isothermal::Bool)
         end
 
         initialize_terra(config)
-        results = solve_terra_0d(config)
+        results = integrate_reactor(config)
         results.success || error("Native precompile warmup failed: $(results.message)")
-        return nothing
-    finally
-        try
-            finalize_terra()
-        catch
-            try
-                finalize_api_wrapper()
-            catch
-            end
-            try
-                close_terra_library()
-            catch
-            end
-        end
-
-        if isdir(config.runtime.case_path)
-            rm(config.runtime.case_path; recursive = true, force = true)
-        end
-    end
-end
-
-function _run_native_chain_precompile_case()
-    config = _precompile_0d_config(false)
-    profile = _precompile_chain_profile(config)
-    marching = AxialMarchingConfig()
-    try
-        results = solve_terra_chain_steady(config, profile; marching = marching)
-        results.success || error("Native chain precompile warmup failed: $(results.message)")
         return nothing
     finally
         try
@@ -152,9 +95,6 @@ end
     @compile_workload begin
         adiabatic_config = _precompile_0d_config(false)
         isothermal_config = _precompile_0d_config(true)
-        chain_config = _precompile_0d_config(false)
-        chain_profile = _precompile_chain_profile(chain_config)
-        chain_marching = AxialMarchingConfig()
 
         if native_precompile_ready
             try
@@ -166,14 +106,9 @@ end
                 _run_native_0d_precompile_case(true)
             catch
             end
-
-            try
-                _run_native_chain_precompile_case()
-            catch
-            end
         end
 
-        for config in (adiabatic_config, isothermal_config, chain_config)
+        for config in (adiabatic_config, isothermal_config)
             if isdir(config.runtime.case_path)
                 rm(config.runtime.case_path; recursive = true, force = true)
             end

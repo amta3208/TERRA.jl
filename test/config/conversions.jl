@@ -36,7 +36,6 @@
         @test converted.runtime.write_native_state_files ==
               config_si.runtime.write_native_state_files
         @test converted.runtime.logging == config_si.runtime.logging
-        @test converted.sources.residence_time === config_si.sources.residence_time
         @test converted.sources.wall_losses === config_si.sources.wall_losses
     end
 
@@ -52,7 +51,6 @@
         @test converted.runtime.write_native_state_files ==
               config_cgs.runtime.write_native_state_files
         @test converted.runtime.logging == config_cgs.runtime.logging
-        @test converted.sources.residence_time === config_cgs.sources.residence_time
         @test converted.sources.wall_losses === config_cgs.sources.wall_losses
     end
 

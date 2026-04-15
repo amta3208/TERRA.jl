@@ -4,7 +4,6 @@
     @test logging.progress_mode == :auto
     @test logging.native_stream_mode == :file
     @test logging.integration_detail_mode == :file
-    @test logging.chain_detail_mode == :file
     @test logging.log_dir === nothing
 
     @test_throws ArgumentError terra.LoggingConfig(; console_mode = :loud)

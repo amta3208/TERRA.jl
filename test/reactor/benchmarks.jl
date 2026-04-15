@@ -1,4 +1,4 @@
- @testset "Benchmark with Fortran Solver - [0D Adiabatic Nitrogen 10eV]" begin
+ @testset "Benchmark with Fortran Solver - [Reactor Adiabatic Nitrogen 10eV]" begin
     config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
@@ -10,8 +10,8 @@
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
-    results = @time terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = @time terra.integrate_reactor(config, initial_state)
     @test results isa terra.ReactorResult
 
     densities = terra.species_density_matrix(results)
@@ -22,7 +22,7 @@
     @test all(isfinite, temperatures.tt)
     @test all(isfinite, temperatures.te)
     @test all(isfinite, temperatures.tv)
-    @test terra.validate_results(results)
+    @test terra.validate_reactor_result(results)
 
     # Approximate final temperature values (update as needed)
     @test temperatures.tt[end]≈754.6 rtol=0.03
@@ -37,7 +37,7 @@
     @test densities[5, end]≈9.680e-19 rtol=0.05 # E⁻
 end
 
- @testset "Benchmark with Fortran Solver - [0D Isothermal Nitrogen 10eV for 50us]" begin
+ @testset "Benchmark with Fortran Solver - [Reactor Isothermal Nitrogen 10eV for 50us]" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
@@ -49,8 +49,8 @@ end
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
-    results = @time terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = @time terra.integrate_reactor(config, initial_state)
     @test results isa terra.ReactorResult
 
     densities = terra.species_density_matrix(results)

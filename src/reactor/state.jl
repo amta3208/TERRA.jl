@@ -473,23 +473,3 @@ end
     end
     return layout.spwt[esp] * s
 end
-
-function _extract_reactor_state_cache(species::AbstractVector{<:AbstractString},
-                                      p,
-                                      layout::ApiLayout,
-                                      u_final::Vector{Float64},
-                                      is_isothermal::Bool)
-    rho_sp = zeros(Float64, layout.nsp)
-    rho_ex = layout.is_elec_sts ? zeros(Float64, layout.mnex, layout.nsp) : nothing
-
-    if is_isothermal
-        y_work = similar(u_final)
-        _compact_isothermal_fill_fortran_y_work!(y_work, rho_sp, rho_ex, u_final, p, layout)
-    else
-        _reconstruct_rho_sp_rho_ex_from_compact!(rho_sp, rho_ex, u_final, layout)
-    end
-
-    return ReactorStateCache(; species = species,
-                             rho_sp_cgs = rho_sp,
-                             rho_ex_cgs = rho_ex)
-end

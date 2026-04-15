@@ -9,10 +9,6 @@ include("helpers/shared.jl")
         Aqua.test_all(terra; ambiguities = false, persistent_tasks = false)
     end
 
-    @testset "Public API" begin
-        include("public/exports.jl")
-    end
-
     @testset "Data Conversion" begin
         include("conversion/units.jl")
         include("conversion/species.jl")
@@ -44,13 +40,6 @@ include("helpers/shared.jl")
 
     @testset "Results" begin
         include("results/reactor.jl")
-        include("results/chain.jl")
-    end
-
-    @testset "Chain" begin
-        include("chain/profile.jl")
-        include("chain/marching.jl")
-        include("chain/solve.jl")
     end
 
     @testset "Reactor" begin
@@ -66,15 +55,12 @@ include("helpers/shared.jl")
     end
 
     @testset "Sources" begin
-        include("sources/residence.jl")
         include("sources/wall.jl")
     end
 
     @testset "IO" begin
         include("io/input.jl")
         include("io/logging.jl")
-        include("io/profile.jl")
-        include("io/export_chain_profile.jl")
         include("io/results.jl")
     end
 

@@ -3,7 +3,7 @@
     @test_nowarn reset_and_init!(test_case_path)
 
     config = terra.nitrogen_10ev_config(; isothermal = false)
-    state = terra.config_to_initial_state(config)
+    state = terra.build_initial_state(config)
     layout = terra.get_api_layout()
 
     y0 = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;

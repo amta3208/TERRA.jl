@@ -79,9 +79,8 @@ end
 
 function _validate_direct_wall_loss_usage(sources::Union{Nothing, SourceTermsConfig})
     _wall_losses_enabled(sources) || return nothing
-    throw(ArgumentError("WallLossConfig is currently supported only for profile-driven chain runs. " *
-                        "Use `solve_terra_chain_steady` with a `terra_chain_profile_v4` profile containing `wall_profile`; " *
-                        "direct 0D solves do not accept segment wall inputs."))
+    throw(ArgumentError("Wall-loss sources are not supported on the active 0D public API yet. " *
+                        "The internal implementation is retained, but active entry points do not expose wall inputs."))
 end
 
 function _build_wall_loss_index_data(layout::ApiLayout,
@@ -282,8 +281,7 @@ function prepare_source(layout::ApiLayout,
                         wall_cfg::WallLossConfig;
                         wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     wall_inputs === nothing &&
-        throw(ArgumentError("WallLossConfig is present, but no segment wall inputs were provided. " *
-                            "Wall losses are profile-driven and require per-segment `wall_profile` data."))
+        throw(ArgumentError("WallLossConfig is present, but no wall inputs were provided."))
 
     species_index_data = _build_wall_loss_index_data(layout,
                                                      config.reactor.composition.species)

@@ -10,7 +10,6 @@
 **TERRA (Toolkit for Excitation, Reactions, and Radiation with Applications)** is a general-purpose master-equation solver that can compute the evolution of a reacting ionized gas in thermodynamic and chemical nonequilibrium. It was developed in the Nonequilibrium Gas and Plasma Dynamics Laboratory at the University of Colorado Boulder and is currently maintained by Tim Aiken (timothy.aiken@colorado.edu). The native Fortran implementation can simulate either 0-D isochoric reactors or 1-D post-normal-shock flows. Users can choose between mode-level (multi-temperature) modeling and detailed state-to-state treatments for electronic and vibrational populations in arbitrary mixtures of atoms, molecules, ions, and electrons.
 
 **TERRA.jl** is the Julia wrapper that interfaces with the TERRA Fortran API and is developed and maintained by Amin Taziny (amin.taziny@colorado.edu). It automates input generation, manages the Fortran runtime, exposes high-level Julia functions for integration and analysis, and optionally mirrors the native TERRA output layout to keep the established MATLAB/Tecplot tooling in play.
-Within its current 0-D scope, it supports both closed-reactor integrations and open-flow 0-D reactors through a continuously stirred tank reactor (CSTR) model via an integrated convective term.
 
 ## Requirements
 
@@ -40,47 +39,47 @@ The wrapper ships with a helper that reproduces a canonical nitrogen test case. 
 The example below uses the refactored nested config architecture with only required constructor inputs, relying on defaults for all optional settings:
 
 ```julia
-using TERRA
+using TERRA: TERRA as ter
 
-composition = ReactorComposition(;
+composition = ter.ReactorComposition(;
     species = ["N", "N2", "N+", "N2+", "E-"],
     mole_fractions = [1.0e-20, 0.9998, 1.0e-20, 0.0001, 0.0001],
     total_number_density = 1.0e13,  # 1/cm^3
 )
 
-thermal = ReactorThermalState(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
-reactor = ReactorConfig(; composition = composition, thermal = thermal)
+thermal = ter.ReactorThermalState(; Tt = 750.0, Tv = 750.0, Tee = 750.0, Te = 115000.0)
+reactor = ter.ReactorConfig(; composition = composition, thermal = thermal)
 
 # Time inputs are in seconds in the Julia wrapper
-time = TimeConfig(; dt = 5e-12, dt_output = 5e-6, duration = 1e-3)
-numerics = NumericsConfig(; time = time)
+time = ter.TimeConfig(; dt = 5e-12, dt_output = 5e-6, duration = 1e-3)
+numerics = ter.NumericsConfig(; time = time)
 
-config = Config(; reactor = reactor, numerics = numerics)
-config = with_case_path(config, mktempdir())
+config = ter.Config(; reactor = reactor, numerics = numerics)
+config = ter.with_case_path(config, mktempdir())
 
-initialize_terra(config)
+ter.initialize_terra(config)
 try
-    results = solve_terra_0d(config)
-    @info "Final translational temperature (K)" temperature_history(results).tt[end]
+    results = ter.integrate_reactor(config)
+    @info "Final translational temperature (K)" ter.temperature_history(results).tt[end]
 finally
-    finalize_terra()
+    ter.finalize_terra()
 end
 ```
 
 For convenience, this same case is also available out of the box:
 
 ```julia
-using TERRA
+using TERRA: TERRA as ter
 
-results = nitrogen_10ev_example()
-@info "Final translational temperature (K)" temperature_history(results).tt[end]
+results = ter.nitrogen_10ev_example()
+@info "Final translational temperature (K)" ter.temperature_history(results).tt[end]
 ```
 
-The returned `ReactorResult` object contains the full time history of species densities, temperatures, and energy modes. Use `species_density_matrix`, `temperature_history`, and `total_energy_history` to access the saved histories directly. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
+The returned `ter.ReactorResult` object contains the full time history of species densities, temperatures, and energy modes. Use `ter.species_density_matrix`, `ter.temperature_history`, and `ter.total_energy_history` to access the saved histories directly. Refer to the [package documentation](https://amta3208.github.io/TERRA.jl/stable/) for field descriptions and analysis utilities.
 
 ## Tools & MATLAB Post-Processing
 
-The original TERRA toolchain is bundled under `tools/` and remains fully compatible when native-style outputs are enabled:
+The active post-processing and native-run helper tooling under `tools/` remains usable when native-style outputs are enabled:
 
 - `tools/postprocess.sh` – Shell wrapper that launches MATLAB and runs `postProcessTERRA.m`.
 - `tools/matlab/` – MATLAB readers, plotting scripts, and the `DataViewerTERRA` app.
@@ -102,7 +101,7 @@ bash configure_matlab_path.sh
 Once completed, MATLAB-ready results can be generated from a Julia run by:
 
 1. Set native mirroring in runtime settings, for example with `config = with_runtime(config; write_native_state_files = true)`.
-2. Run your simulation via `solve_terra_0d` (or `nitrogen_10ev_example` for the packaged reference case).
+2. Run your simulation via `integrate_reactor` (or `nitrogen_10ev_example` for the packaged reference case).
 3. Execute the post-processing script, pointing it to the case directory:
 
    ```bash
