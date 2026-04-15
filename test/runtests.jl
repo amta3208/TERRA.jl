@@ -9,10 +9,6 @@ include("helpers/shared.jl")
         Aqua.test_all(terra; ambiguities = false, persistent_tasks = false)
     end
 
-    @testset "Public API" begin
-        include("public/exports.jl")
-    end
-
     @testset "Data Conversion" begin
         include("conversion/units.jl")
         include("conversion/species.jl")

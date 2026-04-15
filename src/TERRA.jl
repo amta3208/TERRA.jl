@@ -57,13 +57,6 @@ include("reactor/integrate.jl")
 include("reactor/solve.jl")
 include("reactor/examples.jl")
 
-export initialize_terra, finalize_terra
-export solve_terra_0d, save_results
-export species_density_matrix, temperature_history, total_energy_history
-export IonNeutralizationWallModel, BallisticNeutralRecombinationWallModel,
-       ConstantNeutralRecombinationWallModel
-export ReactorResult
-
 include("precompile.jl")
 
 end
