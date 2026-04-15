@@ -13,7 +13,6 @@
         @test terra.log_dir(runtime) == layout.log_dir
         @test layout.run_log_path == joinpath(temp_dir, "output", "logs", "run.log")
         @test layout.native_log_path == joinpath(temp_dir, "output", "logs", "native.log")
-        @test layout.chain_log_path == joinpath(temp_dir, "output", "logs", "chain.log")
 
         terra.ensure_case_layout!(runtime)
         @test isdir(layout.input_dir)

@@ -1,17 +1,11 @@
  @testset "Export Surface" begin
     expected_exports = (
         :initialize_terra, :finalize_terra,
-        :solve_terra_0d, :solve_terra_chain_steady,
-        :load_chain_profile, :save_results, :load_results_chain,
+        :solve_terra_0d, :save_results,
         :species_density_matrix, :temperature_history, :total_energy_history,
-        :WallLossConfig,
         :IonNeutralizationWallModel,
         :BallisticNeutralRecombinationWallModel, :ConstantNeutralRecombinationWallModel,
-        :ChainWallProfile,
-        :ChainProfileInletComposition, :ChainProfileInlet,
-        :AxialChainProfile, :AxialMarchingConfig,
-        :FullStateHandoff, :ReinitializeHandoff, :FinalTimeTermination,
-        :ReactorResult, :ChainSimulationResult,
+        :ReactorResult,
     )
 
     for name in expected_exports
@@ -23,9 +17,8 @@
         :Config, :ReactorConfig, :ReactorComposition, :ReactorThermalState,
         :ModelConfig, :TimeConfig, :ODESolverConfig, :SpaceConfig,
         :NumericsConfig, :LoggingConfig, :RuntimeConfig, :ResidenceTimeConfig,
-        :SourceTermsConfig, :SpeciesWallModel, :AbstractChainHandoffPolicy,
-        :AbstractChainTerminationPolicy, :SteadyStateTermination, :ReactorFrame,
-        :ChainCellResult, :ChainMetadata, :with_case_path, :with_time,
+        :SourceTermsConfig, :SpeciesWallModel, :WallLossConfig, :ReactorFrame,
+        :with_case_path, :with_time,
         :with_runtime, :with_logging, :nitrogen_10ev_example,
     )
 

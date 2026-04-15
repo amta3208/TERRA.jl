@@ -4,21 +4,6 @@ const TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT
                                                                  "terra_fortran",
                                                                  "reference_case"))
 const TEST_CASE_PATH = TEST_TERRA_FORTRAN_REFERENCE_CASE_PATH
-const TEST_HET_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT,
-                                                             "hallthruster_jl",
-                                                             "chain_interface_case"))
-const TEST_TERRA_CHAIN_INTERFACE_CASE_PATH = normpath(joinpath(TEST_CASES_ROOT, "terra_jl",
-                                                               "chain_interface_case"))
-const _HALLTHRUSTER_EXPORT_TOOL = let tool = Module(gensym(:HallThrusterExportTool))
-    Base.include(tool,
-                 joinpath(TEST_PACKAGE_ROOT, "tools", "hallthruster_jl",
-                          "export_chain_profile.jl"))
-    tool
-end
-
-function hallthruster_export_tool()
-    return _HALLTHRUSTER_EXPORT_TOOL
-end
 
 """
 This avoids calling `dlclose` on an initialized Fortran/MPI runtime by

@@ -61,7 +61,7 @@ end
     run_log = read(run_log_path, String)
 end
 
- @testset "Direct 0D solve rejects wall-loss configs without profile inputs" begin
+ @testset "Direct 0D solve rejects wall-loss configs on the active API" begin
     base = terra.nitrogen_10ev_config(; isothermal = false)
     wall_cfg = terra.WallLossConfig(;
                                     species_models = Dict("N+" => terra.IonNeutralizationWallModel(;

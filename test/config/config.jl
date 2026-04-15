@@ -99,12 +99,10 @@ end
                                         console_mode = :verbose,
                                         progress_mode = :summary,
                                         integration_detail_mode = :both,
-                                        chain_detail_mode = :both,
                                         log_dir = "logs/custom")
     @test config_logging.runtime.logging.console_mode == :verbose
     @test config_logging.runtime.logging.progress_mode == :summary
     @test config_logging.runtime.logging.integration_detail_mode == :both
-    @test config_logging.runtime.logging.chain_detail_mode == :both
     @test config_logging.runtime.logging.log_dir == normpath("logs/custom")
     @test config.runtime.logging.console_mode == :minimal
 
