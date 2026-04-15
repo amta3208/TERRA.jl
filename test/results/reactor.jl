@@ -19,7 +19,7 @@
     @test length(reactor.frames) == 2
     @test reactor.frames[1].t == 0.0
     @test reactor.frames[2].temperatures.te == 10500.0
-    @test terra.validate_results(reactor)
+    @test terra.validate_reactor_result(reactor)
 
     densities = terra.species_density_matrix(reactor)
     temperatures = terra.temperature_history(reactor)

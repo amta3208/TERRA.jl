@@ -49,8 +49,8 @@ end
                                                         print_source_terms = false))
 
     @test_nowarn reset_and_init!(case_path; config = config)
-    initial_state = terra.config_to_initial_state(config)
-    results = terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = terra.integrate_reactor(config, initial_state)
 
     @test results.success == true
     @test length(results.t) == config.numerics.solver.saveat_count
@@ -60,7 +60,7 @@ end
     run_log = read(run_log_path, String)
 end
 
- @testset "Direct 0D solve rejects wall-loss configs on the active API" begin
+ @testset "Direct Reactor Integration Rejects Wall-Loss Configs on the Active API" begin
     base = terra.nitrogen_10ev_config(; isothermal = false)
     wall_cfg = terra.WallLossConfig(;
                                     species_models = Dict("N+" => terra.IonNeutralizationWallModel(;
@@ -72,7 +72,7 @@ end
                           numerics = base.numerics,
                           runtime = base.runtime,)
 
-    @test_throws ArgumentError terra.solve_terra_0d(config; sources = config.sources)
+    @test_throws ArgumentError terra.integrate_reactor(config; sources = config.sources)
 end
 
  @testset "Native Output Generation" begin
@@ -113,8 +113,8 @@ end
     @test case_path_used == temp_case_path
     @test isdir(case_path_used)
 
-    initial_state = terra.config_to_initial_state(config)
-    results = terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = terra.integrate_reactor(config, initial_state)
     @test results.t[end] >= results.t[1]
 
     output_dir = joinpath(case_path_used, "output")
@@ -154,11 +154,11 @@ end
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
+    initial_state = terra.build_initial_state(config)
     quiet_results = Ref{Any}(nothing)
     quiet_pipe = Pipe()
     redirect_stdout(quiet_pipe) do
-        quiet_results[] = terra.integrate_0d_system(config, initial_state)
+        quiet_results[] = terra.integrate_reactor(config, initial_state)
         nothing
     end
     close(Base.pipe_writer(quiet_pipe))
@@ -172,11 +172,11 @@ end
     run_log = read(run_log_path, String)
     @test occursin("Preparing ODE integration", run_log)
     @test occursin("starting ODE integration...", run_log)
-    @test occursin("0D integration snapshot", run_log)
+    @test occursin("reactor integration snapshot", run_log)
     @test occursin("success!", run_log)
 end
 
- @testset "0D Console Progress Routing" begin
+ @testset "Reactor Console Progress Routing" begin
     base_config = terra.nitrogen_10ev_config(; isothermal = false)
     temp_case_path = mktempdir()
     config = terra.with_case_path(base_config, temp_case_path)
@@ -193,18 +193,18 @@ end
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
+    initial_state = terra.build_initial_state(config)
     routed_results = Ref{Any}(nothing)
     routed_pipe = Pipe()
     redirect_stdout(routed_pipe) do
-        routed_results[] = terra.integrate_0d_system(config, initial_state)
+        routed_results[] = terra.integrate_reactor(config, initial_state)
         nothing
     end
     close(Base.pipe_writer(routed_pipe))
     console_text = read(routed_pipe, String)
     results = routed_results[]::terra.ReactorResult
     @test results.success == true
-    @test occursin("TERRA 0D Simulation", console_text)
+    @test occursin("TERRA Reactor Integration", console_text)
     @test occursin("starting ODE integration...", console_text)
     @test occursin("success!", console_text)
 end

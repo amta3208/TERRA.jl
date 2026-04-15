@@ -26,7 +26,7 @@ end
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    base_state = terra.config_to_initial_state(config)
+    base_state = terra.build_initial_state(config)
     state_cache = terra.ReactorStateCache(;
         species = config.reactor.composition.species,
         rho_sp_cgs = base_state.rho_sp,
@@ -41,11 +41,11 @@ end
     )
     downstream_config_b = _with_reactor_thermal(downstream_config_a; Tee = 90000.0)
 
-    cached_state_a = terra.config_to_initial_state(
+    cached_state_a = terra.build_initial_state(
         downstream_config_a; state_cache = state_cache)
-    cached_state_b = terra.config_to_initial_state(
+    cached_state_b = terra.build_initial_state(
         downstream_config_b; state_cache = state_cache)
-    boltz_state = terra.config_to_initial_state(downstream_config_a)
+    boltz_state = terra.build_initial_state(downstream_config_a)
     boltz_rho_ex_active = boltz_state.rho_ex[:, 1:length(config.reactor.composition.species)]
 
     @test cached_state_a.state_cache_used == true

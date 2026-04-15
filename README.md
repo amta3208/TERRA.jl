@@ -59,7 +59,7 @@ config = ter.with_case_path(config, mktempdir())
 
 ter.initialize_terra(config)
 try
-    results = ter.solve_terra_0d(config)
+    results = ter.integrate_reactor(config)
     @info "Final translational temperature (K)" ter.temperature_history(results).tt[end]
 finally
     ter.finalize_terra()
@@ -101,7 +101,7 @@ bash configure_matlab_path.sh
 Once completed, MATLAB-ready results can be generated from a Julia run by:
 
 1. Set native mirroring in runtime settings, for example with `config = with_runtime(config; write_native_state_files = true)`.
-2. Run your simulation via `solve_terra_0d` (or `nitrogen_10ev_example` for the packaged reference case).
+2. Run your simulation via `integrate_reactor` (or `nitrogen_10ev_example` for the packaged reference case).
 3. Execute the post-processing script, pointing it to the case directory:
 
    ```bash

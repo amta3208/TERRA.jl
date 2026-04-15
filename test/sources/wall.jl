@@ -2,7 +2,7 @@
     config = terra.nitrogen_10ev_config(; isothermal = false)
     @test_nowarn reset_and_init!(tempname(); config = config)
 
-    state = terra.config_to_initial_state(config)
+    state = terra.build_initial_state(config)
     layout = terra.get_api_layout()
     u_base = terra.pack_state_vector(layout, state.rho_sp, state.rho_energy;
                                      rho_ex = state.rho_ex,

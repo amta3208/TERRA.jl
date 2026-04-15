@@ -1,4 +1,4 @@
- @testset "Integrate 0D (adiabatic)" begin
+ @testset "Integrate Reactor (adiabatic)" begin
     # Initialize using the config-driven input to ensure the selected
     # database and options are honored (rather than a stale case file).
 
@@ -15,8 +15,8 @@
     # Initialize the Fortran API using a temporary case generated from this config
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
-    results = @time terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = @time terra.integrate_reactor(config, initial_state)
     @test results isa terra.ReactorResult
     densities = terra.species_density_matrix(results)
     temperatures = terra.temperature_history(results)
@@ -27,7 +27,7 @@
     @test all(isfinite, temperatures.tv)
 end
 
- @testset "Integrate 0D (isothermal)" begin
+ @testset "Integrate Reactor (isothermal)" begin
     config = terra.nitrogen_10ev_config(; isothermal = true)
     temp_case_path = mktempdir()
     config = terra.with_case_path(config, temp_case_path)
@@ -39,8 +39,8 @@ end
 
     @test_nowarn reset_and_init!(temp_case_path; config = config)
 
-    initial_state = terra.config_to_initial_state(config)
-    results = @time terra.integrate_0d_system(config, initial_state)
+    initial_state = terra.build_initial_state(config)
+    results = @time terra.integrate_reactor(config, initial_state)
     @test results isa terra.ReactorResult
 
     densities = terra.species_density_matrix(results)

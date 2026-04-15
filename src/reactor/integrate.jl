@@ -1,10 +1,10 @@
 """
 $(SIGNATURES)
 
-Shared banners for 0D integration logging and console routing.
+Shared banners for reactor integration logging and console routing.
 """
-const STANDALONE_0D_BANNER = "\n" * "="^12 * " TERRA 0D Simulation " * "="^12
-const STANDALONE_0D_FOOTER = "="^(length(STANDALONE_0D_BANNER) - 1)
+const REACTOR_INTEGRATION_BANNER = "\n" * "="^12 * " TERRA Reactor Integration " * "="^12
+const REACTOR_INTEGRATION_FOOTER = "="^(length(REACTOR_INTEGRATION_BANNER) - 1)
 
 mutable struct NativeRampLimiter{T <: Real}
     base_dt::T
@@ -136,17 +136,17 @@ function _failed_reactor_result(config::Config,
                          metadata = metadata)
 end
 
-function integrate_0d_system(config::Config,
-                             initial_state::ReactorInitialState;
-                             sources::Union{Nothing, SourceTermsConfig} = config.sources)
+function integrate_reactor(config::Config,
+                           initial_state::ReactorInitialState;
+                           sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
-    return _integrate_0d_system(config, initial_state; sources = sources)
+    return _integrate_reactor(config, initial_state; sources = sources)
 end
 
-function _integrate_0d_system(config::Config,
-                              initial_state::ReactorInitialState;
-                              sources::Union{Nothing, SourceTermsConfig} = config.sources,
-                              wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
+function _integrate_reactor(config::Config,
+                            initial_state::ReactorInitialState;
+                            sources::Union{Nothing, SourceTermsConfig} = config.sources,
+                            wall_inputs::Union{Nothing, SegmentWallInputs} = nothing)
     runtime = config.runtime
     dt = config.numerics.time.dt
     tlim = config.numerics.time.duration
@@ -168,7 +168,7 @@ function _integrate_0d_system(config::Config,
         error("Invalid API layout: layout.neq=$(layout.neq). Ensure the Fortran API is initialized.")
     end
     if layout.nd != 0
-        error("integrate_0d_system currently supports nd=0 only (got nd=$(layout.nd)).")
+        error("integrate_reactor currently supports nd=0 only (got nd=$(layout.nd)).")
     end
     if layout.n_eq_vib > 0 || layout.is_vib_sts
         error("Vibrational STS is not yet supported (layout.n_eq_vib=$(layout.n_eq_vib)).")
@@ -246,7 +246,8 @@ function _integrate_0d_system(config::Config,
                CallbackSet(ramp_callback, integration_progress_callback())
 
     emit!(RUN_LOG, runtime,
-          EventEntry(:info, string(STANDALONE_0D_BANNER, "\n", "starting ODE integration...");
+          EventEntry(:info, string(REACTOR_INTEGRATION_BANNER, "\n",
+                                   "starting ODE integration...");
                      console = :minimal,
                      :reltol => solver_cfg.reltol,
                      :abstol_density => solver_cfg.abstol_density))
@@ -411,7 +412,7 @@ function _integrate_0d_system(config::Config,
                   (occursin("Success", string(rc)) || occursin("Terminated", string(rc)))
         message = success ? "success!" :
                   "ODE integration terminated: $(rc)"
-        completion_message = string(message, "\n", STANDALONE_0D_FOOTER)
+        completion_message = string(message, "\n", REACTOR_INTEGRATION_FOOTER)
         emit!(RUN_LOG, runtime,
               EventEntry(success ? :info : :warn, completion_message;
                          console = :minimal,
@@ -441,7 +442,8 @@ function _integrate_0d_system(config::Config,
     catch e
         emit!(RUN_LOG, runtime,
               ExceptionEntry(:error,
-                             string("ODE integration failed", "\n", STANDALONE_0D_FOOTER),
+                             string("ODE integration failed", "\n",
+                                    REACTOR_INTEGRATION_FOOTER),
                              e;
                              console = :minimal))
         return _failed_reactor_result(config, initial_state,

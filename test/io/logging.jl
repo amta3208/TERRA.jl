@@ -68,7 +68,8 @@ end
             detail_file = terra.IntegrationDetailEntry("detail block")
             terra.emit!(terra.RUN_LOG, config_file.runtime, detail_file)
             @test isfile(terra.run_log_path(config_file.runtime))
-            @test occursin("0D integration snapshot", read(terra.run_log_path(config_file.runtime), String))
+            @test occursin("reactor integration snapshot",
+                           read(terra.run_log_path(config_file.runtime), String))
 
             config_console = _logging_test_config(temp_console; console_mode = :quiet,
                                                   integration_detail_mode = :console)

@@ -1,7 +1,7 @@
 """
 $(SIGNATURES)
 
-Create a default configuration for the 0D Nitrogen Te=10eV example.
+Create a default configuration for the Nitrogen Te=10eV reactor example.
 """
 _nitrogen_10ev_database_path() = abspath(joinpath(PACKAGE_ROOT, "database", "n2",
                                                   "elec_sts_expanded_electron_fits"))
@@ -58,14 +58,14 @@ end
 """
 $(SIGNATURES)
 
-Run the 0D Nitrogen Te=10eV example case.
+Run the Nitrogen Te=10eV reactor example case.
 """
 function nitrogen_10ev_example(case_path::String = mktempdir();
                                isothermal::Bool = false)
     config = nitrogen_10ev_config(; isothermal = isothermal)
     config_with_path = with_case_path(config, case_path)
 
-    @info "Running 0D Nitrogen Te=10eV example case"
+    @info "Running Nitrogen Te=10eV reactor example case"
     @info "Configuration" species=config_with_path.reactor.composition.species mole_fractions=config_with_path.reactor.composition.mole_fractions
     @info "Temperatures" Tt=config_with_path.reactor.thermal.Tt Te=config_with_path.reactor.thermal.Te
     @info "Time parameters" dt=config_with_path.numerics.time.dt tlim=config_with_path.numerics.time.duration
@@ -73,7 +73,7 @@ function nitrogen_10ev_example(case_path::String = mktempdir();
 
     try
         initialize_terra(config_with_path, case_path)
-        results = solve_terra_0d(config_with_path)
+        results = integrate_reactor(config_with_path)
 
         if results.success
             @info "Example simulation completed successfully"

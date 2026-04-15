@@ -66,7 +66,7 @@ function _run_native_0d_precompile_case(isothermal::Bool)
         end
 
         initialize_terra(config)
-        results = solve_terra_0d(config)
+        results = integrate_reactor(config)
         results.success || error("Native precompile warmup failed: $(results.message)")
         return nothing
     finally

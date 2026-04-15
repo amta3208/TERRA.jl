@@ -156,7 +156,7 @@ function total_energy_history(result::ReactorResult)
     return Float64[frame.total_energy for frame in result.frames]
 end
 
-function validate_results(result::ReactorResult)
+function validate_reactor_result(result::ReactorResult)
     if !result.success
         @warn "Simulation was not successful"
         return false

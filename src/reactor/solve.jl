@@ -1,21 +1,21 @@
 """
 $(SIGNATURES)
 
-Solve a 0D TERRA simulation.
+Integrate a reactor simulation from config-defined initial conditions.
 """
-function _solve_terra_0d_internal(config::Config;
-                                  sources::Union{Nothing, SourceTermsConfig} = config.sources,
-                                  wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
-                                  state_cache::Union{Nothing, ReactorStateCache} = nothing)
+function _integrate_reactor(config::Config;
+                            sources::Union{Nothing, SourceTermsConfig} = config.sources,
+                            wall_inputs::Union{Nothing, SegmentWallInputs} = nothing,
+                            state_cache::Union{Nothing, ReactorStateCache} = nothing)
     if !is_terra_initialized()
         error("TERRA not initialized. Call initialize_terra(config) first.")
     end
 
     try
-        initial_state = config_to_initial_state(config; state_cache = state_cache)
-        return _integrate_0d_system(config, initial_state;
-                                    sources = sources,
-                                    wall_inputs = wall_inputs)
+        initial_state = build_initial_state(config; state_cache = state_cache)
+        return _integrate_reactor(config, initial_state;
+                                  sources = sources,
+                                  wall_inputs = wall_inputs)
     catch e
         emit!(RUN_LOG, config.runtime,
               ExceptionEntry(:error, "TERRA simulation failed", e;
@@ -24,8 +24,8 @@ function _solve_terra_0d_internal(config::Config;
     end
 end
 
-function solve_terra_0d(config::Config;
-                        sources::Union{Nothing, SourceTermsConfig} = config.sources)
+function integrate_reactor(config::Config;
+                           sources::Union{Nothing, SourceTermsConfig} = config.sources)
     _validate_direct_wall_loss_usage(sources)
-    return _solve_terra_0d_internal(config; sources = sources)
+    return _integrate_reactor(config; sources = sources)
 end

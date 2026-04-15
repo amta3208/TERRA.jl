@@ -223,7 +223,7 @@ function emit!(::RunLog, runtime::RuntimeConfig, entry::IntegrationDetailEntry)
     mode == :off && return nothing
 
     if _writes_file(mode)
-        header = _render(EventEntry(:detail, "0D integration snapshot"))
+        header = _render(EventEntry(:detail, "reactor integration snapshot"))
         _append_log_text(log_path(RUN_LOG, runtime), string(header, "\n", _render(entry)))
     end
     if _writes_console(mode)
